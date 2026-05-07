@@ -361,9 +361,12 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
 /* Main 2-col layout */
 .pulse-layout {
-  display: grid; grid-template-columns: 252px 1fr auto; gap: 16px;
+  display: grid; grid-template-columns: 240px 1fr auto; gap: 14px;
   min-height: 0; align-items: start;
 }
+
+/* Pulse page — use more screen width */
+#page-pulse { max-width: none; padding: 16px 20px 40px; }
 
 /* ═══ SIDEBAR ═══ */
 .pulse-sidebar {
@@ -518,22 +521,22 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
 /* ═══ INLINE CHAT PANEL (workspace embedded) ═══ */
 .pulse-chat {
-  width: 36px; min-width: 36px; transition: width var(--slow) var(--ease);
-  border-left: 1px solid var(--border); display: flex; flex-direction: column;
-  background: var(--bg-surface); overflow: hidden;
-  border-radius: var(--radius-lg);
-  max-height: calc(100vh - 160px);
-  position: sticky; top: 100px;
+  width: 36px; min-width: 36px;
+  transition: width var(--slow) var(--ease);
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); display: flex; flex-direction: column;
+  overflow: hidden; min-height: 0; position: relative;
 }
-.pulse-chat.expanded { width: 340px; min-width: 340px; max-width: 420px; }
-.pulse-chat .chat-inner { width: 340px; display: flex; flex-direction: column; height: 100%; }
+.pulse-chat.expanded { width: 380px; min-width: 380px; }
+.pulse-chat .chat-inner { width: 380px; min-width: 380px; display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .pulse-chat .chat-toggle-tab {
-  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  width: 36px; height: 72px; display: flex; flex-direction: column;
+  display: flex; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 36px; height: 80px; flex-direction: column;
   align-items: center; justify-content: center; gap: 4px;
   cursor: pointer; transition: all var(--fast); z-index: 10;
-  border-radius: 0 6px 6px 0; font-size: 0.62rem; font-weight: 600;
+  border-radius: 6px 0 0 6px; font-size: 0.62rem; font-weight: 600;
   color: var(--text-muted); writing-mode: vertical-lr; letter-spacing: 2px;
+  background: var(--bg-surface);
 }
 .pulse-chat .chat-toggle-tab:hover { color: var(--blue-600); background: var(--blue-50); }
 .pulse-chat.expanded .chat-toggle-tab { display: none; }
@@ -541,19 +544,27 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
-.pulse-chat .chat-head h3 { font-size: 0.82rem; font-weight: 600; }
+.pulse-chat .chat-head h3 { font-size: 0.84rem; font-weight: 600; }
 .pulse-chat .chat-head select {
-  font-size: 0.68rem; padding: 2px 6px; border: 1px solid var(--border);
+  font-size: 0.7rem; padding: 3px 8px; border: 1px solid var(--border);
   border-radius: var(--radius-sm); background: var(--bg-surface); max-width: 90px;
 }
-.pulse-chat .chat-body { flex: 1; overflow-y: auto; padding: 10px 14px; }
-.pulse-chat .chat-body .chat-cmds { margin-bottom: 8px; }
-.pulse-chat .chat-body .chat-cmd { font-size: 0.65rem; padding: 3px 8px; }
-.pulse-chat .chat-body .chat-msgs { gap: 8px; }
-.pulse-chat .chat-body .chat-msg { font-size: 0.74rem; padding: 7px 10px; max-width: 100%; }
-.pulse-chat .chat-input-area { padding: 8px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
-.pulse-chat .chat-input-area input { font-size: 0.76rem; padding: 7px 12px; }
-.pulse-chat .chat-input-area .send-btn { width: 30px; height: 30px; }
+.pulse-chat .chat-close-btn {
+  width: 22px; height: 22px; border-radius: var(--radius-sm); border: none;
+  background: transparent; color: var(--text-muted); font-size: 0.75rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all var(--fast); flex-shrink: 0;
+}
+.pulse-chat .chat-close-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
+.pulse-chat .chat-body { flex: 1; overflow-y: auto; padding: 12px 14px; min-height: 0; }
+.pulse-chat .chat-body .chat-cmds { margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
+.pulse-chat .chat-body .chat-msgs { display: flex; flex-direction: column; gap: 10px; }
+.pulse-chat .chat-body .chat-msg { font-size: 0.76rem; padding: 8px 12px; max-width: 100%; border-radius: var(--radius); line-height: 1.6; }
+.pulse-chat .chat-input-area { padding: 10px 14px; border-top: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 6px; }
+.pulse-chat .chat-input-area input { flex: 1; font-size: 0.78rem; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); outline: none; }
+.pulse-chat .chat-input-area input:focus { border-color: var(--blue-400); }
+.pulse-chat .chat-input-area .send-btn { width: 32px; height: 32px; border-radius: var(--radius); background: var(--blue-600); color: #fff; font-weight: 700; font-size: 0.8rem; cursor: pointer; border: none; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all var(--fast); }
+.pulse-chat .chat-input-area .send-btn:hover { background: var(--blue-700); }
 
 /* ═══ KB VIEWER — inline file viewer ═══ */
 .kb-viewer {
@@ -1084,6 +1095,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   .task-list .list-head, .task-list .list-row { grid-template-columns: 1fr 70px 70px 60px 30px; gap: 6px; font-size: 0.72rem; }
   /* Pulse layout — stack sidebar above main */
   .pulse-layout { grid-template-columns: 1fr; }
+  .pulse-chat { min-height: 420px; }
   .pulse-sidebar { position: static; }
   .focus-strip { flex-direction: column; }
   .focus-strip .fs-item { min-width: 0; }
@@ -1830,16 +1842,14 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
   <!-- ═══ INLINE CHAT PANEL ═══ -->
 <div class="pulse-chat" id="pulseChat">
-  <div class="chat-toggle-tab" id="chatToggle" onclick="toggleChat()" title="打开 AI 对话">💬 AI 对话</div>
+  <div class="chat-toggle-tab" onclick="toggleChat()" title="打开 AI 对话">💬 AI 对话</div>
   <div class="chat-inner">
     <div class="chat-head">
       <h3>💬 AI 对话</h3>
-      <div style="display:flex;gap:4px;align-items:center">
-        <select id="chatAgent" style="font-size:0.68rem;padding:2px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-surface);max-width:80px">
-          <option>需求分析师</option><option>设计师</option><option>开发工程师</option><option>项目经理</option>
-        </select>
-        <button onclick="toggleChat()" style="font-size:0.82rem;color:var(--text-muted);cursor:pointer;padding:2px 4px" title="收起">✕</button>
-      </div>
+      <select id="chatAgent" style="font-size:0.7rem;padding:3px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-surface);max-width:90px">
+        <option>需求分析师</option><option>设计师</option><option>开发工程师</option><option>项目经理</option>
+      </select>
+      <button class="chat-close-btn" onclick="toggleChat()" title="收起 AI 对话">✕</button>
     </div>
     <div class="chat-body">
       <div class="chat-cmds" id="chatCmds">
