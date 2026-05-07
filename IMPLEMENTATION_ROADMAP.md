@@ -18,9 +18,20 @@ AI-native 项目管理平台，面向 50-200 人中型企业，核心差异化�
 | Plan 2 | 任务系统 + 知识库 | 8-10 周 | 完整任务管理 + Git 版本化知识库 |
 | Plan 2.5 | AgentScope 技术验证 | 1-2 周 | ReActAgent 工具调用稳定、Webhook 可靠、Memory 摘要质量验证 |
 | Plan 3 | AI 引擎 | 10-12 周 | AI Agent 被分配任务 → 执行 → 产出 → 人类 Review |
-| Plan 4 | 协作 + 系统管理 | 6-7 周 | 全部 8 页线框图完整可用的 MVP |
+| Plan 4 | 协作 + 系统管理 | 6-7 周 | 全部 9 页完整可用的 MVP |
 
 **总周期：32-36 周（约 8-9 个月，单人开发）**
+
+### 2.1 里程碑定义
+
+| 编号 | 里程碑 | 所属 Phase | 判定标准 |
+|------|--------|-----------|---------|
+| M0 | 开发环境就绪 | Foundation 前 | `pnpm dev` 启动前端(3000)，`uvicorn` 启动后端(8000)，MySQL/Redis 可连接 |
+| M1 | 基座可用 | Foundation | 用户密码/企微登录 → 创建工作空间(含 OpenSpec) → 邀请成员 → 权限生效 |
+| M2 | 核心 PM 可用 | Plan 2 | Epic→Story→Task 层级创建 → Kanban 拖拽 → Git 版本文档 CRUD → 全文搜索 |
+| M3 | AgentScope 验证通过 | Plan 2.5 | 5 项验证全部通过，输出验证报告，Go/No-Go 决策 |
+| M4 | AI 引擎可用 | Plan 3 | Agent 被委托任务 → ReAct 执行 → 产出 PRD/日报 → 人类 Review 通过/打回 |
+| M5 | MVP 完整 | Plan 4 | 全部 9 页可用，通知/企微/自动化/会议大屏完整闭环 |
 
 ---
 
@@ -74,7 +85,7 @@ AI 引擎      协作 + 管理
 
 - **Foundation：** 仅建认证 + 工作空间 + 用户 + 角色相关表（约 6 张：users, departments, roles, user_roles, workspaces, workspace_members）
 - **Plan 2：** 建任务相关表（tasks, task_dependencies, iterations, comments, documents, requirement_inbox 等）和工作流模板表
-- **Plan 3：** 建 AI 相关表（ai_agents, agent_executions, model_configs, project_memories, prompt_templates）；初始化向量检索基础设施
+- **Plan 3：** 建 AI 相关表（agent_executions, model_configs, project_memories, prompt_templates）；初始化 MySQL FULLTEXT 索引（向量检索延后至 V1.1）
 - **Plan 4：** 建协作表（meeting_cache, notification_preferences, webhook_subscriptions, automation_rules, audit_logs）
 
 每个 Phase 独立建表和迁移，不跨 Phase 预建表，降低早期设计锁定风险。
@@ -107,10 +118,157 @@ AI 引擎      协作 + 管理
 5. **3 级 RBAC 从 Foundation 即为所有路由统一入口**，后续新增路由无需改动权限架构
 6. **认证和通知层使用接口抽象**（`auth/AuthProvider`、`notify/NotifyProvider`），企微作为首个实现，后续可扩展飞书/钉钉/邮件
 7. **AI Agent 全链路可观测**：AgentScope 执行日志结构化输出 + FastAPI 侧 tracing + 关键指标（任务成功率/延迟/摘要质量）监控
+8. **OpenSpec 项目宪法**：工作空间创建时自动初始化 OpenSpec（设计规范 §4.3），AI 调用时注入 System Prompt。OpenSpec 定义行为边界，记忆系统提供历史上下文，二者独立管理
+9. **AuthProvider + NotifyProvider 接口抽象**：外部集成通过接口隔离，企微为首个实现，后续可扩展飞书/钉钉/邮件而不影响业务逻辑
 
 ---
 
-## 8. AgentScope 技术验证（Plan 2.5）
+## 8. 开发环境与项目结构
+
+### 8.1 开发环境要求
+
+| 依赖 | 版本 | 用途 |
+|------|------|------|
+| Python | >= 3.11 | 后端运行时 |
+| Node.js | >= 20 | 前端运行时 |
+| pnpm | >= 9.15.0 | 前端包管理 (monorepo) |
+| MySQL | 8.0+ | 核心数据库 |
+| Redis | 7.0+ | 会话缓存 + 任务队列 |
+| Git | 2.40+ | 知识库版本化 (GitPython) |
+| Docker | 24+ | 本地开发环境容器化 (可选) |
+
+### 8.2 推荐本地开发工作流
+
+```bash
+# 1. 克隆仓库
+git clone <repo-url> ai-pm && cd ai-pm
+
+# 2. 启动基础设施 (MySQL + Redis)
+docker compose -f docker-compose.dev.yml up -d
+
+# 3. 初始化数据库
+cd server && alembic upgrade head && cd ..
+
+# 4. 安装依赖
+pnpm install          # 前端 monorepo
+cd server && pip install -e ".[dev]" && cd ..
+
+# 5. 启动开发服务器
+pnpm dev              # 前端 :3000 + 后端 :8000 (concurrently)
+```
+
+### 8.3 项目目录结构
+
+```
+ai-pm/
+├── server/                          # FastAPI 后端
+│   ├── alembic/                     # 数据库迁移
+│   ├── app/
+│   │   ├── main.py                  # 应用入口
+│   │   ├── config.py                # 配置 (pydantic-settings)
+│   │   ├── database.py              # 数据库连接
+│   │   ├── security.py              # JWT + 密码哈希
+│   │   ├── deps.py                  # 依赖注入 (get_current_user)
+│   │   ├── exceptions.py            # 统一异常处理
+│   │   ├── middleware.py            # 请求日志/审计
+│   │   ├── routers/                 # API 路由层 (薄)
+│   │   ├── services/                # 业务逻辑层
+│   │   ├── schemas/                 # Pydantic 请求/响应模型
+│   │   ├── models/                  # SQLAlchemy ORM 模型
+│   │   ├── integrations/            # 外部集成 (企微/AuthProvider)
+│   │   └── ai/                      # AI 引擎 (独立包, Plan 3+)
+│   │       ├── gateway.py           # LLM 网关
+│   │       ├── agentscope_bridge.py # AgentScope 桥接
+│   │       ├── agent_config.py      # Agent 角色定义
+│   │       ├── prompt_manager.py    # Prompt 模板管理
+│   │       ├── memory.py            # 记忆系统
+│   │       └── tools/               # Agent 工具集 (MCP)
+│   ├── tests/
+│   └── pyproject.toml
+│
+├── apps/web/                        # React 前端
+│   ├── src/
+│   │   ├── main.tsx
+│   │   ├── App.tsx
+│   │   ├── api/client.ts            # Axios 实例
+│   │   ├── pages/                   # 页面组件 (9 页)
+│   │   ├── components/              # 共享组件
+│   │   ├── stores/                  # Zustand stores
+│   │   ├── hooks/                   # 自定义 hooks
+│   │   └── types/                   # TypeScript 类型
+│   ├── vite.config.ts
+│   └── package.json
+│
+├── docs/
+│   └── superpowers/
+│       ├── specs/                   # 产品设计文档
+│       ├── plans/                   # 实施计划 (各 Phase)
+│       └── reports/                 # 技术验证报告
+│
+├── prototypes/                      # HTML 原型 (前期验证)
+├── package.json                     # pnpm workspace root
+├── pnpm-workspace.yaml
+├── docker-compose.dev.yml           # 本地开发基础设施
+├── IMPLEMENTATION_ROADMAP.md        # 本文件
+└── CLAUDE.md                        # AI 助手指引
+```
+
+### 8.4 分支策略与代码约定
+
+**分支策略：**
+- `master` — 始终可部署，合并通过 PR
+- `feature/<phase>-<name>` — 每 Phase 一个 feature 分支
+- 示例：`feature/foundation-auth`、`feature/plan2-tasks`、`feature/plan3-ai`
+
+**代码约定：**
+- Python: Black (formatter) + Ruff (linter) + mypy (type check)
+- TypeScript: Prettier + ESLint
+- 提交信息：`type(scope): description` (如 `feat(auth): add wecom oauth login`)
+- API 设计：RESTful，统一响应格式 `{"code": 0, "message": "ok", "data": ...}`
+- 数据库：表名复数 (users, tasks)，字段名 snake_case，主键 VARCHAR(36) UUID
+
+---
+
+## 9. 风险登记表
+
+| 编号 | 风险 | 影响 | 概率 | 缓解措施 |
+|------|------|------|------|---------|
+| R1 | AgentScope 本地 LLM tool calling 准确率不达标 | Plan 3 阻塞 | 中 | Plan 2.5 提前验证；备选 LangGraph |
+| R2 | DeepSeek/Qwen API 不可用或限流 | Plan 3 开发停滞 | 低 | Mock LLM 开发模式；多模型备选 |
+| R3 | AI 摘要质量无法达到可用标准 (3/5) | Memory 系统降级 | 中 | MVP 人工标注 + AI 辅助；非全自动摘要 |
+| R4 | 企微 API 接口变更或审批延迟 | 企微集成延期 | 低 | AuthProvider 接口抽象；密码登录兜底 |
+| R5 | 知识库 Git 仓库在多人并发写入时冲突 | 文档丢失风险 | 低 | 文件锁 + 自动合并 + 冲突告警 |
+| R6 | 单人开发瓶颈——AI 引擎开发周期超预期 | 整体延期 4-6 周 | 中 | Mock LLM 并行开发；Plan 3/4 部分并行 |
+| R7 | MySQL FULLTEXT ngram 中文分词质量不足 | 搜索体验差 | 低 | V1.1 升级向量搜索；Plan 2 阶段即可验证 |
+| R8 | AgentScope 与 FastAPI 进程通信延迟过高 | 同步调用超时 | 低 | Plan 2.5 提前验证；降级为同进程调用 |
+
+---
+
+## 10. Phase 启动条件与完成标准
+
+### 10.1 各 Phase 入口条件
+
+| Phase | 启动条件 |
+|-------|---------|
+| Foundation | 开发环境就绪 (M0)：MySQL/Redis 可连接，`server/` 骨架存在，`apps/web/` 骨架存在 |
+| Plan 2 | Foundation 完成 (M1)：用户可登录、空间 CRUD 正常、RBAC 权限生效 |
+| Plan 2.5 | Plan 2 完成 (M2)：任务 CRUD 正常、知识库 Git 版本化可用（Agent 需要读写任务数据验证） |
+| Plan 3 | Plan 2.5 通过 (M3)：5 项验证全部通过，Go 决策确认 |
+| Plan 4 | Plan 3 核心完成 (M4)：至少 Agent 委托→执行→Review 全流程走通 |
+
+### 10.2 各 Phase 完成标准
+
+| Phase | Definition of Done |
+|-------|-------------------|
+| Foundation | ① 全部 API 端点有 pytest 集成测试覆盖 ② 权限矩阵参数化测试全部通过 ③ 前端 3 页面 (登录/工作空间列表/工作空间详情壳) 可用 |
+| Plan 2 | ① 5 条端到端用户旅程走通（见 plan-2 §Week 6） ② MySQL FULLTEXT 中文搜索可用 ③ Git 文档版本历史可查看和 diff |
+| Plan 2.5 | ① 5 项验证全部通过 ② 验证报告归档 ③ Go/No-Go 决策完成 |
+| Plan 3 | ① Agent 委托→执行→产出→Review 全流程走通 ② Memory 人工标注工作流可用 ③ AI 对话 SSE 流式返回正常 |
+| Plan 4 | ① 全部 9 页可用 ② 通知/企微/自动化/会议大屏闭环 ③ Playwright E2E 覆盖关键旅程 |
+
+---
+
+## 11. AgentScope 技术验证（Plan 2.5）关卡详情
 
 在 Plan 2 完成后、Plan 3 AI 引擎开发前，必须通过此验证关卡。
 
@@ -132,7 +290,7 @@ AI 引擎      协作 + 管理
 
 ---
 
-## 9. 测试策略（更新）
+## 12. 测试策略
 
 | 层 | 工具 | 范围 |
 |----|------|------|
@@ -142,7 +300,7 @@ AI 引擎      协作 + 管理
 
 ---
 
-## 10. 详细 Phase 计划索引
+## 13. 详细 Phase 计划索引
 
 | # | 文件 | 说明 |
 |---|------|------|
