@@ -361,7 +361,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
 /* Main 2-col layout */
 .pulse-layout {
-  display: grid; grid-template-columns: 252px 1fr; gap: 16px;
+  display: grid; grid-template-columns: 252px 1fr auto; gap: 16px;
   min-height: 0; align-items: start;
 }
 
@@ -520,9 +520,12 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .pulse-chat {
   width: 36px; min-width: 36px; transition: width var(--slow) var(--ease);
   border-left: 1px solid var(--border); display: flex; flex-direction: column;
-  background: var(--bg-surface); position: relative; overflow: hidden;
+  background: var(--bg-surface); overflow: hidden;
+  border-radius: var(--radius-lg);
+  max-height: calc(100vh - 160px);
+  position: sticky; top: 100px;
 }
-.pulse-chat.expanded { width: 33%; min-width: 340px; max-width: 420px; }
+.pulse-chat.expanded { width: 340px; min-width: 340px; max-width: 420px; }
 .pulse-chat .chat-inner { width: 340px; display: flex; flex-direction: column; height: 100%; }
 .pulse-chat .chat-toggle-tab {
   position: absolute; left: 0; top: 50%; transform: translateY(-50%);
@@ -1824,10 +1827,10 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
       </div>
     </div>
   </div>
-</div>
 
-<!-- ═══ INLINE CHAT PANEL ═══ -->
+  <!-- ═══ INLINE CHAT PANEL ═══ -->
 <div class="pulse-chat" id="pulseChat">
+  <div class="chat-toggle-tab" id="chatToggle" onclick="toggleChat()" title="打开 AI 对话">💬 AI 对话</div>
   <div class="chat-inner">
     <div class="chat-head">
       <h3>💬 AI 对话</h3>
@@ -1871,9 +1874,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
     </div>
   </div>
 </div>
-<!-- Chat toggle button (visible when collapsed) -->
-<button class="chat-toggle" id="chatToggle" onclick="toggleChat()" title="打开 AI 对话">💬</button>
-
+</div>
 </div>
 
 <!-- ═══════════════════════════════════════════
@@ -3053,6 +3054,13 @@ function switchAdmin(name, btn) {
   btn.classList.add('active');
   document.querySelectorAll('.admin-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('apanel-' + name).classList.add('active');
+}
+
+/* ═══════════════════════════════════════════
+   INLINE CHAT TOGGLE
+   ═══════════════════════════════════════════ */
+function toggleChat() {
+  document.getElementById('pulseChat').classList.toggle('expanded');
 }
 
 /* ═══════════════════════════════════════════
