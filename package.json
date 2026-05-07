@@ -1,0 +1,21 @@
+{
+  "name": "ai-pm",
+  "private": true,
+  "version": "0.0.1",
+  "description": "AI-native project management platform",
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "format": "prettier --write .",
+    "db:migrate": "pnpm --filter @ai-pm/api db:migrate",
+    "db:generate": "pnpm --filter @ai-pm/api db:generate",
+    "db:studio": "pnpm --filter @ai-pm/api db:studio"
+  },
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=9"
+  },
+  "packageManager": "pnpm@9.15.0"
+}

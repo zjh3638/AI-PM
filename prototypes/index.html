@@ -1,0 +1,2410 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI PM — 原型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ═══════════════════════════════════════════
+   DESIGN SYSTEM — Tech Blue Minimal
+   ═══════════════════════════════════════════ */
+:root {
+  /* Surfaces */
+  --bg-root: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-raised: #f1f5f9;
+  --bg-hover: #f1f5f9;
+
+  /* Text */
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-placeholder: #cbd5e1;
+
+  /* Brand — Tech Blue */
+  --blue-50: #eff6ff;  --blue-100: #dbeafe;  --blue-200: #bfdbfe;
+  --blue-400: #60a5fa;  --blue-500: #3b82f6;  --blue-600: #2563eb;
+  --blue-700: #1d4ed8;  --blue-800: #1e40af;
+
+  /* Status */
+  --green-50: #f0fdf4; --green-500: #22c55e; --green-600: #16a34a;
+  --amber-50: #fffbeb; --amber-100: #fef3c7; --amber-500: #f59e0b; --amber-600: #d97706;
+  --red-50: #fef2f2; --red-100: #fee2e2; --red-500: #ef4444; --red-600: #dc2626;
+  --teal-500: #14b8a6;
+
+  /* Borders */
+  --border: #e2e8f0;
+  --border-light: #f1f5f9;
+  --border-hover: #cbd5e1;
+
+  /* Shadows */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,0.03);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+  --shadow-md: 0 4px 6px rgba(0,0,0,0.04), 0 2px 4px rgba(0,0,0,0.03);
+  --shadow-lg: 0 10px 25px rgba(0,0,0,0.05), 0 4px 10px rgba(0,0,0,0.03);
+
+  /* Radius */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* Transitions */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --fast: 120ms;
+  --normal: 200ms;
+  --slow: 350ms;
+}
+
+/* ═══════════════════════════════════════════
+   RESET & BASE
+   ═══════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 15px; -webkit-font-smoothing: antialiased; }
+body {
+  font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  background: var(--bg-root); color: var(--text-primary); line-height: 1.6;
+  min-height: 100vh;
+}
+a { color: inherit; text-decoration: none; }
+button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; }
+
+/* ═══════════════════════════════════════════
+   SIGNAL BAR — compact, dismissible
+   ═══════════════════════════════════════════ */
+.signal-bar {
+  height: 36px;
+  background: var(--text-primary);
+  color: rgba(255,255,255,0.88);
+  display: flex; align-items: center; padding: 0 20px;
+  font-size: 0.78rem; gap: 16px;
+  position: sticky; top: 0; z-index: 100;
+}
+.signal-bar .signals { display: flex; gap: 20px; flex: 1; overflow: hidden; }
+.signal-bar .signal-item {
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
+  padding: 2px 10px; border-radius: 12px; background: rgba(255,255,255,0.06);
+}
+.signal-item .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.signal-item .dot.warn { background: var(--amber-500); }
+.signal-item .dot.info { background: var(--blue-400); }
+.signal-item .dot.risk { background: var(--red-500); }
+.signal-item .dismiss {
+  margin-left: 2px; font-size: 0.7rem; opacity: 0.4; cursor: pointer; padding: 0 2px;
+}
+.signal-item .dismiss:hover { opacity: 0.8; }
+.signal-bar .bar-right { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+.signal-bar .bar-right .time { font-size: 0.7rem; opacity: 0.5; }
+.signal-bar .bar-right button {
+  color: rgba(255,255,255,0.7); font-size: 0.75rem; padding: 3px 10px;
+  border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); transition: all var(--fast);
+}
+.signal-bar .bar-right button:hover { color: #fff; border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.06); }
+
+/* ═══════════════════════════════════════════
+   NAVIGATION — clean, minimal
+   ═══════════════════════════════════════════ */
+.nav {
+  background: var(--bg-surface); border-bottom: 1px solid var(--border);
+  padding: 0 20px; display: flex; align-items: center; height: 48px; gap: 2px;
+  position: sticky; top: 36px; z-index: 90;
+}
+.nav .logo {
+  font-weight: 700; font-size: 0.95rem; margin-right: 20px;
+  display: flex; align-items: center; gap: 7px; color: var(--text-primary);
+}
+.nav .logo .icon {
+  width: 24px; height: 24px; border-radius: var(--radius-sm);
+  background: var(--blue-600); display: flex; align-items: center;
+  justify-content: center; color: #fff; font-size: 0.65rem; font-weight: 800;
+}
+.nav .nav-item {
+  padding: 6px 14px; border-radius: var(--radius-sm); font-size: 0.82rem;
+  font-weight: 500; color: var(--text-secondary); transition: all var(--fast);
+}
+.nav .nav-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.nav .nav-item.active { background: var(--blue-50); color: var(--blue-700); }
+.nav .spacer { flex: 1; }
+.nav .nav-right { display: flex; align-items: center; gap: 8px; }
+.nav .user-avatar {
+  width: 28px; height: 28px; border-radius: 50%; background: var(--blue-100);
+  color: var(--blue-700); display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; font-weight: 600;
+}
+
+/* ═══════════════════════════════════════════
+   LAYOUT
+   ═══════════════════════════════════════════ */
+.page { display: none; max-width: 1120px; margin: 0 auto; padding: 28px 20px 60px; }
+.page.active { display: block; }
+.login-page.page { display: none; }
+.login-page.page.active { display: flex; }
+
+/* ═══════════════════════════════════════════
+   LOGIN
+   ═══════════════════════════════════════════ */
+.login-page {
+  min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: var(--bg-root);
+}
+.login-card {
+  background: var(--bg-surface); border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg); border: 1px solid var(--border); width: 400px; overflow: hidden;
+}
+.login-card .brand { padding: 32px 0 16px; text-align: center; }
+.login-card .brand .brand-icon {
+  width: 44px; height: 44px; border-radius: var(--radius); background: var(--blue-600);
+  display: inline-flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 1rem; font-weight: 800; margin-bottom: 8px;
+}
+.login-card .brand h2 { font-size: 1.1rem; font-weight: 700; }
+.login-card .brand p { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; }
+.login-tabs { display: flex; border-bottom: 1px solid var(--border); }
+.login-tab {
+  flex: 1; text-align: center; padding: 11px; font-size: 0.82rem;
+  font-weight: 500; color: var(--text-muted); border-bottom: 2px solid transparent;
+  transition: all var(--fast); background: transparent;
+}
+.login-tab.active { color: var(--blue-600); border-bottom-color: var(--blue-600); }
+.login-form { padding: 24px; display: none; }
+.login-form.active { display: block; }
+.login-form .field { margin-bottom: 14px; }
+.login-form .field label {
+  display: block; font-size: 0.76rem; font-weight: 500; margin-bottom: 4px; color: var(--text-secondary);
+}
+.login-form .field input {
+  width: 100%; padding: 9px 12px; border: 1px solid var(--border);
+  border-radius: var(--radius); font: inherit; font-size: 0.85rem; outline: none;
+  transition: border-color var(--fast);
+}
+.login-form .field input:focus { border-color: var(--blue-400); box-shadow: 0 0 0 3px var(--blue-50); }
+.login-form .login-btn {
+  width: 100%; padding: 10px; background: var(--blue-600); color: #fff;
+  border-radius: var(--radius); font-weight: 600; font-size: 0.85rem;
+  margin-top: 4px; transition: all var(--fast);
+}
+.login-form .login-btn:hover { background: var(--blue-700); }
+
+/* ═══════════════════════════════════════════
+   SECTION TITLES
+   ═══════════════════════════════════════════ */
+.section-label {
+  font-size: 0.72rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 10px;
+}
+
+/* ═══════════════════════════════════════════
+   MY FOCUS — default home
+   ═══════════════════════════════════════════ */
+.focus-header { margin-bottom: 24px; }
+.focus-header .greeting { font-size: 1.4rem; font-weight: 700; }
+.focus-header .date { font-size: 0.82rem; color: var(--text-muted); margin-top: 2px; }
+
+/* AI briefing — collapsible */
+.briefing-box {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); margin-top: 14px; overflow: hidden;
+}
+.briefing-box .briefing-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; cursor: pointer; user-select: none;
+  font-size: 0.82rem; font-weight: 500; color: var(--text-secondary);
+  transition: background var(--fast);
+}
+.briefing-box .briefing-head:hover { background: var(--bg-hover); }
+.briefing-box .briefing-head .head-left { display: flex; align-items: center; gap: 6px; }
+.briefing-box .briefing-head .ai-badge {
+  font-size: 0.65rem; font-weight: 600; padding: 1px 7px; border-radius: 8px;
+  background: var(--blue-50); color: var(--blue-600);
+}
+.briefing-box .briefing-body {
+  padding: 0 16px 12px; font-size: 0.84rem; color: var(--text-secondary); line-height: 1.7;
+  display: block;
+}
+.briefing-box.collapsed .briefing-body { display: none; }
+.briefing-box .briefing-body strong { color: var(--text-primary); }
+
+.focus-grid { display: grid; grid-template-columns: 1fr 300px; gap: 24px; }
+
+/* Decision cards */
+.need-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 14px 18px; margin-bottom: 8px;
+  transition: all var(--fast); cursor: pointer;
+}
+.need-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
+.need-card .priority {
+  display: inline-block; font-size: 0.68rem; font-weight: 600; padding: 2px 8px;
+  border-radius: 8px; margin-bottom: 6px;
+}
+.need-card .priority.urgent { background: var(--red-50); color: var(--red-600); }
+.need-card .priority.high { background: var(--amber-50); color: var(--amber-600); }
+.need-card h4 { font-size: 0.9rem; font-weight: 600; margin: 3px 0; }
+.need-card .meta { font-size: 0.76rem; color: var(--text-muted); display: flex; gap: 14px; }
+
+/* Agent mini status */
+.agent-mini { margin-top: 12px; }
+.agent-row {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border-radius: var(--radius-sm); font-size: 0.8rem; margin-bottom: 2px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+}
+.agent-row .agent-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.agent-row .agent-dot.busy { background: var(--amber-500); animation: pulse 1.5s infinite; }
+.agent-row .agent-dot.idle { background: var(--green-500); }
+.agent-row .agent-name { font-weight: 500; flex: 1; }
+.agent-row .agent-tsk { font-size: 0.72rem; color: var(--text-muted); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+
+/* Side panel signals */
+.signal-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 16px;
+}
+.signal-card h4 { font-size: 0.8rem; font-weight: 600; margin-bottom: 8px; }
+.signal-row {
+  display: flex; align-items: flex-start; gap: 7px; padding: 7px 0;
+  border-bottom: 1px solid var(--border-light); font-size: 0.77rem;
+}
+.signal-row:last-child { border-bottom: none; }
+.signal-row .lvl { width: 5px; height: 5px; border-radius: 50%; margin-top: 7px; flex-shrink: 0; }
+.lvl.red { background: var(--red-500); }
+.lvl.amber { background: var(--amber-500); }
+
+/* Mini project health list */
+.health-list { margin-top: 12px; }
+.health-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  background: var(--bg-surface); border: 1px solid var(--border); margin-bottom: 4px;
+  transition: all var(--fast); font-size: 0.82rem;
+}
+.health-row:hover { border-color: var(--border-hover); box-shadow: var(--shadow-xs); }
+.health-row .hname { font-weight: 500; }
+.health-row .hstat { display: flex; align-items: center; gap: 6px; font-size: 0.76rem; }
+
+/* ═══════════════════════════════════════════
+   WORKSPACE STREAM
+   ═══════════════════════════════════════════ */
+.stream-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.stream-header h2 { font-size: 1.25rem; font-weight: 700; }
+.stream-header .actions { display: flex; gap: 8px; }
+.stream-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+
+.ws-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 18px 20px;
+  transition: all var(--fast); cursor: pointer;
+}
+.ws-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
+.ws-card .ws-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.ws-card .ws-name { font-size: 0.95rem; font-weight: 600; }
+.ws-card .ws-tier {
+  font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 8px;
+}
+.ws-card .ws-tier.company { background: var(--red-50); color: var(--red-600); }
+.ws-card .ws-tier.dept { background: var(--amber-50); color: var(--amber-600); }
+.ws-card .ws-tier.normal { background: var(--bg-raised); color: var(--text-muted); }
+.ws-card .ws-summary {
+  font-size: 0.8rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px;
+}
+.ws-card .ws-stats { display: flex; gap: 16px; font-size: 0.76rem; color: var(--text-muted); }
+.ws-card .ws-stats .sv { font-weight: 600; color: var(--text-primary); }
+.ws-card .ws-stats .health-bar { width: 60px; height: 3px; background: var(--bg-hover); border-radius: 2px; display: inline-block; overflow: hidden; margin-left: 4px; vertical-align: middle; }
+.health-bar .fill { height: 100%; border-radius: 2px; }
+.fill.good { background: var(--green-500); }
+.fill.warn { background: var(--amber-500); }
+.fill.bad { background: var(--red-500); }
+
+/* ═══════════════════════════════════════════
+   PROJECT PULSE — Sidebar + Main Layout
+   ═══════════════════════════════════════════ */
+
+/* Pulse header bar */
+.pulse-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+}
+.pulse-header .ph-left { min-width: 0; }
+.pulse-header .ph-left .back { font-size: 0.78rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 3px; }
+.pulse-header .ph-left .back:hover { color: var(--text-primary); }
+.pulse-header .ph-left .proj-name { font-size: 1.2rem; font-weight: 700; margin-top: 2px; }
+.pulse-header .ph-left .proj-meta { font-size: 0.76rem; color: var(--text-muted); margin-top: 1px; }
+.pulse-header .ph-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+/* Focus strip — slim alert bar */
+.focus-strip {
+  display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.focus-strip .fs-item {
+  flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px;
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 7px 12px; font-size: 0.78rem; cursor: pointer; transition: all var(--fast);
+}
+.focus-strip .fs-item:hover { border-color: var(--border-hover); box-shadow: var(--shadow-xs); }
+.focus-strip .fs-item .fs-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.fs-dot.red { background: var(--red-500); }
+.fs-dot.amber { background: var(--amber-500); }
+.fs-dot.green { background: var(--green-500); }
+.focus-strip .fs-item .fs-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.focus-strip .fs-btn {
+  font-size: 0.7rem; padding: 3px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); white-space: nowrap; background: transparent; cursor: pointer;
+  transition: all var(--fast);
+}
+.focus-strip .fs-btn:hover { background: var(--bg-hover); }
+.focus-strip .fs-btn.primary { background: var(--blue-600); color: #fff; border-color: var(--blue-600); }
+.focus-strip .fs-btn.primary:hover { background: var(--blue-700); }
+
+/* Main 2-col layout */
+.pulse-layout {
+  display: grid; grid-template-columns: 252px 1fr; gap: 16px;
+  min-height: 0; align-items: start;
+}
+
+/* ═══ SIDEBAR ═══ */
+.pulse-sidebar {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 16px;
+  display: flex; flex-direction: column; gap: 14px;
+  position: sticky; top: 100px;
+}
+.sidebar-section { }
+.sidebar-section .ss-title {
+  font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 6px;
+}
+
+/* Sidebar KPIs */
+.sidebar-kpis { display: flex; flex-direction: column; gap: 1px; }
+.sidebar-kpi {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 5px 8px; border-radius: var(--radius-sm); font-size: 0.79rem;
+}
+.sidebar-kpi:hover { background: var(--bg-hover); }
+.sidebar-kpi .sk-label { color: var(--text-secondary); }
+.sidebar-kpi .sk-value { font-weight: 600; }
+
+/* Sidebar milestones */
+.sidebar-ms-list { display: flex; flex-direction: column; gap: 3px; }
+.sidebar-ms {
+  padding: 7px 10px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: all var(--fast); border: 1px solid transparent;
+}
+.sidebar-ms:hover { background: var(--bg-hover); }
+.sidebar-ms.active { background: var(--blue-50); border-color: var(--blue-200); }
+.sidebar-ms .sms-row1 { display: flex; justify-content: space-between; align-items: center; }
+.sidebar-ms .sms-name { font-size: 0.78rem; font-weight: 500; }
+.sidebar-ms .sms-badge {
+  font-size: 0.6rem; font-weight: 600; padding: 1px 6px; border-radius: 5px;
+}
+.sms-badge.done { background: var(--green-50); color: var(--green-600); }
+.sms-badge.active { background: var(--blue-50); color: var(--blue-600); }
+.sms-badge.upcoming { background: var(--bg-raised); color: var(--text-muted); }
+.sidebar-ms .sms-bar { height: 3px; background: var(--bg-raised); border-radius: 2px; margin-top: 5px; overflow: hidden; }
+.sidebar-ms .sms-fill { height: 100%; border-radius: 2px; transition: width 0.5s var(--ease); }
+.sms-fill.done { background: var(--green-500); }
+.sms-fill.active { background: var(--blue-500); }
+.sms-fill.pending { background: var(--border); }
+.sidebar-ms .sms-pct { font-size: 0.65rem; color: var(--text-muted); text-align: right; margin-top: 2px; }
+
+/* Sidebar AI summary */
+.sidebar-ai { border-top: 1px solid var(--border-light); padding-top: 2px; }
+.sidebar-ai .sai-head {
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; padding: 5px 0; font-size: 0.76rem; color: var(--text-secondary);
+  user-select: none;
+}
+.sidebar-ai .sai-head:hover { color: var(--text-primary); }
+.sidebar-ai .sai-body {
+  font-size: 0.74rem; color: var(--text-muted); line-height: 1.6;
+  margin-top: 4px; display: none;
+}
+.sidebar-ai.expanded .sai-body { display: block; }
+
+/* OpenSpec sidebar section */
+.sidebar-ospec { border-top: 1px solid var(--border-light); padding-top: 2px; }
+.sidebar-ospec .sos-head {
+  font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
+  padding: 4px 0; cursor: pointer; display: flex; align-items: center;
+  justify-content: space-between; user-select: none; gap: 6px;
+}
+.sidebar-ospec .sos-head:hover { color: var(--text-primary); }
+.sidebar-ospec .sos-head .sos-help {
+  width: 16px; height: 16px; border-radius: 50%; font-size: 0.55rem; font-weight: 700;
+  background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-muted);
+  display: inline-flex; align-items: center; justify-content: center; cursor: help;
+  flex-shrink: 0; transition: all var(--fast); position: relative;
+}
+.sidebar-ospec .sos-head .sos-help:hover { background: var(--blue-50); color: var(--blue-600); border-color: var(--blue-200); }
+.sidebar-ospec .sos-head .sos-help .sos-tooltip {
+  display: none; position: absolute; left: 24px; top: -4px; width: 200px;
+  background: var(--text-primary); color: #fff; font-size: 0.65rem; font-weight: 400;
+  padding: 8px 10px; border-radius: var(--radius-sm); line-height: 1.5; z-index: 50;
+  box-shadow: var(--shadow-lg); pointer-events: none;
+}
+.sidebar-ospec .sos-head .sos-help:hover .sos-tooltip { display: block; }
+.sidebar-ospec .sos-body { display: none; margin-top: 4px; }
+.sidebar-ospec.expanded .sos-body { display: block; }
+.sidebar-ospec .sos-item {
+  display: flex; align-items: center; gap: 6px; padding: 4px 6px;
+  border-radius: var(--radius-sm); font-size: 0.7rem; color: var(--text-secondary);
+  cursor: default; transition: background var(--fast);
+}
+.sidebar-ospec .sos-item:hover { background: var(--bg-hover); }
+.sidebar-ospec .sos-item .sos-icon { font-size: 0.65rem; width: 16px; text-align: center; flex-shrink: 0; }
+.sidebar-ospec .sos-item .sos-label { flex: 1; line-height: 1.4; }
+.sidebar-ospec .sos-actions {
+  display: flex; gap: 4px; margin-top: 6px;
+}
+.sidebar-ospec .sos-actions .sos-btn {
+  flex: 1; font-size: 0.65rem; padding: 4px 6px; border-radius: var(--radius-sm);
+  cursor: pointer; text-align: center; border: 1px solid var(--border);
+  background: var(--bg-surface); color: var(--text-secondary); transition: all var(--fast);
+}
+.sidebar-ospec .sos-actions .sos-btn:hover { border-color: var(--blue-300); color: var(--blue-600); background: var(--blue-50); }
+.sidebar-ospec .sos-actions .sos-btn.primary { background: var(--blue-50); color: var(--blue-700); border-color: var(--blue-200); }
+.sidebar-ospec .sos-actions .sos-btn.primary:hover { background: var(--blue-100); }
+
+/* OpenSpec config modal — form rows */
+.ospec-field {
+  background: var(--bg-raised); border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px;
+}
+.ospec-field .osf-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
+.ospec-field .osf-label { font-size: 0.78rem; font-weight: 500; }
+.ospec-field .osf-desc { font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; }
+.ospec-field .osf-toggle {
+  position: relative; width: 36px; height: 20px; flex-shrink: 0; cursor: pointer;
+}
+.ospec-field .osf-toggle input { display: none; }
+.ospec-field .osf-toggle .osf-track {
+  position: absolute; inset: 0; border-radius: 10px; background: var(--border);
+  transition: background var(--fast);
+}
+.ospec-field .osf-toggle input:checked + .osf-track { background: var(--blue-500); }
+.ospec-field .osf-toggle .osf-knob {
+  position: absolute; top: 2px; left: 2px; width: 16px; height: 16px;
+  border-radius: 50%; background: #fff; transition: transform var(--fast);
+  box-shadow: var(--shadow-xs);
+}
+.ospec-field .osf-toggle input:checked ~ .osf-knob { transform: translateX(16px); }
+
+/* Preset card */
+.ospec-preset {
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius);
+  cursor: pointer; transition: all var(--fast); margin-bottom: 6px;
+}
+.ospec-preset:hover { border-color: var(--blue-300); }
+.ospec-preset.selected { border-color: var(--blue-400); background: var(--blue-50); }
+.ospec-preset .osp-name { font-size: 0.78rem; font-weight: 500; }
+.ospec-preset .osp-desc { font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; }
+.ospec-preset .osp-rules { font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; display: flex; gap: 6px; flex-wrap: wrap; }
+.ospec-preset .osp-rules span { background: var(--bg-raised); padding: 1px 6px; border-radius: 3px; }
+
+/* OpenSpec badge in workspace header */
+.ospec-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 0.68rem; padding: 2px 8px; border-radius: 10px;
+  background: var(--blue-50); color: var(--blue-700); border: 1px solid var(--blue-200);
+  cursor: pointer; transition: all var(--fast);
+}
+.ospec-badge:hover { background: var(--blue-100); }
+
+/* ═══ MAIN CONTENT ═══ */
+.pulse-main { min-width: 0; }
+
+/* ═══ INLINE CHAT PANEL (workspace embedded) ═══ */
+.pulse-chat {
+  width: 36px; min-width: 36px; transition: width var(--slow) var(--ease);
+  border-left: 1px solid var(--border); display: flex; flex-direction: column;
+  background: var(--bg-surface); position: relative; overflow: hidden;
+}
+.pulse-chat.expanded { width: 33%; min-width: 340px; max-width: 420px; }
+.pulse-chat .chat-inner { width: 340px; display: flex; flex-direction: column; height: 100%; }
+.pulse-chat .chat-toggle-tab {
+  position: absolute; left: 0; top: 50%; transform: translateY(-50%);
+  width: 36px; height: 72px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 4px;
+  cursor: pointer; transition: all var(--fast); z-index: 10;
+  border-radius: 0 6px 6px 0; font-size: 0.62rem; font-weight: 600;
+  color: var(--text-muted); writing-mode: vertical-lr; letter-spacing: 2px;
+}
+.pulse-chat .chat-toggle-tab:hover { color: var(--blue-600); background: var(--blue-50); }
+.pulse-chat.expanded .chat-toggle-tab { display: none; }
+.pulse-chat .chat-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.pulse-chat .chat-head h3 { font-size: 0.82rem; font-weight: 600; }
+.pulse-chat .chat-head select {
+  font-size: 0.68rem; padding: 2px 6px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--bg-surface); max-width: 90px;
+}
+.pulse-chat .chat-body { flex: 1; overflow-y: auto; padding: 10px 14px; }
+.pulse-chat .chat-body .chat-cmds { margin-bottom: 8px; }
+.pulse-chat .chat-body .chat-cmd { font-size: 0.65rem; padding: 3px 8px; }
+.pulse-chat .chat-body .chat-msgs { gap: 8px; }
+.pulse-chat .chat-body .chat-msg { font-size: 0.74rem; padding: 7px 10px; max-width: 100%; }
+.pulse-chat .chat-input-area { padding: 8px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+.pulse-chat .chat-input-area input { font-size: 0.76rem; padding: 7px 12px; }
+.pulse-chat .chat-input-area .send-btn { width: 30px; height: 30px; }
+
+/* ═══ KB VIEWER — inline file viewer ═══ */
+.kb-viewer {
+  display: none; margin-bottom: 14px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); overflow: hidden;
+}
+.kb-viewer.open { display: block; }
+.kb-viewer .kbv-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; background: var(--bg-raised); border-bottom: 1px solid var(--border);
+}
+.kb-viewer .kbv-head .kbv-title { font-size: 0.82rem; font-weight: 600; }
+.kb-viewer .kbv-head .kbv-actions { display: flex; gap: 6px; }
+.kb-viewer .kbv-body {
+  padding: 16px; max-height: 400px; overflow-y: auto;
+  font-size: 0.8rem; line-height: 1.8;
+}
+.kb-viewer .kbv-body h1, .kb-viewer .kbv-body h2 { font-size: 1rem; margin: 12px 0 6px; }
+.kb-viewer .kbv-body code { background: var(--bg-raised); padding: 1px 5px; border-radius: 3px; font-size: 0.75rem; }
+.kb-viewer .kbv-body pre { background: var(--bg-raised); padding: 10px 14px; border-radius: var(--radius); overflow-x: auto; font-size: 0.74rem; }
+.kb-viewer .kbv-empty {
+  padding: 40px; text-align: center; color: var(--text-muted);
+}
+.kb-viewer .kbv-editor {
+  width: 100%; min-height: 300px; border: none; padding: 16px;
+  font-family: 'SF Mono', 'Cascadia Code', monospace; font-size: 0.78rem;
+  line-height: 1.7; resize: vertical; outline: none;
+  background: var(--bg-surface);
+}
+
+/* ═══ KB — file format badges ═══ */
+.kb-format { display: inline-flex; gap: 3px; align-items: center; }
+.kb-format .fmt-badge {
+  font-size: 0.55rem; font-weight: 600; padding: 1px 5px; border-radius: 3px;
+  text-transform: uppercase;
+}
+.fmt-badge.md { background: var(--blue-50); color: var(--blue-700); }
+.fmt-badge.word { background: var(--blue-50); color: var(--blue-600); }
+.fmt-badge.ppt { background: var(--amber-50); color: var(--amber-700); }
+.fmt-badge.excel { background: var(--green-50); color: var(--green-700); }
+.fmt-badge.pdf { background: var(--red-50); color: var(--red-600); }
+
+/* ═══ KB — AI documents section ═══ */
+.kb-ai-docs { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+.kb-ai-docs .ai-doc-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 10px; border-radius: var(--radius-sm); font-size: 0.76rem;
+  transition: background var(--fast); gap: 8px;
+}
+.kb-ai-docs .ai-doc-item:hover { background: var(--bg-hover); }
+.kb-ai-docs .ai-doc-item .ai-doc-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-ai-docs .ai-doc-item .ai-doc-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.kb-ai-docs .ai-doc-item .ai-doc-actions button {
+  font-size: 0.62rem; padding: 2px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); background: var(--bg-surface);
+  color: var(--text-secondary); cursor: pointer; transition: all var(--fast);
+}
+.kb-ai-docs .ai-doc-item .ai-doc-actions button:hover { border-color: var(--blue-300); color: var(--blue-600); background: var(--blue-50); }
+
+/* ═══════════════════════════════════════════
+   KANBAN — with batch selection & dependency badges
+   ═══════════════════════════════════════════ */
+.kanban-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.kanban-col {
+  background: var(--bg-raised); border-radius: var(--radius-lg); padding: 12px;
+  min-height: 200px;
+}
+.kanban-col .col-head {
+  font-size: 0.7rem; font-weight: 600; color: var(--text-muted);
+  margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
+}
+.kanban-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 10px 12px; margin-bottom: 6px;
+  font-size: 0.78rem; cursor: pointer; transition: all var(--fast);
+  position: relative;
+}
+.kanban-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-xs); }
+.kanban-card.selected { border-color: var(--blue-400); background: var(--blue-50); }
+.kanban-card .card-title { font-weight: 500; margin-bottom: 4px; }
+.kanban-card .card-meta { font-size: 0.68rem; color: var(--text-muted); display: flex; gap: 10px; align-items: center; }
+.kanban-card .dep-badge {
+  display: inline-block; font-size: 0.62rem; padding: 1px 6px; border-radius: 6px;
+  background: var(--bg-raised); color: var(--text-muted);
+}
+.kanban-card .dep-badge.blocked { background: var(--red-50); color: var(--red-600); }
+.kanban-card .dep-badge.blocking { background: var(--amber-50); color: var(--amber-600); }
+
+/* Batch toolbar */
+.batch-bar {
+  display: none; align-items: center; gap: 10px;
+  background: var(--blue-600); color: #fff; padding: 8px 16px; border-radius: var(--radius);
+  margin-bottom: 12px; font-size: 0.82rem; font-weight: 500;
+}
+.batch-bar.visible { display: flex; }
+.batch-bar .batch-count { flex: 1; }
+.batch-bar button {
+  color: #fff; font-size: 0.78rem; padding: 4px 12px; border-radius: var(--radius-sm);
+  background: rgba(255,255,255,0.12); transition: background var(--fast);
+}
+.batch-bar button:hover { background: rgba(255,255,255,0.22); }
+.batch-bar .batch-close { padding: 4px 8px; opacity: 0.7; }
+.batch-bar .batch-close:hover { opacity: 1; }
+
+/* ═══════════════════════════════════════════
+   DEMAND FLOW
+   ═══════════════════════════════════════════ */
+.demand-layout { display: grid; grid-template-columns: 380px 1fr; gap: 24px; }
+.demand-left { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px; }
+.demand-left h3 { font-size: 0.9rem; font-weight: 600; margin-bottom: 10px; }
+.demand-left textarea {
+  width: 100%; min-height: 120px; border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 14px; font: inherit; font-size: 0.85rem; resize: vertical; outline: none;
+  transition: border-color var(--fast);
+}
+.demand-left textarea:focus { border-color: var(--blue-400); box-shadow: 0 0 0 3px var(--blue-50); }
+
+/* AI assist mode selector */
+.assist-mode { display: flex; gap: 6px; margin: 10px 0; }
+.assist-mode button {
+  flex: 1; padding: 7px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border);
+  font-size: 0.73rem; font-weight: 500; color: var(--text-muted);
+  transition: all var(--fast); text-align: center;
+}
+.assist-mode button:hover { border-color: var(--border-hover); color: var(--text-secondary); }
+.assist-mode button.active { border-color: var(--blue-400); color: var(--blue-700); background: var(--blue-50); }
+
+.demand-left .submit-btn {
+  width: 100%; margin-top: 8px; padding: 9px;
+  background: var(--blue-600); color: #fff; border-radius: var(--radius);
+  font-weight: 600; font-size: 0.84rem; transition: all var(--fast);
+}
+.demand-left .submit-btn:hover { background: var(--blue-700); }
+
+/* Pending demands list */
+.demand-list { margin-top: 14px; border-top: 1px solid var(--border); padding-top: 12px; }
+.demand-list .demand-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 7px 0; font-size: 0.8rem; cursor: pointer;
+  border-bottom: 1px solid var(--border-light);
+}
+.demand-list .demand-item:last-child { border-bottom: none; }
+
+.demand-result {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 20px;
+}
+
+/* ═══════════════════════════════════════════
+   DRAWER (AI Chat)
+   ═══════════════════════════════════════════ */
+.overlay {
+  display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.2);
+  z-index: 200; backdrop-filter: blur(1px);
+}
+.overlay.open { display: block; }
+
+.drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 420px;
+  background: var(--bg-surface); box-shadow: var(--shadow-lg);
+  z-index: 210; transform: translateX(100%); transition: transform var(--normal) var(--ease);
+  display: flex; flex-direction: column;
+}
+.drawer.open { transform: translateX(0); }
+.drawer .drawer-head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
+}
+.drawer .drawer-head h3 { font-size: 0.9rem; font-weight: 600; }
+.drawer .drawer-close {
+  width: 28px; height: 28px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; color: var(--text-muted);
+  transition: all var(--fast);
+}
+.drawer .drawer-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+.drawer .drawer-body { flex: 1; overflow-y: auto; padding: 14px 20px; }
+
+/* Chat messages */
+.chat-msgs { display: flex; flex-direction: column; gap: 10px; }
+.chat-msg {
+  max-width: 88%; padding: 10px 14px; border-radius: var(--radius);
+  font-size: 0.82rem; line-height: 1.65;
+}
+.chat-msg.user { align-self: flex-end; background: var(--blue-600); color: #fff; }
+.chat-msg.ai { align-self: flex-start; background: var(--bg-raised); border: 1px solid var(--border); }
+.chat-msg .msg-label { font-size: 0.62rem; font-weight: 600; opacity: 0.6; margin-bottom: 2px; }
+.chat-input-area {
+  padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px;
+}
+.chat-input-area input {
+  flex: 1; padding: 9px 14px; border: 1px solid var(--border);
+  border-radius: 20px; font: inherit; font-size: 0.82rem; outline: none;
+  transition: border-color var(--fast);
+}
+.chat-input-area input:focus { border-color: var(--blue-400); }
+.chat-input-area .send-btn {
+  width: 34px; height: 34px; border-radius: 50%; background: var(--blue-600);
+  color: #fff; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: all var(--fast); font-size: 0.8rem;
+}
+.chat-input-area .send-btn:hover { background: var(--blue-700); }
+
+/* ═══════════════════════════════════════════
+   SETTINGS
+   ═══════════════════════════════════════════ */
+.settings-tabs { display: flex; gap: 0; margin-bottom: 20px; border-bottom: 2px solid var(--border); }
+.settings-tab {
+  padding: 9px 18px; font-size: 0.82rem; font-weight: 500;
+  color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -2px;
+  transition: all var(--fast); background: none;
+}
+.settings-tab:hover { color: var(--text-primary); }
+.settings-tab.active { color: var(--blue-600); border-bottom-color: var(--blue-600); }
+.settings-panel { display: none; }
+.settings-panel.active { display: block; }
+.settings-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 18px 20px; margin-bottom: 12px;
+}
+.settings-card h3 { font-size: 0.85rem; font-weight: 600; margin-bottom: 6px; }
+.settings-card .desc { font-size: 0.78rem; color: var(--text-secondary); line-height: 1.6; }
+
+/* ═══════════════════════════════════════════
+   SHARED
+   ═══════════════════════════════════════════ */
+.btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 14px; border-radius: var(--radius-sm); font-size: 0.8rem;
+  font-weight: 500; transition: all var(--fast);
+}
+.btn-primary { background: var(--blue-600); color: #fff; }
+.btn-primary:hover { background: var(--blue-700); }
+.btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-hover); }
+.btn-sm { padding: 5px 10px; font-size: 0.73rem; }
+.btn-xs { padding: 3px 8px; font-size: 0.7rem; }
+
+.badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 2px 7px; border-radius: 6px; font-size: 0.68rem; font-weight: 500;
+}
+.badge-blue { background: var(--blue-50); color: var(--blue-600); }
+.badge-red { background: var(--red-50); color: var(--red-600); }
+.badge-green { background: var(--green-50); color: var(--green-600); }
+.badge-amber { background: var(--amber-50); color: var(--amber-600); }
+
+.empty-state { text-align: center; padding: 50px 20px; color: var(--text-muted); }
+.empty-state .empty-icon { font-size: 2rem; margin-bottom: 8px; opacity: 0.5; }
+
+/* Fullscreen overlay — presentation mode */
+.fs-overlay {
+  display: none; position: fixed; inset: 0; background: #0f172a; z-index: 300;
+  color: #fff; padding: 40px; flex-direction: column; overflow-y: auto;
+}
+.fs-overlay.open { display: flex; }
+.fs-overlay .fs-close {
+  position: absolute; top: 16px; right: 16px; color: rgba(255,255,255,0.5);
+  font-size: 0.82rem; padding: 7px 14px; border: 1px solid rgba(255,255,255,0.15); border-radius: var(--radius-sm);
+  background: transparent; transition: all var(--fast);
+}
+.fs-overlay .fs-close:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
+
+/* ═══════════════════════════════════════════
+   WORKSPACE SECTION TABS
+   ═══════════════════════════════════════════ */
+.ws-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
+.ws-tab {
+  padding: 8px 20px; font-size: 0.82rem; font-weight: 500;
+  color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -2px;
+  transition: all var(--fast); background: none;
+}
+.ws-tab:hover { color: var(--text-primary); }
+.ws-tab.active { color: var(--blue-600); border-bottom-color: var(--blue-600); }
+.ws-panel { display: none; }
+.ws-panel.active { display: block; }
+
+/* View switcher (Kanban / List / Gantt) */
+.view-switcher { display: flex; gap: 2px; background: var(--bg-raised); border-radius: var(--radius-sm); padding: 2px; margin-bottom: 10px; }
+.view-switch {
+  padding: 4px 12px; font-size: 0.74rem; font-weight: 500; border-radius: 4px;
+  color: var(--text-muted); transition: all var(--fast); background: transparent;
+}
+.view-switch:hover { color: var(--text-secondary); }
+.view-switch.active { background: var(--bg-surface); color: var(--text-primary); box-shadow: var(--shadow-xs); }
+
+/* Task list view */
+.task-list { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.task-list .list-head {
+  display: grid; grid-template-columns: 1fr 100px 100px 80px 40px;
+  padding: 10px 16px; background: var(--bg-raised); font-size: 0.72rem; font-weight: 600;
+  color: var(--text-muted); gap: 12px;
+}
+.list-row {
+  display: grid; grid-template-columns: 1fr 100px 100px 80px 40px;
+  padding: 10px 16px; border-bottom: 1px solid var(--border-light); font-size: 0.8rem;
+  align-items: center; gap: 12px; cursor: pointer; transition: background var(--fast);
+}
+.list-row:hover { background: var(--bg-hover); }
+.list-row:last-child { border-bottom: none; }
+.list-row .task-title { font-weight: 500; }
+.list-row .cb { width: 16px; height: 16px; border: 2px solid var(--border); border-radius: 3px; cursor: pointer; flex-shrink: 0; }
+.list-row.selected .cb { background: var(--blue-600); border-color: var(--blue-600); position: relative; }
+.list-row.selected .cb::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.6rem; }
+
+/* Simplified Gantt */
+.gantt-wrap { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; overflow-x: auto; }
+.gantt-head { display: flex; background: var(--bg-raised); border-bottom: 1px solid var(--border); }
+.gantt-head .gantt-label { width: 200px; flex-shrink: 0; padding: 10px 16px; font-size: 0.72rem; font-weight: 600; color: var(--text-muted); }
+.gantt-head .gantt-timeline { flex: 1; display: flex; }
+.gantt-head .gantt-day { flex: 1; min-width: 40px; padding: 10px 0; text-align: center; font-size: 0.65rem; color: var(--text-muted); border-left: 1px solid var(--border-light); }
+.gantt-row { display: flex; border-bottom: 1px solid var(--border-light); align-items: center; }
+.gantt-row:last-child { border-bottom: none; }
+.gantt-row .gantt-label { width: 200px; flex-shrink: 0; padding: 10px 16px; font-size: 0.78rem; font-weight: 500; }
+.gantt-row .gantt-timeline { flex: 1; display: flex; position: relative; height: 40px; }
+.gantt-row .gantt-day { flex: 1; min-width: 40px; border-left: 1px solid var(--border-light); }
+.gantt-bar { position: absolute; top: 10px; height: 20px; border-radius: 4px; z-index: 1; }
+.gantt-bar.blue { background: var(--blue-400); }
+.gantt-bar.amber { background: var(--amber-400); }
+.gantt-bar.green { background: var(--green-400); }
+
+/* Knowledge base panel */
+.kb-layout { display: grid; grid-template-columns: 240px 1fr; gap: 16px; min-height: 320px; }
+.kb-sidebar { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 12px; }
+.kb-sidebar .kb-folder { padding: 6px 10px; font-size: 0.8rem; border-radius: var(--radius-sm); cursor: pointer; transition: background var(--fast); display: flex; align-items: center; gap: 6px; color: var(--text-secondary); }
+.kb-sidebar .kb-folder:hover { background: var(--bg-hover); color: var(--text-primary); }
+.kb-sidebar .kb-folder.active { background: var(--blue-50); color: var(--blue-700); font-weight: 500; }
+.kb-main { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+.kb-main .kb-file {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; border-radius: var(--radius-sm); cursor: pointer;
+  transition: background var(--fast); border-bottom: 1px solid var(--border-light);
+}
+.kb-main .kb-file:last-child { border-bottom: none; }
+.kb-main .kb-file:hover { background: var(--bg-hover); }
+.kb-main .kb-file .file-name { font-size: 0.84rem; font-weight: 500; }
+.kb-main .kb-file .file-meta { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+.kb-upload { border: 2px dashed var(--border); border-radius: var(--radius); padding: 24px; text-align: center; color: var(--text-muted); font-size: 0.82rem; cursor: pointer; transition: all var(--fast); margin-top: 10px; }
+.kb-upload:hover { border-color: var(--blue-300); color: var(--blue-600); background: var(--blue-50); }
+
+/* Members panel */
+.member-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.member-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 16px; display: flex; gap: 12px; align-items: center;
+}
+.member-card .m-avatar {
+  width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center;
+  justify-content: center; font-size: 0.8rem; font-weight: 600; flex-shrink: 0;
+}
+.m-avatar.human { background: var(--blue-50); color: var(--blue-600); }
+.m-avatar.agent { background: var(--bg-raised); color: var(--text-muted); border: 2px dashed var(--border); }
+.member-card .m-info { flex: 1; min-width: 0; }
+.member-card .m-name { font-size: 0.84rem; font-weight: 600; }
+.member-card .m-role { font-size: 0.72rem; color: var(--text-muted); }
+.member-card .m-load { font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
+
+/* Reports panel */
+.report-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.report-card {
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 18px 20px;
+}
+.report-card h4 { font-size: 0.82rem; font-weight: 600; margin-bottom: 12px; }
+.report-chart { height: 160px; background: var(--bg-raised); border-radius: var(--radius); display: flex; align-items: center; justify-content: center; color: var(--text-muted); font-size: 0.78rem; }
+.report-bar { display: flex; align-items: center; gap: 10px; padding: 6px 0; }
+.report-bar .bar-label { width: 100px; font-size: 0.78rem; color: var(--text-secondary); text-align: right; flex-shrink: 0; }
+.report-bar .bar-track { flex: 1; height: 8px; background: var(--bg-raised); border-radius: 4px; overflow: hidden; }
+.report-bar .bar-fill { height: 100%; border-radius: 4px; background: var(--blue-500); }
+
+/* Task-milestone link indicator (kanban cards) */
+.kanban-card .ms-tag {
+  font-size: 0.6rem; padding: 1px 5px; border-radius: 4px;
+  background: var(--bg-raised); color: var(--text-muted);
+}
+
+/* AI chat — command suggestions */
+.chat-cmds { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.chat-cmd {
+  font-size: 0.7rem; padding: 4px 10px; border-radius: 12px; cursor: pointer;
+  background: var(--bg-raised); border: 1px solid var(--border);
+  color: var(--text-secondary); transition: all var(--fast);
+}
+.chat-cmd:hover { border-color: var(--blue-300); color: var(--blue-600); background: var(--blue-50); }
+.chat-cmd .cmd-slash { color: var(--blue-500); font-weight: 600; }
+
+/* ═══════════════════════════════════════════
+   SLIDE PANEL — Task Create / Edit / Delete
+   ═══════════════════════════════════════════ */
+.slide-overlay {
+  position: fixed; inset: 0; background: rgba(15,23,42,0.3); z-index: 300;
+  opacity: 0; pointer-events: none; transition: opacity var(--normal);
+}
+.slide-overlay.open { opacity: 1; pointer-events: auto; }
+.slide-panel {
+  position: fixed; top: 0; right: -400px; width: 380px; height: 100vh;
+  background: var(--bg-surface); z-index: 310;
+  box-shadow: var(--shadow-lg);
+  transition: right var(--slow) var(--ease);
+  display: flex; flex-direction: column;
+}
+.slide-panel.open { right: 0; }
+.slide-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+}
+.slide-head h3 { font-size: 0.92rem; font-weight: 600; }
+.slide-close {
+  width: 28px; height: 28px; border-radius: var(--radius-sm); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 0.82rem;
+  color: var(--text-muted); transition: all var(--fast);
+}
+.slide-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+.slide-body { flex: 1; overflow-y: auto; padding: 16px 20px; }
+.slide-body .form-group { margin-bottom: 14px; }
+.slide-body .form-group label {
+  display: block; font-size: 0.73rem; font-weight: 600; color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+.slide-body .form-group input,
+.slide-body .form-group textarea,
+.slide-body .form-group select {
+  width: 100%; padding: 7px 10px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); font-size: 0.82rem; font-family: inherit;
+  background: var(--bg-surface); color: var(--text-primary);
+  transition: border-color var(--fast);
+}
+.slide-body .form-group input:focus,
+.slide-body .form-group textarea:focus,
+.slide-body .form-group select:focus {
+  outline: none; border-color: var(--blue-400); box-shadow: 0 0 0 3px var(--blue-50);
+}
+.slide-body .form-row { display: flex; gap: 12px; }
+.slide-body .form-row .form-group { flex: 1; }
+.slide-body .form-actions {
+  display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px;
+  padding-top: 16px; border-top: 1px solid var(--border-light);
+}
+.slide-body .delete-section { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+.slide-body .delete-confirm {
+  background: var(--red-50); border: 1px solid var(--red-100); border-radius: var(--radius);
+  padding: 12px 14px; font-size: 0.78rem; color: var(--red-600); margin-top: 8px;
+}
+
+/* ═══════════════════════════════════════════
+   TOAST — Brief notification
+   ═══════════════════════════════════════════ */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(100px);
+  background: var(--text-primary); color: #fff; padding: 10px 20px;
+  border-radius: var(--radius); font-size: 0.82rem; z-index: 400;
+  box-shadow: var(--shadow-lg); transition: transform var(--normal) var(--ease);
+}
+.toast.show { transform: translateX(-50%) translateY(0); }
+
+/* ═══════════════════════════════════════════
+   KANBAN — Column add button + card checkbox
+   ═══════════════════════════════════════════ */
+.kanban-col .col-add {
+  margin-top: 8px; padding: 7px; border: 1px dashed var(--border);
+  border-radius: var(--radius-sm); text-align: center; font-size: 0.76rem;
+  color: var(--text-muted); cursor: pointer; transition: all var(--fast);
+}
+.kanban-col .col-add:hover { border-color: var(--blue-400); color: var(--blue-600); background: var(--blue-50); }
+.kanban-card { position: relative; }
+.kanban-card .card-check {
+  position: absolute; top: 8px; right: 8px; width: 16px; height: 16px;
+  border: 1.5px solid var(--border); border-radius: 3px; display: none;
+  align-items: center; justify-content: center; font-size: 0.55rem;
+  background: var(--bg-surface); transition: all var(--fast);
+}
+.kanban-card:hover .card-check { display: flex; }
+.kanban-card.selected .card-check { display: flex; background: var(--blue-600); border-color: var(--blue-600); color: #fff; }
+.kanban-card.selected .card-check::after { content: '✓'; }
+
+/* ═══════════════════════════════════════════
+   MILESTONE — Inline create / edit form
+   ═══════════════════════════════════════════ */
+.ms-create-form {
+  padding: 8px 10px; background: var(--bg-raised); border-radius: var(--radius-sm);
+  margin-top: 4px;
+}
+.ms-create-form input { width: 100%; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 0.76rem; font-family: inherit; }
+.ms-create-form input:focus { outline: none; border-color: var(--blue-400); }
+
+.sidebar-ms { position: relative; }
+.sidebar-ms .sms-actions {
+  position: absolute; top: 6px; right: 6px; display: none; gap: 2px;
+}
+.sidebar-ms:hover .sms-actions { display: flex; }
+.sidebar-ms.active .sms-actions { display: flex; }
+.sms-action-btn {
+  width: 20px; height: 20px; border-radius: 4px; font-size: 0.6rem;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted); cursor: pointer; transition: all var(--fast);
+  background: var(--bg-surface); border: 1px solid var(--border);
+}
+.sms-action-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.sms-action-btn.danger:hover { color: var(--red-600); background: var(--red-50); border-color: var(--red-200); }
+
+/* ═══════════════════════════════════════════
+   SIDEBAR — Small icon button
+   ═══════════════════════════════════════════ */
+.btn-icon-sm {
+  width: 22px; height: 22px; border-radius: 4px; font-size: 0.78rem; font-weight: 600;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--text-muted); cursor: pointer; transition: all var(--fast);
+  background: var(--bg-raised); border: 1px solid var(--border-light); line-height: 1;
+}
+.btn-icon-sm:hover { color: var(--blue-600); background: var(--blue-50); border-color: var(--blue-200); }
+.btn-xs { font-size: 0.68rem; padding: 3px 8px; border-radius: var(--radius-sm); }
+
+/* ═══════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════ */
+
+/* Responsive */
+@media (max-width: 768px) {
+  .focus-grid { grid-template-columns: 1fr; }
+  .kanban-grid { grid-template-columns: 1fr; }
+  .demand-layout { grid-template-columns: 1fr; }
+  .stream-grid { grid-template-columns: 1fr; }
+  .drawer { width: 100%; }
+  .nav { overflow-x: auto; }
+  .kb-layout { grid-template-columns: 1fr; }
+  .report-grid { grid-template-columns: 1fr; }
+  .member-grid { grid-template-columns: 1fr; }
+  .task-list .list-head, .task-list .list-row { grid-template-columns: 1fr 70px 70px 60px 30px; gap: 6px; font-size: 0.72rem; }
+  /* Pulse layout — stack sidebar above main */
+  .pulse-layout { grid-template-columns: 1fr; }
+  .pulse-sidebar { position: static; }
+  .focus-strip { flex-direction: column; }
+  .focus-strip .fs-item { min-width: 0; }
+  .pulse-header { flex-direction: column; align-items: flex-start; }
+}
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+   SIGNAL BAR
+   ═══════════════════════════════════════════ -->
+<div id="signalBar" class="signal-bar">
+  <div class="signals" id="signalList">
+    <span class="signal-item"><span class="dot risk"></span> Q3 改版：前端重构延期 3 天<span class="dismiss" onclick="dismissSignal(this)" title="忽略">✕</span></span>
+    <span class="signal-item"><span class="dot warn"></span> 李四本周负载 120%<span class="dismiss" onclick="dismissSignal(this)" title="忽略">✕</span></span>
+    <span class="signal-item"><span class="dot info"></span> 数据平台：到达关键里程碑<span class="dismiss" onclick="dismissSignal(this)" title="忽略">✕</span></span>
+  </div>
+  <div class="bar-right">
+    <span class="time">刷新于 14:30</span>
+    <button onclick="toggleBriefing()">📋 简报</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════════ -->
+<nav class="nav" id="mainNav">
+  <div class="logo" onclick="navigateTo('focus')">
+    <span class="icon">PM</span> AI PM
+  </div>
+  <button class="nav-item active" data-page="focus" onclick="navigateTo('focus')">我的关注</button>
+  <button class="nav-item" data-page="stream" onclick="navigateTo('stream')">工作空间</button>
+  <span class="spacer"></span>
+  <div class="nav-right">
+    <button class="btn btn-ghost btn-sm" onclick="openDrawer()" title="AI 对话 (Ctrl+K)">💬 AI</button>
+    <button class="btn btn-ghost btn-sm" onclick="navigateTo('settings')">⚙</button>
+    <span class="user-avatar">张</span>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════════════════════
+   LOGIN PAGE
+   ═══════════════════════════════════════════ -->
+<div id="page-login" class="login-page page">
+<div class="login-card">
+  <div class="brand">
+    <div class="brand-icon">PM</div>
+    <h2>AI PM</h2>
+    <p>项目管理工具，AI 让每个人更高效</p>
+  </div>
+  <div class="login-tabs">
+    <button class="login-tab active" onclick="switchLoginTab(0)">密码登录</button>
+    <button class="login-tab" onclick="switchLoginTab(1)">LDAP</button>
+    <button class="login-tab" onclick="switchLoginTab(2)">企微扫码</button>
+  </div>
+  <div class="login-form active" id="loginForm0">
+    <div class="field"><label>用户名</label><input type="text" placeholder="请输入用户名"></div>
+    <div class="field"><label>密码</label><input type="password" placeholder="请输入密码"></div>
+    <button class="login-btn" onclick="login()">登 录</button>
+  </div>
+  <div class="login-form" id="loginForm1">
+    <div class="field"><label>企业账号</label><input type="text" placeholder="请输入 LDAP 账号"></div>
+    <div class="field"><label>密码</label><input type="password" placeholder="请输入 LDAP 密码"></div>
+    <button class="login-btn" onclick="login()">LDAP 登录</button>
+  </div>
+  <div class="login-form" id="loginForm2">
+    <div style="text-align:center;padding:20px;color:var(--text-muted)">
+      <div style="width:120px;height:120px;background:var(--bg-raised);margin:0 auto 12px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:2.5rem;">📱</div>
+      请使用企业微信扫描二维码
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+   1. MY FOCUS (我的关注)
+   ═══════════════════════════════════════════ -->
+<div id="page-focus" class="page active">
+<div class="focus-header">
+  <div class="greeting">下午好，张明</div>
+  <div class="date">2026 年 5 月 6 日 星期三</div>
+</div>
+
+<!-- AI briefing — collapsible -->
+<div class="briefing-box" id="briefingBox">
+  <div class="briefing-head" onclick="toggleBriefing()">
+    <span class="head-left"><span class="ai-badge">AI</span> 今日简报</span>
+    <span style="font-size:0.7rem;color:var(--text-muted)">展开 ▾</span>
+  </div>
+  <div class="briefing-body">
+    过去 24 小时，你关注的 3 个项目有 <strong>5 个变化</strong>。Q3 改版前端任务已延期 3 天，建议今天确认是否调整排期；运营中台优化进入设计阶段，设计师 Agent 已完成首页线框图；数据平台里程碑"数据清洗完成"准时达成。
+  </div>
+</div>
+
+<div class="focus-grid">
+  <!-- Left: decisions + agent status -->
+  <div>
+    <div class="section-label">需要你关注</div>
+
+    <div class="need-card" onclick="navigateTo('pulse')">
+      <span class="priority urgent">紧急</span>
+      <h4>Q3 改版 — 前端首页重构任务已延期 3 天</h4>
+      <div class="meta"><span>项目：Q3 改版</span><span>阻塞 2 个下游任务</span></div>
+    </div>
+
+    <div class="need-card">
+      <span class="priority high">高优</span>
+      <h4>运营中台 — 新需求"数据导出功能"等待评审</h4>
+      <div class="meta"><span>提交人：王芳</span><span>2 小时前</span></div>
+    </div>
+
+    <div class="need-card" onclick="navigateTo('pulse')">
+      <span class="priority high">高优</span>
+      <h4>AI 开发工程师完成 3 个 PR，等待 Review</h4>
+      <div class="meta"><span>数据平台后端接口</span><span>2 小时前</span></div>
+    </div>
+
+    <!-- Agent mini status -->
+    <div class="section-label" style="margin-top:18px">AI 助手状态</div>
+    <div class="agent-mini">
+      <div class="agent-row">
+        <span class="agent-dot busy"></span>
+        <span class="agent-name">需求分析师</span>
+        <span class="agent-tsk">分析中：数据导出需求</span>
+      </div>
+      <div class="agent-row">
+        <span class="agent-dot idle"></span>
+        <span class="agent-name">设计师</span>
+        <span class="agent-tsk">空闲</span>
+      </div>
+      <div class="agent-row">
+        <span class="agent-dot idle"></span>
+        <span class="agent-name">开发工程师</span>
+        <span class="agent-tsk">3 PR 待 Review</span>
+      </div>
+      <div class="agent-row">
+        <span class="agent-dot busy"></span>
+        <span class="agent-name">项目经理</span>
+        <span class="agent-tsk">生成周报中</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: signals + health -->
+  <div>
+    <div class="section-label">实时信号</div>
+    <div class="signal-card">
+      <div class="signal-row"><span class="lvl red"></span><span><strong>阻塞风险</strong><br>Q3 改版延期影响设计评审里程碑（2 天后）</span></div>
+      <div class="signal-row"><span class="lvl amber"></span><span><strong>负载预警</strong><br>李四本周 12 个任务，负载 120%</span></div>
+      <div class="signal-row"><span class="lvl amber"></span><span><strong>状态停滞</strong><br>运营中台"用户模块重构"5 天无更新</span></div>
+      <div class="signal-row"><span class="lvl amber"></span><span><strong>AI 产出待 Review</strong><br>3 个 PR 已等待 2 小时</span></div>
+    </div>
+
+    <div class="section-label" style="margin-top:14px">我的项目</div>
+    <div class="health-list">
+      <div class="health-row" onclick="navigateTo('pulse')">
+        <span class="hname">Q3 大版本改版</span>
+        <span class="hstat"><span class="badge badge-amber">67%</span> ⚠ 1 延期</span>
+      </div>
+      <div class="health-row">
+        <span class="hname">运营中台优化</span>
+        <span class="hstat"><span class="badge badge-green">42%</span> ✓ 正常</span>
+      </div>
+      <div class="health-row">
+        <span class="hname">数据平台建设</span>
+        <span class="hstat"><span class="badge badge-green">91%</span> ✓ 正常</span>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+   2. WORKSPACE STREAM (工作空间流)
+   ═══════════════════════════════════════════ -->
+<div id="page-stream" class="page">
+<div class="stream-header">
+  <h2>工作空间</h2>
+  <div class="actions">
+    <button class="btn btn-primary btn-sm">+ 从模板创建</button>
+    <button class="btn btn-ghost btn-sm">空白创建</button>
+  </div>
+</div>
+<div class="stream-grid">
+  <div class="ws-card" onclick="navigateTo('pulse')">
+    <div class="ws-head">
+      <span class="ws-name">Q3 大版本改版</span>
+      <span class="ws-tier company">公司重点</span>
+    </div>
+    <div class="ws-summary">进度 67%，设计阶段完成，开发进行中。前端重构延期 3 天，影响下游 2 个任务。李四负载 120%。本周三 UI Review 是关键里程碑。</div>
+    <div class="ws-stats">
+      <span>任务 <span class="sv">24/36</span></span>
+      <span>风险 <span class="sv" style="color:var(--amber-600)">1</span></span>
+      <span>健康度 <span class="health-bar"><span class="fill warn" style="width:67%"></span></span></span>
+    </div>
+  </div>
+
+  <div class="ws-card">
+    <div class="ws-head">
+      <span class="ws-name">运营中台优化</span>
+      <span class="ws-tier dept">部门重点</span>
+    </div>
+    <div class="ws-summary">进度 42%。需求阶段完成，设计师 Agent 已完成首页线框图。本周进入开发阶段。团队负载正常。</div>
+    <div class="ws-stats">
+      <span>任务 <span class="sv">8/19</span></span>
+      <span>风险 <span class="sv" style="color:var(--green-600)">0</span></span>
+      <span>健康度 <span class="health-bar"><span class="fill good" style="width:85%"></span></span></span>
+    </div>
+  </div>
+
+  <div class="ws-card">
+    <div class="ws-head">
+      <span class="ws-name">数据平台建设</span>
+      <span class="ws-tier dept">部门重点</span>
+    </div>
+    <div class="ws-summary">进度 91%。数据清洗里程碑已达成。开发工程师 Agent 完成 3 个后端接口 PR，等待 Review。预计下周进入测试。</div>
+    <div class="ws-stats">
+      <span>任务 <span class="sv">41/45</span></span>
+      <span>风险 <span class="sv" style="color:var(--green-600)">0</span></span>
+      <span>健康度 <span class="health-bar"><span class="fill good" style="width:92%"></span></span></span>
+    </div>
+  </div>
+
+  <div class="ws-card">
+    <div class="ws-head">
+      <span class="ws-name">年度团建活动</span>
+      <span class="ws-tier normal">普通</span>
+    </div>
+    <div class="ws-summary">事务类项目，进度 30%。供应商已确定，活动方案初稿已完成。下一步确认参与人员名单。</div>
+    <div class="ws-stats">
+      <span>任务 <span class="sv">3/10</span></span>
+      <span>风险 <span class="sv" style="color:var(--green-600)">0</span></span>
+      <span>健康度 <span class="health-bar"><span class="fill good" style="width:88%"></span></span></span>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+   3. PROJECT PULSE (项目脉搏)
+   ═══════════════════════════════════════════ -->
+<div id="page-pulse" class="page">
+
+<!-- Compact header bar -->
+<div class="pulse-header">
+  <div class="ph-left">
+    <div class="back" onclick="navigateTo('stream')">← 返回工作空间</div>
+    <div class="proj-name">Q3 大版本改版</div>
+    <div class="proj-meta">公司重点项目 · Sprint 5 · 创建于 2026-03-01 · <span class="ospec-badge" onclick="switchWsTab('kb', document.querySelector('#wsTabs .ws-tab:nth-child(2)')); setTimeout(() => scrollToOpenSpec(), 300)" title="查看项目 OpenSpec 规范">📋 OpenSpec: 标准软件开发</span></div>
+  </div>
+  <div class="ph-actions">
+    <button class="btn btn-ghost btn-sm" onclick="toggleFullscreen()">🖥 投屏</button>
+  </div>
+</div>
+
+<!-- Focus alerts strip -->
+<div class="focus-strip" id="focusStrip">
+  <div class="fs-item" onclick="navigateTo('pulse')">
+    <span class="fs-dot red"></span>
+    <span class="fs-text">前端首页重构延期 3 天 · 阻塞下游 2 个任务</span>
+    <button class="fs-btn primary" onclick="event.stopPropagation();">处理</button>
+  </div>
+  <div class="fs-item">
+    <span class="fs-dot green"></span>
+    <span class="fs-text">AI 设计师完成线框图 · 等待 Review</span>
+    <button class="fs-btn primary" onclick="event.stopPropagation();">Review</button>
+  </div>
+  <div class="fs-item">
+    <span class="fs-dot amber"></span>
+    <span class="fs-text">李四负载 120% · 建议暂缓新任务</span>
+    <button class="fs-btn" onclick="event.stopPropagation();">查看</button>
+  </div>
+</div>
+
+<!-- 2-col: sidebar + main -->
+<div class="pulse-layout">
+
+  <!-- ═══ SIDEBAR ═══ -->
+  <div class="pulse-sidebar" id="pulseSidebar">
+
+    <!-- Project KPIs -->
+    <div class="sidebar-section">
+      <div class="ss-title">📊 项目概览</div>
+      <div class="sidebar-kpis">
+        <div class="sidebar-kpi"><span class="sk-label">任务完成</span><span class="sk-value">24/36</span></div>
+        <div class="sidebar-kpi"><span class="sk-label">团队负载</span><span class="sk-value">78%</span></div>
+        <div class="sidebar-kpi"><span class="sk-label">风险信号</span><span class="sk-value" style="color:var(--amber-600)">1 项</span></div>
+        <div class="sidebar-kpi"><span class="sk-label">AI 活跃</span><span class="sk-value" style="color:var(--blue-600)">3 个 Agent</span></div>
+      </div>
+    </div>
+
+    <!-- Milestones -->
+    <div class="sidebar-section">
+      <div class="ss-title">🎯 里程碑</div>
+      <div class="sidebar-ms-list" id="msList">
+        <div class="sidebar-ms active" onclick="selectMilestone(this, 'all')">
+          <div class="sms-row1"><span class="sms-name">全部任务</span><span class="sms-pct">67%</span></div>
+          <div class="sms-bar"><div class="sms-fill active" style="width:67%"></div></div>
+        </div>
+        <div class="sidebar-ms" onclick="selectMilestone(this, 'm1')">
+          <div class="sms-row1"><span class="sms-name">M1 · 需求与设计</span><span class="sms-badge done">✓</span></div>
+          <div class="sms-bar"><div class="sms-fill done" style="width:100%"></div></div>
+          <div class="sms-pct">12/12 · 完成于 4/12</div>
+        </div>
+        <div class="sidebar-ms" onclick="selectMilestone(this, 'm2')">
+          <div class="sms-row1"><span class="sms-name">M2 · 核心开发</span><span class="sms-badge active">◎</span></div>
+          <div class="sms-bar"><div class="sms-fill active" style="width:60%"></div></div>
+          <div class="sms-pct">10/18 · 剩余 14 天</div>
+        </div>
+        <div class="sidebar-ms" onclick="selectMilestone(this, 'm3')">
+          <div class="sms-row1"><span class="sms-name">M3 · UI Review</span><span class="sms-badge active" style="color:var(--amber-600)">⚠</span></div>
+          <div class="sms-bar"><div class="sms-fill active" style="width:40%"></div></div>
+          <div class="sms-pct" style="color:var(--amber-600)">2/5 · 今天 · 依赖 M2</div>
+        </div>
+        <div class="sidebar-ms" onclick="selectMilestone(this, 'm4')">
+          <div class="sms-row1"><span class="sms-name">M4 · 测试与修复</span><span class="sms-badge upcoming">○</span></div>
+          <div class="sms-bar"><div class="sms-fill pending" style="width:0%"></div></div>
+          <div class="sms-pct">0/8 · 5/21 开始</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- OpenSpec — collapsible -->
+    <div class="sidebar-ospec expanded" id="sidebarOspec">
+      <div class="sos-head" onclick="toggleSidebarOspec()">
+        <span style="display:flex;align-items:center;gap:4px">
+          📋 OpenSpec
+          <span class="sos-help" onclick="event.stopPropagation()">
+            ?<span class="sos-tooltip">OpenSpec 是项目的"AI 宪法"：定义代码规范、工作流程、风险阈值等。AI 会自动遵守这些规范，确保输出符合项目标准。<br><br>你无需理解 OpenSpec 概念，只需通过「快速配置」告诉 AI 你们团队的做事方式即可。</span>
+          </span>
+        </span>
+        <span style="font-size:0.65rem;color:var(--text-muted)" id="sosToggle">收起 ▾</span>
+      </div>
+      <div class="sos-body">
+        <div class="sos-item" title="代码提交时 PR 必须包含单元测试和功能截图，否则 AI Review 会自动提醒"><span class="sos-icon">📐</span><span class="sos-label">PR 需含测试 + 截图</span></div>
+        <div class="sos-item" title="前端技术栈：React 18 + TypeScript strict 模式，禁止使用 any 类型"><span class="sos-icon">🔤</span><span class="sos-label">React 18 + TS strict</span></div>
+        <div class="sos-item" title="任务延期超过 3 天后，AI 会自动标记为高风险并通知 PM"><span class="sos-icon">🚨</span><span class="sos-label">延期 > 3 天自动升级</span></div>
+        <div class="sos-item" title="AI 生成 PRD 时使用团队标准模板（包含用户故事、验收标准、影响范围）"><span class="sos-icon">📝</span><span class="sos-label">PRD 按标准模板输出</span></div>
+        <div class="sos-item" title="代码 Review 必须在 48 小时内完成，超时 AI 自动提醒 Reviewer"><span class="sos-icon">🔍</span><span class="sos-label">Review 48h 内完成</span></div>
+        <div class="sos-actions">
+          <button class="sos-btn primary" onclick="event.stopPropagation(); openOspecConfig()">⚡ 快速配置</button>
+          <button class="sos-btn" onclick="event.stopPropagation(); openOspecPreset()">📋 换模板</button>
+        </div>
+        <div style="font-size:0.62rem;color:var(--text-muted);margin-top:4px;text-align:right;cursor:pointer" onclick="event.stopPropagation(); switchWsTab('kb', document.querySelector('#wsTabs .ws-tab:nth-child(2)')); setTimeout(() => scrollToOpenSpec(), 300)">查看全部 6 条规范 →</div>
+      </div>
+    </div>
+
+    <!-- AI Summary — collapsible -->
+    <div class="sidebar-ai expanded" id="sidebarAi">
+      <div class="sai-head" onclick="toggleSidebarAi()">
+        <span><span class="badge badge-blue" style="font-size:0.6rem;padding:1px 5px;border-radius:4px">AI</span> 今日摘要</span>
+        <span style="font-size:0.65rem;color:var(--text-muted)" id="saiToggle">收起 ▾</span>
+      </div>
+      <div class="sai-body">
+        本周完成 <strong>4 个任务</strong>，<strong>1 个延期</strong>。建议今天确认前端排期以避免 UI Review 延误。
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ MAIN CONTENT ═══ -->
+  <div class="pulse-main">
+
+    <!-- Workspace Tabs -->
+    <div class="ws-tabs" id="wsTabs">
+      <button class="ws-tab active" onclick="switchWsTab('tasks', this)">任务看板</button>
+      <button class="ws-tab" onclick="switchWsTab('kb', this)">知识库</button>
+      <button class="ws-tab" onclick="switchWsTab('members', this)">成员</button>
+      <button class="ws-tab" onclick="switchWsTab('reports', this)">报表</button>
+    </div>
+
+    <!-- ═══ PANEL: 任务看板 ═══ -->
+    <div class="ws-panel active" id="ws-panel-tasks">
+      <div class="view-switcher" id="viewSwitcher">
+        <button class="view-switch active" onclick="switchTaskView('kanban', this)">📋 看板</button>
+        <button class="view-switch" onclick="switchTaskView('list', this)">📄 列表</button>
+        <button class="view-switch" onclick="switchTaskView('gantt', this)">📊 甘特图</button>
+      </div>
+      <div class="batch-bar" id="batchBar">
+        <span class="batch-count" id="batchCount">已选 0 项</span>
+        <button onclick="batchAction('status')">改状态</button>
+        <button onclick="batchAction('assign')">改分配</button>
+        <button onclick="batchAction('priority')">改优先级</button>
+        <button class="batch-close" onclick="clearBatch()">✕</button>
+      </div>
+
+      <!-- Kanban -->
+      <div class="task-view active" id="view-kanban">
+        <div class="kanban-grid">
+          <div class="kanban-col" data-col="todo">
+            <div class="col-head"><span>待办</span><span class="badge" style="background:var(--bg-hover)">5</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">用户登录优化</div><div class="card-meta"><span class="badge badge-blue">AI</span><span class="ms-tag">M2</span><span>中优</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">数据库迁移脚本</div><div class="card-meta"><span class="ms-tag">M2</span><span>高优</span><span class="dep-badge blocking">阻塞 2</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">消息推送模块</div><div class="card-meta"><span class="ms-tag">M2</span><span>中优</span><span>张三</span></div></div>
+            <div class="col-add" onclick="event.stopPropagation(); showTaskCreate('todo')">+ 新建任务</div>
+          </div>
+          <div class="kanban-col" data-col="inprogress">
+            <div class="col-head"><span>进行中</span><span class="badge" style="background:var(--bg-hover)">8</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">前端首页重构</div><div class="card-meta"><span class="badge badge-red">延期</span><span class="ms-tag">M3</span><span class="dep-badge blocked">被阻塞</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">API 接口开发</div><div class="card-meta"><span class="badge badge-blue">AI</span><span class="ms-tag">M2</span><span>高优</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">性能优化</div><div class="card-meta"><span class="ms-tag">M2</span><span>中优</span><span>王五</span></div></div>
+            <div class="col-add" onclick="event.stopPropagation(); showTaskCreate('inprogress')">+ 新建任务</div>
+          </div>
+          <div class="kanban-col" data-col="review">
+            <div class="col-head"><span>待 Review</span><span class="badge" style="background:var(--bg-hover)">4</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">首页新布局线框图</div><div class="card-meta"><span class="badge badge-blue">AI</span><span class="ms-tag">M3</span><span>设计师</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">后端 3 个 PR</div><div class="card-meta"><span class="badge badge-blue">AI</span><span class="ms-tag">M2</span><span>开发工程师</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">UI 组件重构</div><div class="card-meta"><span class="ms-tag">M3</span><span>张三</span></div></div>
+            <div class="col-add" onclick="event.stopPropagation(); showTaskCreate('review')">+ 新建任务</div>
+          </div>
+          <div class="kanban-col" data-col="done">
+            <div class="col-head"><span>已完成</span><span class="badge" style="background:var(--bg-hover)">7</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">PRD v2 终稿</div><div class="card-meta"><span class="ms-tag">M1</span><span>4/12</span><span>王芳</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">数据清洗脚本</div><div class="card-meta"><span class="ms-tag">M1</span><span>4/10</span><span>王五</span></div></div>
+            <div class="col-add" onclick="event.stopPropagation(); showTaskCreate('done')">+ 新建任务</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- List -->
+      <div class="task-view" id="view-list" style="display:none">
+        <div class="task-list">
+          <div class="list-head"><span>任务名称</span><span>里程碑</span><span>状态</span><span>负责人</span><span></span></div>
+          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">用户登录优化 <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M2</span></span><span><span class="badge" style="background:var(--bg-raised)">待办</span></span><span>—</span><span class="cb"></span></div>
+          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">数据库迁移脚本</span><span><span class="ms-tag">M2</span></span><span><span class="badge" style="background:var(--bg-raised)">待办</span></span><span>— <span class="dep-badge blocking">阻塞2</span></span><span class="cb"></span></div>
+          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">前端首页重构</span><span><span class="ms-tag">M3</span></span><span><span class="badge badge-red">延期</span></span><span>李四 <span class="dep-badge blocked">被阻塞</span></span><span class="cb"></span></div>
+          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">API 接口开发 <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M2</span></span><span><span class="badge" style="background:var(--blue-50);color:var(--blue-600)">进行中</span></span><span>开发工程师 Agent</span><span class="cb"></span></div>
+          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">首页新布局线框图 <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M3</span></span><span><span class="badge badge-amber">待Review</span></span><span>设计师 Agent</span><span class="cb"></span></div>
+          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">后端 3 个 PR <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M2</span></span><span><span class="badge badge-amber">待Review</span></span><span>开发工程师 Agent</span><span class="cb"></span></div>
+          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">性能优化</span><span><span class="ms-tag">M2</span></span><span><span class="badge" style="background:var(--blue-50);color:var(--blue-600)">进行中</span></span><span>王五</span><span class="cb"></span></div>
+          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">PRD v2 终稿</span><span><span class="ms-tag">M1</span></span><span><span class="badge badge-green">已完成</span></span><span>王芳</span><span class="cb"></span></div>
+        </div>
+      </div>
+
+      <!-- Gantt -->
+      <div class="task-view" id="view-gantt" style="display:none">
+        <div class="gantt-wrap">
+          <div class="gantt-head">
+            <div class="gantt-label">任务 / 里程碑</div>
+            <div class="gantt-timeline"><div class="gantt-day">5/1</div><div class="gantt-day">5/3</div><div class="gantt-day">5/5</div><div class="gantt-day">5/7</div><div class="gantt-day">5/9</div><div class="gantt-day">5/11</div><div class="gantt-day">5/13</div><div class="gantt-day">5/15</div><div class="gantt-day">5/17</div><div class="gantt-day">5/20</div></div>
+          </div>
+          <div class="gantt-row" style="background:var(--blue-50)"><div class="gantt-label" style="font-weight:700">M2 · 核心开发</div><div class="gantt-timeline"><div class="gantt-bar blue" style="left:0;width:400px"></div></div></div>
+          <div class="gantt-row"><div class="gantt-label" style="padding-left:28px">├ 用户登录优化</div><div class="gantt-timeline"><div class="gantt-bar green" style="left:200px;width:120px"></div></div></div>
+          <div class="gantt-row"><div class="gantt-label" style="padding-left:28px">├ 数据库迁移脚本</div><div class="gantt-timeline"><div class="gantt-bar green" style="left:160px;width:100px"></div></div></div>
+          <div class="gantt-row"><div class="gantt-label" style="padding-left:28px">├ API 接口开发</div><div class="gantt-timeline"><div class="gantt-bar blue" style="left:120px;width:160px"></div></div></div>
+          <div class="gantt-row"><div class="gantt-label" style="padding-left:28px">└ 性能优化</div><div class="gantt-timeline"><div class="gantt-bar green" style="left:280px;width:80px"></div></div></div>
+          <div class="gantt-row" style="background:var(--amber-50)"><div class="gantt-label" style="font-weight:700">M3 · UI Review ⚠</div><div class="gantt-timeline"><div class="gantt-bar amber" style="left:0;width:120px"></div></div></div>
+          <div class="gantt-row"><div class="gantt-label" style="padding-left:28px">├ 前端首页重构</div><div class="gantt-timeline"><div class="gantt-bar amber" style="left:0;width:160px"></div></div></div>
+          <div class="gantt-row"><div class="gantt-label" style="padding-left:28px">└ 首页新布局线框图</div><div class="gantt-timeline"><div class="gantt-bar blue" style="left:40px;width:80px"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PANEL: 知识库 ═══ -->
+    <div class="ws-panel" id="ws-panel-kb">
+      <div class="kb-layout">
+        <div class="kb-sidebar">
+          <div style="font-size:0.72rem;font-weight:600;color:var(--text-muted);margin-bottom:8px;padding:0 10px">📁 文档目录</div>
+          <div class="kb-folder active">📄 产品需求文档</div>
+          <div class="kb-folder">🎨 设计稿</div>
+          <div class="kb-folder">💻 技术方案</div>
+          <div class="kb-folder">📝 会议纪要</div>
+          <div class="kb-folder">📋 合同与标书</div>
+          <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px">
+            <div style="font-size:0.68rem;color:var(--text-muted);padding:0 10px;margin-bottom:6px">⚙ 项目规范</div>
+            <div class="kb-folder active" style="background:var(--blue-50);color:var(--blue-700);border-color:var(--blue-200)" id="ospecFolder" onclick="showOspecFiles()">📋 .openspec/</div>
+            <div id="ospecSubfolders" style="margin-left:12px;display:none">
+              <div class="kb-folder" style="font-size:0.7rem;padding:3px 8px" onclick="event.stopPropagation()" title="代码规范：命名规则、分支策略、测试标准等">📐 conventions.md <span style="font-size:0.58rem;color:var(--text-muted)">代码规范</span></div>
+              <div class="kb-folder" style="font-size:0.7rem;padding:3px 8px" onclick="event.stopPropagation()" title="工作流程：PR 流程、Review 标准、发布流程等">🔄 workflow.md <span style="font-size:0.58rem;color:var(--text-muted)">工作流程</span></div>
+              <div class="kb-folder" style="font-size:0.7rem;padding:3px 8px" onclick="event.stopPropagation()" title="AI Agent 行为约束：各 Agent 角色的具体规则">🤖 agents.md <span style="font-size:0.58rem;color:var(--text-muted)">AI 行为约束</span></div>
+              <div class="kb-folder" style="font-size:0.7rem;padding:3px 8px" onclick="event.stopPropagation()" title="风险信号：自定义风险阈值、通知规则、升级策略">🚨 signals.md <span style="font-size:0.58rem;color:var(--text-muted)">风险信号</span></div>
+              <div class="kb-folder" style="font-size:0.7rem;padding:3px 8px" onclick="event.stopPropagation()" title="产出物模板：PRD、设计稿说明、周报等模板">📁 templates/ <span style="font-size:0.58rem;color:var(--text-muted)">文档模板</span></div>
+              <div class="kb-folder" style="font-size:0.7rem;padding:3px 8px" onclick="event.stopPropagation()" title="项目术语表：业务专有名词 → 解释，帮助 AI 理解项目上下文">📖 glossary.md <span style="font-size:0.58rem;color:var(--text-muted)">术语表</span></div>
+            </div>
+          </div>
+          <div style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px"><div style="font-size:0.68rem;color:var(--text-muted);padding:0 10px">版本：Git 管理 · 56 次提交</div></div>
+        </div>
+        <div class="kb-main">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><span style="font-size:0.85rem;font-weight:600">📄 产品需求文档</span><span style="font-size:0.72rem;color:var(--text-muted)">3 个文件</span></div>
+          <div class="kb-file"><div><div class="file-name">📄 Q3 改版 PRD v2.3.md</div><div class="file-meta">王芳 · 更新于 4/28 · 12.4 KB</div></div><span class="badge badge-green">v2.3</span></div>
+          <div class="kb-file"><div><div class="file-name">📊 数据导出功能需求分析.md</div><div class="file-meta">需求分析师 Agent · 生成于 5/5 · 8.1 KB</div></div><span class="badge badge-blue">AI 草稿</span></div>
+          <div class="kb-file"><div><div class="file-name">📋 验收标准 checklist.md</div><div class="file-meta">张明 · 更新于 4/25 · 3.2 KB</div></div><span class="badge" style="background:var(--bg-raised)">v1.0</span></div>
+          <div class="kb-upload">📤 拖拽文件到此处上传，或点击选择文件<br><span style="font-size:0.72rem">支持 Markdown / PDF / Word / 图片</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ PANEL: 成员 ═══ -->
+    <div class="ws-panel" id="ws-panel-members">
+      <div class="section-label" style="margin-bottom:8px">人类成员</div>
+      <div class="member-grid">
+        <div class="member-card"><div class="m-avatar human">张</div><div class="m-info"><div class="m-name">张明</div><div class="m-role">Owner · 项目经理</div><div class="m-load">当前负载 65% · 5 个任务</div></div></div>
+        <div class="member-card"><div class="m-avatar human">李</div><div class="m-info"><div class="m-name">李四</div><div class="m-role">Member · 前端开发</div><div class="m-load" style="color:var(--red-500)">当前负载 120% · 12 个任务 ⚠</div></div></div>
+        <div class="member-card"><div class="m-avatar human">王</div><div class="m-info"><div class="m-name">王五</div><div class="m-role">Member · 后端开发</div><div class="m-load">当前负载 85% · 7 个任务</div></div></div>
+        <div class="member-card"><div class="m-avatar human">芳</div><div class="m-info"><div class="m-name">王芳</div><div class="m-role">Manager · 产品经理</div><div class="m-load">当前负载 50% · 3 个任务</div></div></div>
+      </div>
+      <div class="section-label" style="margin:16px 0 8px">AI 助手（可指派任务）</div>
+      <div class="member-grid">
+        <div class="member-card"><div class="m-avatar agent">📋</div><div class="m-info"><div class="m-name">需求分析师</div><div class="m-role">DeepSeek V3 · 草稿模式</div><div class="m-load" style="color:var(--amber-600)">🟡 执行中：数据导出需求分析</div></div></div>
+        <div class="member-card"><div class="m-avatar agent">🎨</div><div class="m-info"><div class="m-name">设计师</div><div class="m-role">Qwen 2.5 72B · 草稿模式</div><div class="m-load" style="color:var(--green-600)">🟢 空闲</div></div></div>
+        <div class="member-card"><div class="m-avatar agent">💻</div><div class="m-info"><div class="m-name">开发工程师</div><div class="m-role">DeepSeek V3 · 草稿模式</div><div class="m-load">3 个 PR 待 Review</div></div></div>
+        <div class="member-card"><div class="m-avatar agent">📊</div><div class="m-info"><div class="m-name">项目经理 Agent</div><div class="m-role">DeepSeek V3</div><div class="m-load" style="color:var(--amber-600)">🟡 生成周度洞察中</div></div></div>
+      </div>
+    </div>
+
+    <!-- ═══ PANEL: 报表 ═══ -->
+    <div class="ws-panel" id="ws-panel-reports">
+      <div class="report-grid">
+        <div class="report-card"><h4>📈 项目进度趋势</h4><div class="report-chart">任务完成趋势图（本周 +4，比上周 ↑12%）</div></div>
+        <div class="report-card"><h4>👥 团队负载分布</h4>
+          <div style="padding:8px 0">
+            <div class="report-bar"><span class="bar-label">李四</span><div class="bar-track"><div class="bar-fill" style="width:100%;background:var(--red-500)"></div></div><span style="font-size:0.72rem;color:var(--red-500);margin-left:8px">120%</span></div>
+            <div class="report-bar"><span class="bar-label">王五</span><div class="bar-track"><div class="bar-fill" style="width:71%"></div></div><span style="font-size:0.72rem;color:var(--text-muted);margin-left:8px">85%</span></div>
+            <div class="report-bar"><span class="bar-label">张明</span><div class="bar-track"><div class="bar-fill" style="width:54%"></div></div><span style="font-size:0.72rem;color:var(--text-muted);margin-left:8px">65%</span></div>
+            <div class="report-bar"><span class="bar-label">王芳</span><div class="bar-track"><div class="bar-fill" style="width:42%"></div></div><span style="font-size:0.72rem;color:var(--text-muted);margin-left:8px">50%</span></div>
+          </div>
+        </div>
+        <div class="report-card"><h4>📊 任务分布</h4>
+          <div style="padding:8px 0">
+            <div class="report-bar"><span class="bar-label">已完成</span><div class="bar-track"><div class="bar-fill" style="width:67%;background:var(--green-500)"></div></div><span style="font-size:0.72rem;color:var(--text-muted);margin-left:8px">24</span></div>
+            <div class="report-bar"><span class="bar-label">进行中</span><div class="bar-track"><div class="bar-fill" style="width:22%;background:var(--blue-500)"></div></div><span style="font-size:0.72rem;color:var(--text-muted);margin-left:8px">8</span></div>
+            <div class="report-bar"><span class="bar-label">待Review</span><div class="bar-track"><div class="bar-fill" style="width:11%;background:var(--amber-500)"></div></div><span style="font-size:0.72rem;color:var(--text-muted);margin-left:8px">4</span></div>
+          </div>
+        </div>
+        <div class="report-card"><h4>🏷 按优先级分布</h4><div class="report-chart" style="height:120px">
+          <span style="display:inline-block;margin:0 12px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--red-500);margin-right:4px"></span>高优 12</span>
+          <span style="display:inline-block;margin:0 12px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--amber-500);margin-right:4px"></span>中优 18</span>
+          <span style="display:inline-block;margin:0 12px"><span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--green-500);margin-right:4px"></span>低优 6</span>
+        </div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ INLINE CHAT PANEL ═══ -->
+<div class="pulse-chat" id="pulseChat">
+  <div class="chat-inner">
+    <div class="chat-head">
+      <h3>💬 AI 对话</h3>
+      <div style="display:flex;gap:4px;align-items:center">
+        <select id="chatAgent" style="font-size:0.68rem;padding:2px 6px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-surface);max-width:80px">
+          <option>需求分析师</option><option>设计师</option><option>开发工程师</option><option>项目经理</option>
+        </select>
+        <button onclick="toggleChat()" style="font-size:0.82rem;color:var(--text-muted);cursor:pointer;padding:2px 4px" title="收起">✕</button>
+      </div>
+    </div>
+    <div class="chat-body">
+      <div class="chat-cmds" id="chatCmds">
+        <button class="chat-cmd" onclick="runChatCommand('create')"><span class="cmd-slash">/</span> 创建任务</button>
+        <button class="chat-cmd" onclick="runChatCommand('status')"><span class="cmd-slash">/</span> 查询进度</button>
+        <button class="chat-cmd" onclick="runChatCommand('find')"><span class="cmd-slash">/</span> 查找文档</button>
+        <button class="chat-cmd" onclick="runChatCommand('report')"><span class="cmd-slash">/</span> 生成周报</button>
+        <button class="chat-cmd" onclick="runChatCommand('risk')"><span class="cmd-slash">/</span> 风险分析</button>
+      </div>
+      <div class="chat-msgs" id="chatMsgs">
+        <div class="chat-msg ai">
+          <div class="msg-label">需求分析师 · 遵循 OpenSpec</div>
+          你好张明。我已加载项目 OpenSpec 规范。你可以通过下方快捷指令让我帮你<strong>管理任务</strong>、<strong>查询进度</strong>或<strong>查找文档</strong>，也可以直接提问。
+        </div>
+        <div class="chat-msg user">
+          <div class="msg-label">你</div>
+          数据导出功能的安全方面需要注意什么？
+        </div>
+        <div class="chat-msg ai">
+          <div class="msg-label">需求分析师</div>
+          根据知识库中的《数据安全规范 v2.3》：<br><br>
+          1. <strong>权限控制</strong>：接入 RBAC 矩阵<br>
+          2. <strong>审计日志</strong>：记录操作人、时间、范围<br>
+          3. <strong>数据脱敏</strong>：敏感字段需脱敏<br>
+          4. <strong>频率限制</strong>：单用户每小时 ≤5 次
+        </div>
+      </div>
+    </div>
+    <div class="chat-input-area">
+      <input type="text" placeholder="输入消息，或 @知识库 引用文档..." id="chatInput">
+      <button class="send-btn" onclick="sendChatMsg()">↑</button>
+    </div>
+  </div>
+</div>
+<!-- Chat toggle button (visible when collapsed) -->
+<button class="chat-toggle" id="chatToggle" onclick="toggleChat()" title="打开 AI 对话">💬</button>
+
+</div>
+
+<!-- ═══════════════════════════════════════════
+   4. DEMAND FLOW (需求处理流)
+   ═══════════════════════════════════════════ -->
+<div id="page-demands" class="page">
+<div class="demand-layout">
+  <div class="demand-left">
+    <h3>新建需求</h3>
+    <textarea id="demandInput" placeholder="输入需求描述...&#10;&#10;例如：Q3 改版需要加一个数据导出功能，支持 Excel 和 CSV 格式"></textarea>
+
+    <!-- AI assist mode -->
+    <div class="assist-mode" id="assistMode">
+      <button class="active" onclick="setAssistMode('draft', this)">草稿模式</button>
+      <button onclick="setAssistMode('suggest', this)">建议模式</button>
+      <button onclick="setAssistMode('light', this)">轻量辅助</button>
+    </div>
+
+    <button class="submit-btn" onclick="simulateDemand()">
+      <span id="submitLabel">✨ AI 辅助分析</span>
+    </button>
+
+    <div class="demand-list">
+      <div style="font-size:0.73rem;font-weight:600;color:var(--text-muted);margin-bottom:6px">待处理需求</div>
+      <div class="demand-item"><span>新增数据导出功能</span><span class="badge badge-amber">待评审</span></div>
+      <div class="demand-item"><span>优化移动端适配</span><span class="badge badge-amber">待评审</span></div>
+      <div class="demand-item"><span>用户权限粒度细化</span><span class="badge" style="background:var(--bg-raised);color:var(--text-muted)">已转化</span></div>
+    </div>
+  </div>
+
+  <div class="demand-result" id="demandResult">
+    <div class="empty-state">
+      <div class="empty-icon">📝</div>
+      <div style="font-size:0.84rem">输入需求后，可选择 AI 辅助模式进行分析<br><span style="font-size:0.76rem;color:var(--text-muted)">你也可以直接创建为任务，不使用 AI 辅助</span></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- Demand result template (hidden) -->
+<div id="demandResultTemplate" style="display:none">
+  <div style="font-size:0.74rem;font-weight:600;color:var(--blue-600);margin-bottom:8px">AI 分析中 · 草稿模式（生成完整草案）</div>
+  <div style="background:var(--bg-raised);border-radius:var(--radius);padding:10px 14px;margin-bottom:12px;font-size:0.8rem">
+    <div style="color:var(--green-600);margin-bottom:2px">✓ 识别需求类型：功能增强（数据导出）</div>
+    <div style="color:var(--green-600);margin-bottom:2px">✓ 检索知识库：找到相关 PRD 和接口文档</div>
+    <div style="color:var(--green-600);margin-bottom:2px">✓ 评估工作量：参考历史类似功能 3-5 人天</div>
+    <div>● 生成 PRD 草案中...</div>
+  </div>
+  <div style="border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;font-size:0.84rem;line-height:1.8">
+    <strong>PRD 草案：数据导出功能</strong><br><br>
+    <strong>用户故事：</strong><br>
+    • 作为运营人员，我希望将报表数据导出为 Excel/CSV，以便离线分析<br>
+    • 作为管理员，我希望设置导出权限，控制敏感数据外泄<br><br>
+    <strong>验收标准：</strong><br>
+    • 支持 Excel (.xlsx) 和 CSV 两种格式<br>
+    • 单次导出上限 10 万行<br>
+    • 导出操作记录到审计日志<br><br>
+    <strong>预估工作量：</strong>5 人天（前端 2 + 后端 3）<br>
+    <strong>优先级建议：</strong>高（影响运营团队日常效率）<br>
+    <strong>建议分配：</strong>王五可接（负载 85%），建议 Sprint 6 排入
+  </div>
+  <div style="display:flex;gap:8px;margin-top:12px">
+    <button class="btn btn-primary btn-sm" onclick="confirmDemand()">✓ 确认并转化为任务</button>
+    <button class="btn btn-ghost btn-sm">✎ 调整后确认</button>
+    <button class="btn btn-ghost btn-sm" style="color:var(--red-500)">✕ 暂缓</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+   5. SETTINGS
+   ═══════════════════════════════════════════ -->
+<div id="page-settings" class="page">
+<div class="settings-tabs">
+  <button class="settings-tab active" onclick="switchSettings('models', this)">模型配置</button>
+  <button class="settings-tab" onclick="switchSettings('agents', this)">Agent 配置</button>
+  <button class="settings-tab" onclick="switchSettings('wecom', this)">企业微信</button>
+  <button class="settings-tab" onclick="switchSettings('profile', this)">个人信息</button>
+</div>
+
+<div class="settings-panel active" id="panel-models">
+  <div class="settings-card"><h3>DeepSeek V3</h3><div class="desc">API：http://10.0.0.100:8000/v1 · <span style="color:var(--green-600)">● 正常</span> · 今日调用 847 次</div></div>
+  <div class="settings-card"><h3>Qwen 2.5 72B</h3><div class="desc">API：http://10.0.0.101:8000/v1 · <span style="color:var(--green-600)">● 正常</span> · 今日调用 312 次</div></div>
+</div>
+<div class="settings-panel" id="panel-agents">
+  <div class="settings-card"><h3>需求分析师</h3><div class="desc">模型：DeepSeek V3 · 状态：已启用 · 默认模式：草稿</div></div>
+  <div class="settings-card"><h3>设计师</h3><div class="desc">模型：Qwen 2.5 72B · 状态：已启用 · 默认模式：草稿</div></div>
+  <div class="settings-card"><h3>开发工程师</h3><div class="desc">模型：DeepSeek V3 · 状态：已启用 · 默认模式：草稿</div></div>
+  <div class="settings-card"><h3>项目经理</h3><div class="desc">模型：DeepSeek V3 · 状态：已启用 · 简报时间：每日 8:00</div></div>
+</div>
+<div class="settings-panel" id="panel-wecom">
+  <div class="settings-card"><h3>企业微信对接</h3><div class="desc">Corp ID：ww***abc · 消息推送：已启用 · 通知范围：任务通知 + AI 简报 + 风险信号</div></div>
+</div>
+<div class="settings-panel" id="panel-profile">
+  <div class="settings-card"><h3>个人信息</h3><div class="desc">姓名：张明 · 角色：项目经理 · 部门：产品研发部 · 邮箱：zhangming@example.com</div></div>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+   DRAWER: AI Chat
+   ═══════════════════════════════════════════ -->
+<div class="overlay" id="overlay" onclick="closeDrawer()"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <h3>AI 对话</h3>
+    <div style="display:flex;gap:6px;align-items:center">
+      <select id="chatAgent" style="font-size:0.74rem;padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--bg-surface)">
+        <option>需求分析师</option><option>设计师</option><option>开发工程师</option><option>项目经理</option><option>通用助手</option>
+      </select>
+      <button class="drawer-close" onclick="closeDrawer()">✕</button>
+    </div>
+  </div>
+  <div class="drawer-body">
+    <!-- Command suggestion chips -->
+    <div class="chat-cmds" id="chatCmds">
+      <button class="chat-cmd" onclick="runChatCommand('create')"><span class="cmd-slash">/</span> 创建任务</button>
+      <button class="chat-cmd" onclick="runChatCommand('status')"><span class="cmd-slash">/</span> 查询进度</button>
+      <button class="chat-cmd" onclick="runChatCommand('find')"><span class="cmd-slash">/</span> 查找文档</button>
+      <button class="chat-cmd" onclick="runChatCommand('report')"><span class="cmd-slash">/</span> 生成周报</button>
+      <button class="chat-cmd" onclick="runChatCommand('risk')"><span class="cmd-slash">/</span> 风险分析</button>
+    </div>
+    <div class="chat-msgs" id="chatMsgs">
+      <div class="chat-msg ai">
+        <div class="msg-label">需求分析师 · 遵循 OpenSpec: 标准软件开发</div>
+        你好张明。我已加载项目 <strong>OpenSpec 规范</strong>（PR 需含测试+截图 · React 18+TS strict · 延期>3天自动升级 等 6 条）。你可以通过下方的快捷指令让我帮你<strong>管理任务</strong>、<strong>查询进度</strong>或<strong>查找文档</strong>。也可以直接向我提问。
+      </div>
+      <div class="chat-msg user">
+        <div class="msg-label">你</div>
+        数据导出功能的安全方面需要注意什么？
+      </div>
+      <div class="chat-msg ai">
+        <div class="msg-label">需求分析师</div>
+        根据知识库中的《数据安全规范 v2.3》和项目规范：<br><br>
+        1. <strong>权限控制</strong>：接入现有 RBAC 矩阵，按角色限制导出范围<br>
+        2. <strong>审计日志</strong>：记录操作人、时间、导出范围<br>
+        3. <strong>数据脱敏</strong>：手机号、身份证等字段需脱敏处理<br>
+        4. <strong>频率限制</strong>：单用户每小时最多导出 5 次
+      </div>
+    </div>
+  </div>
+  <div class="chat-input-area">
+    <input type="text" placeholder="输入消息，或 @知识库 引用文档...">
+    <button class="send-btn">↑</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+   TASK SLIDE PANEL — Create / Edit / Delete
+   ═══════════════════════════════════════════ -->
+<div class="slide-overlay" id="slideOverlay" onclick="closeTaskPanel()"></div>
+<div class="slide-panel" id="taskPanel">
+  <div class="slide-head">
+    <h3 id="taskPanelTitle">新建任务</h3>
+    <button class="slide-close" onclick="closeTaskPanel()">✕</button>
+  </div>
+  <div class="slide-body">
+    <div id="taskPanelContent">
+      <input type="hidden" id="taskEditCardId">
+      <div class="form-group">
+        <label>任务名称</label>
+        <input type="text" id="taskTitle" placeholder="输入任务名称...">
+      </div>
+      <div class="form-group">
+        <label>描述</label>
+        <textarea id="taskDesc" rows="3" placeholder="任务描述..."></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>类型</label>
+          <select id="taskType"><option>Story</option><option>Task</option><option>Bug</option></select>
+        </div>
+        <div class="form-group">
+          <label>优先级</label>
+          <select id="taskPriority"><option>高优</option><option selected>中优</option><option>低优</option></select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>里程碑</label>
+          <select id="taskMilestone"><option>M1·需求与设计</option><option selected>M2·核心开发</option><option>M3·UI Review</option><option>M4·测试与修复</option></select>
+        </div>
+        <div class="form-group">
+          <label>负责人</label>
+          <select id="taskAssignee"><option>— 未分配 —</option><option>张三</option><option>李四</option><option>王五</option><option>王芳</option></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>指派给 AI Agent（可选）</label>
+        <select id="taskAgent"><option>— 不指派 —</option><option>需求分析师</option><option>设计师</option><option>开发工程师</option><option>项目经理</option></select>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost btn-sm" onclick="closeTaskPanel()">取消</button>
+        <button class="btn btn-primary btn-sm" id="taskSaveBtn" onclick="saveTask()">创建任务</button>
+      </div>
+      <div class="delete-section" id="taskDeleteSection" style="display:none">
+        <div style="font-size:0.73rem;font-weight:600;color:var(--text-muted)">危险操作</div>
+        <button class="btn btn-ghost btn-sm" onclick="showDeleteConfirm()" style="color:var(--red-600);width:100%;margin-top:6px;justify-content:center">🗑 删除任务</button>
+        <div class="delete-confirm" id="deleteConfirm" style="display:none">
+          <div id="deleteConfirmText">确定要删除此任务吗？此操作不可撤销。</div>
+          <div style="display:flex;gap:6px;margin-top:8px">
+            <button class="btn btn-ghost btn-xs" onclick="hideDeleteConfirm()">取消</button>
+            <button class="btn btn-danger btn-xs" id="deleteConfirmBtn" onclick="confirmDeleteTask()" style="background:var(--red-600);color:#fff">确认删除</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════════════════════════════════════
+   OPENSPEC CONFIG PANEL
+   ═══════════════════════════════════════════ -->
+<div class="slide-overlay" id="ospecOverlay" onclick="closeOspecPanel()"></div>
+<div class="slide-panel" id="ospecPanel">
+  <div class="slide-head">
+    <h3 id="ospecPanelTitle">⚡ 快速配置 OpenSpec</h3>
+    <button class="slide-close" onclick="closeOspecPanel()">✕</button>
+  </div>
+  <div class="slide-body">
+    <div style="background:var(--blue-50);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:0.74rem;color:var(--blue-700);line-height:1.6">
+      💡 <strong>不会写 OpenSpec？没关系。</strong>你只需要告诉 AI 你们团队的做事习惯，AI 会自动遵守这些规则。切换下方的开关来调整配置，修改会实时生效。
+    </div>
+
+    <div style="font-size:0.72rem;font-weight:600;color:var(--text-muted);margin-bottom:8px">📐 代码规范</div>
+    <div class="ospec-field">
+      <div class="osf-head">
+        <span class="osf-label">PR 需要包含测试代码</span>
+        <label class="osf-toggle"><input type="checkbox" checked onchange="updateOspecLabel()"><span class="osf-track"></span><span class="osf-knob"></span></label>
+      </div>
+      <div class="osf-desc">开启后，AI Review 会自动检查 PR 是否包含测试</div>
+    </div>
+    <div class="ospec-field">
+      <div class="osf-head">
+        <span class="osf-label">TypeScript strict 模式</span>
+        <label class="osf-toggle"><input type="checkbox" checked onchange="updateOspecLabel()"><span class="osf-track"></span><span class="osf-knob"></span></label>
+      </div>
+      <div class="osf-desc">AI 生成的代码将默认使用 strict 模式，禁止 any 类型</div>
+    </div>
+
+    <div style="font-size:0.72rem;font-weight:600;color:var(--text-muted);margin:14px 0 8px">🔄 工作流程</div>
+    <div class="ospec-field">
+      <div class="osf-head">
+        <span class="osf-label">Review 时限（小时）</span>
+        <select style="font-size:0.76rem;padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius-sm)" onchange="updateOspecLabel()">
+          <option>24</option><option selected>48</option><option>72</option>
+        </select>
+      </div>
+      <div class="osf-desc">超过此时限，AI 自动提醒 Reviewer 处理</div>
+    </div>
+    <div class="ospec-field">
+      <div class="osf-head">
+        <span class="osf-label">延期升级阈值（天）</span>
+        <select style="font-size:0.76rem;padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius-sm)" onchange="updateOspecLabel()">
+          <option>1</option><option>2</option><option selected>3</option><option>5</option><option>7</option>
+        </select>
+      </div>
+      <div class="osf-desc">任务延期超过此天数后，AI 自动标记为高风险并通知 PM</div>
+    </div>
+
+    <div style="font-size:0.72rem;font-weight:600;color:var(--text-muted);margin:14px 0 8px">📝 文档规范</div>
+    <div class="ospec-field">
+      <div class="osf-head">
+        <span class="osf-label">PRD 使用标准模板</span>
+        <label class="osf-toggle"><input type="checkbox" checked onchange="updateOspecLabel()"><span class="osf-track"></span><span class="osf-knob"></span></label>
+      </div>
+      <div class="osf-desc">开启后，AI 生成的 PRD 会自动包含用户故事、验收标准、影响范围</div>
+    </div>
+    <div class="ospec-field">
+      <div class="osf-head">
+        <span class="osf-label">周报格式</span>
+        <select style="font-size:0.76rem;padding:3px 6px;border:1px solid var(--border);border-radius:var(--radius-sm)" onchange="updateOspecLabel()">
+          <option selected>标准格式（完成/计划/风险）</option>
+          <option>简洁格式（仅要点）</option>
+          <option>按里程碑分组</option>
+        </select>
+      </div>
+      <div class="osf-desc">AI 生成周报时使用的格式</div>
+    </div>
+
+    <div style="font-size:0.72rem;font-weight:600;color:var(--text-muted);margin:14px 0 8px">🚨 风险预警</div>
+    <div class="ospec-field">
+      <div class="osf-head">
+        <span class="osf-label">负责人 3 天未更新任务 → 自动提醒</span>
+        <label class="osf-toggle"><input type="checkbox" checked onchange="updateOspecLabel()"><span class="osf-track"></span><span class="osf-knob"></span></label>
+      </div>
+      <div class="osf-desc">AI 每日扫描时检查任务活跃度</div>
+    </div>
+    <div class="ospec-field">
+      <div class="osf-head">
+        <span class="osf-label">团队负载 > 100% 自动预警</span>
+        <label class="osf-toggle"><input type="checkbox" checked onchange="updateOspecLabel()"><span class="osf-track"></span><span class="osf-knob"></span></label>
+      </div>
+      <div class="osf-desc">当成员任务数超过阈值时，AI 建议暂缓新任务分配</div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closeOspecPanel()">取消</button>
+      <button class="btn btn-primary btn-sm" onclick="saveOspecConfig()">保存配置</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+   OPENSPEC PRESET PANEL
+   ═══════════════════════════════════════════ -->
+<div class="slide-overlay" id="presetOverlay" onclick="closePresetPanel()"></div>
+<div class="slide-panel" id="presetPanel">
+  <div class="slide-head">
+    <h3>📋 选择 OpenSpec 模板</h3>
+    <button class="slide-close" onclick="closePresetPanel()">✕</button>
+  </div>
+  <div class="slide-body">
+    <div style="background:var(--amber-50);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:0.74rem;color:var(--amber-700);line-height:1.6">
+      ⚠️ 切换模板会覆盖当前配置。如果已做自定义修改，建议先截图保存。
+    </div>
+
+    <div class="ospec-preset selected" onclick="selectPreset(this, 'software')">
+      <div class="osp-name">💻 标准软件开发</div>
+      <div class="osp-desc">适用于大多数软件开发项目，包含代码规范、PR 流程、测试标准</div>
+      <div class="osp-rules"><span>PR 含测试</span><span>TS strict</span><span>48h Review</span><span>延期3天升级</span><span>标准PRD模板</span></div>
+    </div>
+    <div class="ospec-preset" onclick="selectPreset(this, 'ops')">
+      <div class="osp-name">📋 事务 / 运营类</div>
+      <div class="osp-desc">适用于活动策划、审批流程、客户运营等项目类型</div>
+      <div class="osp-rules"><span>审批流程</span><span>截止前24h提醒</span><span>周报简洁格式</span><span>活动复盘模板</span></div>
+    </div>
+    <div class="ospec-preset" onclick="selectPreset(this, 'minimal')">
+      <div class="osp-name">🔰 最小配置</div>
+      <div class="osp-desc">只保留最基础的规范，适合刚开始使用 OpenSpec 的团队</div>
+      <div class="osp-rules"><span>仅 PR 规范</span><span>延期提醒</span></div>
+    </div>
+    <div class="ospec-preset" onclick="selectPreset(this, 'blank')">
+      <div class="osp-name">📄 空白模板</div>
+      <div class="osp-desc">从零开始，完全自定义你的项目规范</div>
+      <div class="osp-rules"><span>无预设规则</span></div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-ghost btn-sm" onclick="closePresetPanel()">取消</button>
+      <button class="btn btn-primary btn-sm" onclick="applyPreset()">应用此模板</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+   FULLSCREEN — Presentation Mode
+   ═══════════════════════════════════════════ -->
+<div class="fs-overlay" id="fsOverlay">
+  <button class="fs-close" onclick="toggleFullscreen()">✕ 退出投屏</button>
+  <div style="text-align:center;padding-top:60px">
+    <div style="font-size:1.8rem;font-weight:700">Q3 大版本改版 — 站会投屏</div>
+    <div style="font-size:0.9rem;color:rgba(255,255,255,0.4);margin:6px 0 30px">2026-05-06 ｜ Sprint 5 ｜ 健康度 67%</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:20px;max-width:900px;margin:0 auto">
+      <div style="background:rgba(255,255,255,0.06);border-radius:var(--radius-lg);padding:24px"><div style="font-size:0.78rem;opacity:0.5">任务完成</div><div style="font-size:2.2rem;font-weight:700;margin:8px 0">24/36</div><div style="font-size:0.76rem;opacity:0.4">↑ 本周 +4</div></div>
+      <div style="background:rgba(255,255,255,0.06);border-radius:var(--radius-lg);padding:24px"><div style="font-size:0.78rem;opacity:0.5">团队负载</div><div style="font-size:2.2rem;font-weight:700;margin:8px 0">78%</div><div style="font-size:0.76rem;color:#fbbf24">李四 120%</div></div>
+      <div style="background:rgba(255,255,255,0.06);border-radius:var(--radius-lg);padding:24px"><div style="font-size:0.78rem;opacity:0.5">风险信号</div><div style="font-size:2.2rem;font-weight:700;margin:8px 0;color:#fbbf24">1</div><div style="font-size:0.76rem;opacity:0.4">前端延期</div></div>
+      <div style="background:rgba(255,255,255,0.06);border-radius:var(--radius-lg);padding:24px"><div style="font-size:0.78rem;opacity:0.5">AI 活跃</div><div style="font-size:2.2rem;font-weight:700;margin:8px 0;color:#60a5fa">3</div><div style="font-size:0.76rem;opacity:0.4">Agent 执行中</div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ═══════════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════════ */
+let currentPage = 'focus';
+
+function navigateTo(page) {
+  currentPage = page;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  const target = document.getElementById('page-' + page);
+  if (target) target.classList.add('active');
+
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.page === page);
+  });
+
+  const isLogin = page === 'login';
+  document.getElementById('signalBar').style.display = isLogin ? 'none' : 'flex';
+  document.getElementById('mainNav').style.display = isLogin ? 'none' : 'flex';
+  closeDrawer();
+}
+
+function login() { navigateTo('focus'); }
+
+/* ═══════════════════════════════════════════
+   LOGIN TABS
+   ═══════════════════════════════════════════ */
+function switchLoginTab(idx) {
+  document.querySelectorAll('.login-tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+  document.querySelectorAll('.login-form').forEach((f, i) => f.classList.toggle('active', i === idx));
+}
+
+/* ═══════════════════════════════════════════
+   SIGNAL BAR
+   ═══════════════════════════════════════════ */
+function dismissSignal(el) {
+  el.closest('.signal-item').remove();
+}
+
+/* ═══════════════════════════════════════════
+   BRIEFING TOGGLE
+   ═══════════════════════════════════════════ */
+function toggleBriefing() {
+  document.getElementById('briefingBox').classList.toggle('collapsed');
+  const head = document.querySelector('#briefingBox .briefing-head span:last-child');
+  const collapsed = document.getElementById('briefingBox').classList.contains('collapsed');
+  if (head) head.textContent = collapsed ? '展开 ▸' : '展开 ▾';
+}
+
+/* ═══════════════════════════════════════════
+   SIDEBAR AI SUMMARY TOGGLE
+   ═══════════════════════════════════════════ */
+function toggleSidebarAi() {
+  const el = document.getElementById('sidebarAi');
+  el.classList.toggle('expanded');
+  const toggle = document.getElementById('saiToggle');
+  toggle.textContent = el.classList.contains('expanded') ? '收起 ▾' : '展开 ▸';
+}
+
+function toggleSidebarOspec() {
+  const el = document.getElementById('sidebarOspec');
+  el.classList.toggle('expanded');
+  const toggle = document.getElementById('sosToggle');
+  toggle.textContent = el.classList.contains('expanded') ? '收起 ▾' : '展开 ▸';
+}
+
+function showOspecFiles() {
+  const el = document.getElementById('ospecSubfolders');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function scrollToOpenSpec() {
+  const el = document.getElementById('ospecFolder');
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/* ═══════════════════════════════════════════
+   OPENSPEC CONFIG PANEL
+   ═══════════════════════════════════════════ */
+function openOspecConfig() {
+  document.getElementById('ospecOverlay').classList.add('open');
+  document.getElementById('ospecPanel').classList.add('open');
+}
+function closeOspecPanel() {
+  document.getElementById('ospecOverlay').classList.remove('open');
+  document.getElementById('ospecPanel').classList.remove('open');
+}
+function saveOspecConfig() {
+  closeOspecPanel();
+  showToast('✅ OpenSpec 配置已保存，AI 将立即遵循新规范');
+}
+
+/* ═══════════════════════════════════════════
+   OPENSPEC PRESET PANEL
+   ═══════════════════════════════════════════ */
+let selectedPreset = 'software';
+function openOspecPreset() {
+  document.getElementById('presetOverlay').classList.add('open');
+  document.getElementById('presetPanel').classList.add('open');
+}
+function closePresetPanel() {
+  document.getElementById('presetOverlay').classList.remove('open');
+  document.getElementById('presetPanel').classList.remove('open');
+}
+function selectPreset(el, type) {
+  document.querySelectorAll('#presetPanel .ospec-preset').forEach(p => p.classList.remove('selected'));
+  el.classList.add('selected');
+  selectedPreset = type;
+}
+function applyPreset() {
+  closePresetPanel();
+  const names = { software: '标准软件开发', ops: '事务/运营类', minimal: '最小配置', blank: '空白模板' };
+  showToast('✅ 已切换到「' + names[selectedPreset] + '」模板，项目规范已更新');
+  // Update the header badge
+  const badge = document.querySelector('.ospec-badge');
+  if (badge) badge.innerHTML = '📋 OpenSpec: ' + names[selectedPreset];
+}
+
+/* ═══════════════════════════════════════════
+   TOAST HELPER
+   ═══════════════════════════════════════════ */
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+/* ═══════════════════════════════════════════
+   DRAWER
+   ═══════════════════════════════════════════ */
+function openDrawer() {
+  document.getElementById('overlay').classList.add('open');
+  document.getElementById('drawer').classList.add('open');
+}
+
+function closeDrawer() {
+  document.getElementById('overlay').classList.remove('open');
+  document.getElementById('drawer').classList.remove('open');
+}
+
+/* ═══════════════════════════════════════════
+   KANBAN BATCH SELECTION
+   ═══════════════════════════════════════════ */
+let selectedCards = new Set();
+
+function toggleCardSelect(card, event) {
+  event.stopPropagation();
+  card.classList.toggle('selected');
+  const title = card.querySelector('.card-title').textContent;
+  if (card.classList.contains('selected')) {
+    selectedCards.add(title);
+  } else {
+    selectedCards.delete(title);
+  }
+  updateBatchBar();
+}
+
+function updateBatchBar() {
+  const bar = document.getElementById('batchBar');
+  const count = document.getElementById('batchCount');
+  if (selectedCards.size > 0) {
+    bar.classList.add('visible');
+    count.textContent = '已选 ' + selectedCards.size + ' 项';
+  } else {
+    bar.classList.remove('visible');
+  }
+}
+
+function clearBatch() {
+  selectedCards.clear();
+  document.querySelectorAll('.kanban-card.selected').forEach(c => c.classList.remove('selected'));
+  updateBatchBar();
+}
+
+function batchAction(type) {
+  const actions = { status: '修改状态', assign: '修改分配', priority: '修改优先级' };
+  alert('批量操作：' + actions[type] + '\n\n已选任务：\n' + [...selectedCards].map(t => '• ' + t).join('\n'));
+  clearBatch();
+}
+
+/* ═══════════════════════════════════════════
+   WORKSPACE TAB SWITCHING
+   ═══════════════════════════════════════════ */
+function switchWsTab(panelName, btn) {
+  document.querySelectorAll('#wsTabs .ws-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#page-pulse .ws-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('ws-panel-' + panelName).classList.add('active');
+}
+
+function switchTaskView(viewName, btn) {
+  document.querySelectorAll('#viewSwitcher .view-switch').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('#ws-panel-tasks .task-view').forEach(v => v.style.display = 'none');
+  document.getElementById('view-' + viewName).style.display = 'block';
+  // Update batch bar visibility based on current view
+  if (viewName !== 'kanban') clearBatch();
+}
+
+function toggleListSelect(row) {
+  row.classList.toggle('selected');
+  const title = row.querySelector('.task-title').childNodes[0].textContent.trim();
+  if (row.classList.contains('selected')) {
+    selectedCards.add(title);
+  } else {
+    selectedCards.delete(title);
+  }
+  updateBatchBar();
+}
+
+/* ═══════════════════════════════════════════
+   DEMAND FLOW
+   ═══════════════════════════════════════════ */
+let assistMode = 'draft';
+
+function setAssistMode(mode, btn) {
+  assistMode = mode;
+  document.querySelectorAll('#assistMode button').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  const labels = { draft: '✨ AI 辅助分析（草稿模式）', suggest: '💡 AI 提供建议', light: '🔍 AI 轻量辅助' };
+  document.getElementById('submitLabel').textContent = labels[mode];
+}
+
+function simulateDemand() {
+  const input = document.getElementById('demandInput');
+  if (!input.value.trim()) return;
+
+  const result = document.getElementById('demandResult');
+  result.innerHTML = '<div style="text-align:center;padding:40px;color:var(--blue-600)"><div style="animation:pulse 1s infinite;font-size:1.3rem;margin-bottom:6px">⏳</div>AI 正在分析（' + ({draft:'草稿模式',suggest:'建议模式',light:'轻量辅助'})[assistMode] + '）...</div>';
+
+  setTimeout(() => {
+    result.innerHTML = document.getElementById('demandResultTemplate').innerHTML;
+  }, 1800);
+}
+
+function confirmDemand() {
+  alert('✓ 需求已转化为任务\n\n• 创建 3 个子任务（前端导出组件 / 后端导出接口 / 审计日志记录）\n• 建议分配给王五和开发工程师 Agent\n• 已加入 Sprint 6 待办队列');
+}
+
+/* ═══════════════════════════════════════════
+   SETTINGS TABS
+   ═══════════════════════════════════════════ */
+function switchSettings(name, btn) {
+  document.querySelectorAll('.settings-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.settings-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + name).classList.add('active');
+}
+
+/* ═══════════════════════════════════════════
+   FULLSCREEN
+   ═══════════════════════════════════════════ */
+function toggleFullscreen() {
+  document.getElementById('fsOverlay').classList.toggle('open');
+}
+
+/* ═══════════════════════════════════════════
+   MILESTONE SELECTION
+   ═══════════════════════════════════════════ */
+function selectMilestone(msItem, milestoneId) {
+  // Update active state on sidebar milestone items
+  document.querySelectorAll('#msList .sidebar-ms').forEach(c => c.classList.remove('active'));
+  msItem.classList.add('active');
+
+  // Filter kanban cards by milestone
+  const cards = document.querySelectorAll('#view-kanban .kanban-card');
+  cards.forEach(card => {
+    if (milestoneId === 'all') {
+      card.style.display = '';
+      return;
+    }
+    const tag = card.querySelector('.ms-tag');
+    if (tag) {
+      const tagText = tag.textContent.trim().toUpperCase();
+      card.style.display = tagText === milestoneId.toUpperCase() ? '' : 'none';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+
+  // Filter list rows by milestone
+  const rows = document.querySelectorAll('#view-list .list-row');
+  rows.forEach(row => {
+    if (milestoneId === 'all') {
+      row.style.display = '';
+      return;
+    }
+    const tag = row.querySelector('.ms-tag');
+    if (tag) {
+      const tagText = tag.textContent.trim().toUpperCase();
+      row.style.display = tagText === milestoneId.toUpperCase() ? '' : 'grid';
+    } else {
+      row.style.display = 'none';
+    }
+  });
+
+  // Update kanban column counts
+  updateKanbanCounts(milestoneId);
+}
+
+function updateKanbanCounts(milestoneId) {
+  const cols = document.querySelectorAll('#view-kanban .kanban-col');
+  cols.forEach(col => {
+    const cards = col.querySelectorAll('.kanban-card');
+    let visible = 0;
+    cards.forEach(c => { if (c.style.display !== 'none') visible++; });
+    const badge = col.querySelector('.col-head .badge');
+    if (badge) badge.textContent = visible;
+  });
+}
+
+/* ═══════════════════════════════════════════
+   AI CHAT — Command Chips
+   ═══════════════════════════════════════════ */
+function runChatCommand(cmd) {
+  const msgs = document.getElementById('chatMsgs');
+  const agent = document.getElementById('chatAgent').value;
+
+  const commands = {
+    create: { user: '帮我创建一个任务：优化报表加载性能，高优先级，分配给王五', ai: '已创建任务「<strong>优化报表加载性能</strong>」<br><br>📋 详情：Story · 高优先级 · 指派给王五<br>📎 关联里程碑：M2 · 核心开发<br>🔗 位置：Q3 改版 → 待办列<br><br>任务已就绪，王五将在下次登录时收到通知。' },
+    status: { user: 'Q3 改版当前整体进度如何？', ai: '<strong>Q3 改版 · Sprint 5 进度总览</strong><br><br>📊 整体完成：<strong>24/36</strong>（67%）<br>📅 剩余 14 天<br><br>▸ M1 需求与设计：<span style="color:var(--green-600)">✓ 100%</span><br>▸ M2 核心开发：<span style="color:var(--blue-600)">◎ 60%</span>（10/18）<br>▸ M3 UI Review：<span style="color:var(--amber-600)">⚠ 40%</span>（前端延期）<br>▸ M4 测试与修复：<span style="color:var(--text-muted)">○ 0%</span><br><br>风险项：前端首页重构延期 3 天，阻塞 UI Review。建议今日确认排期。' },
+    find: { user: '查找数据安全相关的文档', ai: '在知识库中检索「数据安全」...<br><br>📄 <strong>找到 3 篇相关文档：</strong><br><br>1. 📄 <strong>数据安全规范 v2.3</strong>（PRD 目录 · 4/28 更新）<br>2. 📊 <strong>数据导出功能需求分析</strong>（AI 草稿 · 5/5）<br>3. 📋 <strong>API 安全设计规范</strong>（技术方案目录 · 4/20）<br><br>需要我提取某篇文档的要点吗？' },
+    report: { user: '生成本周周报', ai: '正在生成本周周报草案（5/1 – 5/6）...<br><br><strong>本周周报草案：</strong><br><br>📋 <strong>本周完成：</strong><br>• 用户登录优化（王五）<br>• 消息推送模块（张三）<br>• 3 个后端 PR 已由 AI Agent 完成<br><br>⚠ <strong>风险与阻塞：</strong><br>• 前端首页重构延期 3 天（李四）<br>• 李四负载 120%，影响 M3 里程碑<br><br>📅 <strong>下周计划：</strong><br>• UI Review 里程碑推进<br>• 数据导出功能设计评审<br><br>周报草稿已生成。你可以直接发送或微调后发出。' },
+    risk: { user: '扫描当前项目风险', ai: '🔍 已完成全项目风险扫描...<br><br><strong>风险报告（共 3 项）：</strong><br><br>🔴 <strong>高风险：前端首页重构延期</strong><br>影响 M3 UI Review 里程碑（2 天后），阻塞 2 个下游任务<br>建议：协调李四负载或拆分任务<br><br>🟡 <strong>中风险：李四负载 120%</strong><br>12 个活跃任务，持续 3 天过载<br>建议：暂停新任务分配，或协调支援<br><br>🟡 <strong>中风险：运营中台状态停滞</strong><br>「用户模块重构」5 天无更新<br>建议：跟进负责人确认进展<br><br>需要我针对某项风险提出具体方案吗？' }
+  };
+
+  const c = commands[cmd];
+  if (!c) return;
+
+  // Add user message
+  const userMsg = document.createElement('div');
+  userMsg.className = 'chat-msg user';
+  userMsg.innerHTML = '<div class="msg-label">你</div>' + c.user;
+  msgs.appendChild(userMsg);
+
+  // Add AI typing indicator
+  const typing = document.createElement('div');
+  typing.className = 'chat-msg ai';
+  typing.id = 'typingMsg';
+  typing.innerHTML = '<div class="msg-label">' + agent + '</div>处理中...';
+  msgs.appendChild(typing);
+  msgs.scrollTop = msgs.scrollHeight;
+
+  // Simulate AI response after delay
+  setTimeout(() => {
+    typing.remove();
+    const aiMsg = document.createElement('div');
+    aiMsg.className = 'chat-msg ai';
+    aiMsg.innerHTML = '<div class="msg-label">' + agent + '</div>' + c.ai;
+    msgs.appendChild(aiMsg);
+    msgs.scrollTop = msgs.scrollHeight;
+  }, 1200);
+}
+
+/* ═══════════════════════════════════════════
+   KEYBOARD SHORTCUTS
+   ═══════════════════════════════════════════ */
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    if (document.getElementById('fsOverlay').classList.contains('open')) {
+      toggleFullscreen();
+    } else if (document.getElementById('ospecPanel').classList.contains('open')) {
+      closeOspecPanel();
+    } else if (document.getElementById('presetPanel').classList.contains('open')) {
+      closePresetPanel();
+    } else if (document.getElementById('taskPanel').classList.contains('open')) {
+      closeTaskPanel();
+    } else {
+      closeDrawer();
+      clearBatch();
+    }
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+    e.preventDefault();
+    openDrawer();
+  }
+});
+</script>
+
+</body>
+</html>
