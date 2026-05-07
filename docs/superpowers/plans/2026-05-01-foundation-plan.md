@@ -500,52 +500,62 @@ async def logout(user: User = Depends(get_current_user)):
 
 ---
 
-### Task 1.3: LDAP 认证集成
+### Task 1.3: AuthProvider 认证抽象接口
+
+> **关键技术决策（IMPLEMENTATION_ROADMAP.md §7）：** 认证层使用 `AuthProvider` 接口抽象。企微 OAuth 为首个实现，密码登录为内置实现。LDAP 延后至 V1.2。后续可扩展飞书/钉钉 OAuth 而不影响业务逻辑。
 
 **Files:**
 - Create: `server/app/integrations/__init__.py`
-- Create: `server/app/integrations/ldap.py`
+- Create: `server/app/integrations/auth_provider.py` — AuthProvider 抽象接口
+- Create: `server/app/integrations/wecom_auth.py` — 企微 OAuth 实现
 
 ```python
-# server/app/integrations/ldap.py
-import ldap3  # 需要添加到 pyproject.toml 依赖
-from app.config import settings
-from app.models.user import User
+# server/app/integrations/auth_provider.py
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
-async def ldap_authenticate(username: str, password: str) -> dict | None:
-    """LDAP 认证，成功返回用户属性，失败返回 None"""
-    if not settings.ldap_enabled:
-        return None
-    server = ldap3.Server(settings.ldap_url)
-    user_dn = f"uid={username},{settings.ldap_base_dn}"
-    conn = ldap3.Connection(server, user_dn, password)
-    try:
-        if conn.bind():
-            conn.search(settings.ldap_base_dn, f"(uid={username})",
-                        attributes=["cn", "mail", "departmentNumber"])
-            entry = conn.entries[0] if conn.entries else None
-            conn.unbind()
-            if entry:
-                return {
-                    "display_name": str(entry.cn),
-                    "email": str(entry.mail) if entry.mail else None,
-                    "department": str(entry.departmentNumber) if entry.departmentNumber else None,
-                }
-        return None
-    except Exception:
+@dataclass
+class AuthResult:
+    """认证结果"""
+    username: str
+    display_name: str
+    email: str | None = None
+    department: str | None = None
+    source: str = "LOCAL"  # LOCAL / WECOM / LDAP / FEISHU
+
+class AuthProvider(ABC):
+    """认证提供者抽象接口。每个外部认证方式实现此接口。"""
+
+    @abstractmethod
+    async def authenticate(self, credentials: dict) -> AuthResult | None:
+        """认证用户。成功返回 AuthResult，失败返回 None。"""
+        ...
+
+    @abstractmethod
+    def provider_name(self) -> str:
+        """Provider 名称，如 "wecom" / "ldap" / "feishu" """
+        ...
+
+class LocalAuthProvider(AuthProvider):
+    """内置密码认证（不走外部 Provider，由 auth_service.login_local 直接处理）"""
+
+    def provider_name(self) -> str:
+        return "local"
+
+    async def authenticate(self, credentials: dict) -> AuthResult | None:
+        # 密码认证由 auth_service 直接处理，不经过此接口
         return None
 
-async def sync_ldap_user(db, username: str, ldap_attrs: dict) -> User:
-    """LDAP 用户自动创建或更新本地用户记录"""
-    ...
+# 后续扩展示例：
+# class FeishuAuthProvider(AuthProvider): ...
+# class LdapAuthProvider(AuthProvider): ...  # V1.2
 ```
 
----
-
-### Task 1.4: 企业微信 OAuth 集成
+### Task 1.4: 企业微信 OAuth 集成（AuthProvider 首个实现）
 
 **Files:**
 - Create: `server/app/integrations/wecom.py`
+- Extend: `server/app/integrations/wecom_auth.py` — AuthProvider 实现
 
 ```python
 # server/app/integrations/wecom.py
@@ -575,11 +585,36 @@ async def wecom_get_user_info(code: str) -> dict:
         return resp.json()
 ```
 
+```python
+# server/app/integrations/wecom_auth.py
+from app.integrations.auth_provider import AuthProvider, AuthResult
+
+class WecomAuthProvider(AuthProvider):
+    """企微 OAuth 认证实现（AuthProvider 接口的首个实现）。"""
+
+    def provider_name(self) -> str:
+        return "wecom"
+
+    async def authenticate(self, credentials: dict) -> AuthResult | None:
+        code = credentials.get("code")
+        if not code:
+            return None
+        user_info = await wecom_get_user_info(code)
+        if user_info.get("errcode") != 0:
+            return None
+        return AuthResult(
+            username=user_info["UserId"],
+            display_name=user_info.get("name", user_info["UserId"]),
+            email=user_info.get("email"),
+            source="WECOM",
+        )
+```
+
 ---
 
 ### Task 1.5: 登录页（前端）
 
-- [ ] 构建 3 个登录 Tab：密码登录 / LDAP 登录 / 企业微信扫码
+- [ ] 构建 2 个登录 Tab：密码登录 / 企业微信扫码（LDAP 延后至 V1.2）
 - [ ] 实现 Zustand authStore：token + currentUser + login/logout actions
 - [ ] 登录成功跳转工作台，401 跳转登录页
 
@@ -683,23 +718,57 @@ export function Can({ workspaceRole, systemRole, children, fallback = null }: Ca
 
 ## Phase 3: 工作空间 + 成员管理
 
-### Task 3.1: 工作空间 CRUD API
+### Task 3.1: 工作空间 CRUD API（含 OpenSpec 初始化）
+
+> **设计规范 §4.3.3：** 工作空间创建时自动初始化 OpenSpec（项目宪法）。从模板创建 → 使用模板自带的 OpenSpec；空白创建 → 自动初始化最小 OpenSpec（conventions.md + agents.md）。
 
 **Files:**
 - Create: `server/app/schemas/workspace.py`
 - Create: `server/app/services/workspace.py`
 - Create: `server/app/routers/workspaces.py`
+- Create: `server/app/services/openspec.py` — OpenSpec 初始化逻辑
 
 端点设计：
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| POST | `/api/workspaces` | 创建工作空间（自动设置创建者为 Owner） |
+| POST | `/api/workspaces` | 创建工作空间（自动设置创建者为 Owner + 初始化 OpenSpec） |
 | GET | `/api/workspaces` | 列表（data_scope 过滤，分页） |
 | GET | `/api/workspaces/{id}` | 详情 |
 | PATCH | `/api/workspaces/{id}` | 更新（需 Manager+） |
 | POST | `/api/workspaces/{id}/archive` | 归档（需 Owner） |
-| POST | `/api/workspaces/from-template` | 从模板创建 |
+| POST | `/api/workspaces/from-template` | 从模板创建（含模板 OpenSpec） |
+
+```python
+# server/app/services/openspec.py
+async def init_openspec(workspace_id: str, template: str = None, db: AsyncSession):
+    """工作空间创建时自动初始化 OpenSpec 目录结构（设计规范 §4.3.3）。
+
+    从模板创建 → 复制模板 OpenSpec
+    空白创建 → 生成最小 OpenSpec（conventions.md + agents.md）
+    """
+    if template:
+        openspec_files = await load_template_openspec(template)
+    else:
+        openspec_files = MINIMAL_OPENSPEC  # 仅 conventions.md + agents.md
+
+    for filename, content in openspec_files.items():
+        doc = Document(
+            workspace_id=workspace_id,
+            path=f".openspec/{filename}",
+            title=filename,
+            content=content,
+            type="OPENSPEC",
+        )
+        db.add(doc)
+    await db.commit()
+
+# 最小 OpenSpec 内容
+MINIMAL_OPENSPEC = {
+    "conventions.md": """# 项目规范\n\n## 代码规范\n- 语言/框架：待填写\n- 命名约定：待填写\n\n## 分支策略\n- 主分支：main\n- 功能分支：feature/<name>\n\n## 测试标准\n- 待填写\n""",
+    "agents.md": """# AI Agent 行为约束\n\n## 通用规则\n- 所有产出需经人类 Review 后才能生效\n- 不得绕过权限系统操作项目\n- 执行过程全程透明可见\n\n## 各 Agent 角色约束\n- 需求分析师：PRD 按 templates/prd.md 格式生成\n- 开发工程师：代码变更需标注变更理由\n- 项目经理：风险评估需引用具体数据\n""",
+}
+```
 
 ### Task 3.2: 工作空间成员管理 API
 
@@ -731,13 +800,15 @@ export function Can({ workspaceRole, systemRole, children, fallback = null }: Ca
 
 ### Task 3.5: 工作台（基础）+ 个人中心（基础）+ 全局布局
 
+> **依赖说明：** 工作台统计卡片和待办列表、个人中心 Review 队列等依赖任务数据。Foundation 阶段先以静态占位实现，Plan 2 完成后接入真实数据。
+
 **Files:**
 - Create: `apps/web/src/pages/dashboard/DashboardPage.tsx`
 - Create: `apps/web/src/pages/personal/PersonalCenterPage.tsx`
 - Create: `apps/web/src/components/Layout/AppLayout.tsx`
 
-- [ ] **工作台基础：** 4 个统计卡片（静态数值）+ 占位 Section（待决策清单/AI 日报/项目关注）
-- [ ] **个人中心基础：** 个人信息表单（查看/编辑）+ 待办/Review/消息 Tab 空状态
+- [ ] **工作台基础：** 4 个统计卡片（静态占位数值）+ 占位 Section（待决策清单/AI 日报/项目关注）→ Plan 2 接入真实数据
+- [ ] **个人中心基础：** 个人信息表单（查看/编辑）+ 待办/Review/消息 Tab 空状态 → Plan 2 接入待办和 Review 数据
 - [ ] **全局布局：** 侧边栏导航 + 顶栏面包屑 + 用户下拉菜单 + `<Can>` 控制菜单可见性
 
 ---
@@ -752,4 +823,4 @@ export function Can({ workspaceRole, systemRole, children, fallback = null }: Ca
 - [ ] 前端：未登录访问 /dashboard 自动跳转 /login
 - [ ] 前端：Member 用户看不到系统管理菜单
 
-**预计总工时：5 周（25 个工作日）**
+**预计总工时：6-7 周（30-35 个工作日）**

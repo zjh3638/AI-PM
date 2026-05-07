@@ -3,7 +3,7 @@
 > **Prerequisite:** Plan 2 任务系统完成（会议大屏需要任务数据），Plan 3 AI 引擎可用（自动化引擎需要 AI 辅助）
 > **Goal:** 完成 MVP 全部功能。会议大屏（3 层级实时展示）、通知系统（站内+企微+邮件）、WeChat Work 深度集成（组织同步+消息推送+Bot）、自动化规则引擎、Webhook API、系统管理 6 个子模块。
 
-**Duration:** 5 周（25 个工作日）
+**Duration:** 6-7 周（30-35 个工作日）
 
 ---
 
@@ -587,7 +587,7 @@ async def dispatch_webhook(subscription: WebhookSubscription, event: str, payloa
 - [ ] 自动化 Tab：显示当前工作空间的自动化规则列表 + 启用/禁用开关
 - [ ] 成员 Tab：补充添加成员流程（搜索用户 → 选择角色 → 添加）
 
-### Task 4.5.5: 端到端测试全 8 页
+### Task 4.5.5: 端到端测试（覆盖全 9 页）
 
 验证全用户旅程：
 1. 管理员登录 → 系统管理 → 配置模型 + Agent + 企微
@@ -616,6 +616,6 @@ async def dispatch_webhook(subscription: WebhookSubscription, event: str, payloa
 - [ ] 审计日志：执行关键操作 → 验证日志记录完整
 - [ ] 自动化规则：创建「任务完成→通知创建者」→ 完成任务 → 验证收到通知
 - [ ] Webhook：配置订阅 URL → 任务创建 → 验证外部收到 POST 请求
-- [ ] 全 8 页可用，无 404 占位页
+- [ ] 全 9 页可用，无 404 占位页
 
-**预计总工时：5 周（25 个工作日）**
+**预计总工时：6-7 周（30-35 个工作日）**

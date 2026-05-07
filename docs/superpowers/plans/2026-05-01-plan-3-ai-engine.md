@@ -1,11 +1,11 @@
 # AI-PM Plan 3 — AI 引擎 实施计划
 
-> **Prerequisite:** Plan 2 任务系统基本可用（Agent 需要任务来执行），LLM 服务可访问（DeepSeek/Qwen）或可使用 Mock LLM 开发
-> **Goal:** 构建 AI 核心差异化。LLM 网关统一路由本地模型，LangGraph Agent 执行器运行 4 种 Agent 角色，Memory 系统持久化跨项目知识，AI 对话页完整可用。
+> **Prerequisite:** Plan 2 任务系统基本可用（Agent 需要任务来执行），Plan 2.5 AgentScope 技术验证通过，LLM 服务可访问（DeepSeek/Qwen）或可使用 Mock LLM 开发
+> **Goal:** 构建 AI 核心差异化。LLM 网关统一路由本地模型，AgentScope ReActAgent 运行 4 种 Agent 角色，Memory 系统（热/温/冷三层 + MySQL FULLTEXT）持久化跨项目知识，OpenSpec 项目宪法约束 AI 行为，AI 对话页完整可用。
 
-**Duration:** 7 周（35 个工作日）
+**Duration:** 10-12 周（50-60 个工作日）
 
-**开发策略：** AI 模块为独立 `server/app/ai/` 包。Agent 执行期间可用 Mock LLM 屏蔽网络依赖。
+**开发策略：** AI 模块为独立 `server/app/ai/` 包。架构采用 FastAPI + AgentScope 协作模式（设计规范 §6.2）：FastAPI 通过 SDK 调度 AgentScope 进程，同步调用处理简单查询，异步调用处理长任务，Webhook 回调通知产出就绪。Agent 执行期间可用 Mock LLM 屏蔽网络依赖。
 
 ---
 
@@ -201,140 +201,184 @@ class PromptManager:
 
 ---
 
-## Week 3-4: Agent 执行器
+## Week 3-4: AgentScope Agent 执行器
 
-### Task 3.2.1: Agent Executor 核心（LangGraph）
+### Task 3.2.1: AgentScope 集成层（ReActAgent）
+
+> **依托框架：** AgentScope 提供 ReActAgent 编排、工具系统（MCP 协议兼容）、沙箱执行和 A2A 通信能力。本层只负责 AgentScope 与 FastAPI 的集成，不重复造 Agent 编排逻辑。
 
 **Files:**
-- Create: `server/app/ai/agent_executor.py`
+- Create: `server/app/ai/agentscope_bridge.py` — FastAPI ↔ AgentScope 桥接层
+- Create: `server/app/ai/agent_config.py` — Agent 角色定义 + 工具绑定
 
 ```python
-# server/app/ai/agent_executor.py
-from typing import TypedDict, Annotated
-from langgraph.graph import StateGraph, END
-from langgraph.checkpoint import MemorySaver
-from langgraph.graph.message import add_messages
+# server/app/ai/agentscope_bridge.py
+"""
+FastAPI ↔ AgentScope 桥接层。
 
-class AgentState(TypedDict):
-    messages: Annotated[list, add_messages]
-    task_id: str
-    agent_role: str             # ANALYST / DESIGNER / DEVELOPER / PM
-    system_prompt: str
-    workspace_context: dict
-    current_step: str           # understand / plan / act / generate / review
-    tool_results: list[dict]
-    final_output: str | None
+AgentScope 作为独立 Python 进程运行 ReActAgent，本层负责：
+1. 创建 ReActAgent 实例并注入三层上下文（System Prompt + OpenSpec + 热记忆）
+2. 同步调用（简单查询/摘要）和异步调用（长任务）的路由
+3. AgentScope Webhook 回调的接收和处理
+"""
+import asyncio
+import json
+from datetime import datetime
+from typing import AsyncIterator
+from agentscope.agent import ReActAgent
+from agentscope.memory import TemporaryMemory
+from agentscope.tool import ToolRegistry
 
-class AgentExecutor:
-    """LangGraph Agent 执行器。5 节点 StateGraph 工作流。"""
+from app.ai.agent_config import AGENT_ROLES
+from app.ai.gateway import LLMGateway
+from app.ai.memory import MemorySystem
+from app.models.agent_execution import AgentExecution
 
-    def __init__(self, llm_gateway, tool_registry, prompt_manager, memory_system):
+class AgentScopeBridge:
+    """管理 AgentScope Agent 实例生命周期和任务执行。"""
+
+    def __init__(self, llm_gateway: LLMGateway, memory_system: MemorySystem):
         self.llm = llm_gateway
-        self.tools = tool_registry
-        self.prompts = prompt_manager
         self.memory = memory_system
-        self.checkpointer = MemorySaver()
-        self.graph = self._build_graph()
+        self._running_agents: dict[str, ReActAgent] = {}  # execution_id → agent
 
-    def _build_graph(self) -> StateGraph:
-        workflow = StateGraph(AgentState)
+    async def create_agent(
+        self, agent_role: str, workspace_id: str, task_id: str, db_session
+    ) -> str:
+        """创建 ReActAgent 实例并注入三层上下文。返回 execution_id。"""
+        role_def = AGENT_ROLES[agent_role]
 
-        workflow.add_node("understand", self._node_understand)   # 理解任务上下文
-        workflow.add_node("plan", self._node_plan)               # 制定执行计划
-        workflow.add_node("act", self._node_act)                 # 执行（调用工具）
-        workflow.add_node("generate", self._node_generate)       # 生成最终产出
-        workflow.add_node("review", self._node_review)           # 自检 Review
+        # 构建三层上下文（设计规范 §6.4）
+        context = await self._build_context(agent_role, workspace_id, task_id, db_session)
 
-        workflow.set_entry_point("understand")
-        workflow.add_edge("understand", "plan")
-        workflow.add_conditional_edges("plan", self._should_act, {
-            "act": "act",
-            "generate": "generate",
-        })
-        workflow.add_edge("act", "plan")          # 工具结果后回到 plan 评估
-        workflow.add_edge("generate", "review")
-        workflow.add_edge("review", END)
-
-        return workflow.compile(checkpointer=self.checkpointer)
-
-    async def execute(self, task_id: str, agent_role: str, config: dict) -> AgentState:
-        """执行任务。返回最终状态，含 final_output。"""
-        initial_state = AgentState(
-            messages=[],
-            task_id=task_id,
-            agent_role=agent_role,
-            system_prompt=await self._load_prompt(agent_role),
-            workspace_context=await self._load_context(task_id),
-            current_step="understand",
-            tool_results=[],
-            final_output=None,
+        agent = ReActAgent(
+            name=role_def["name"],
+            sys_prompt=context["system_prompt"],
+            model=self.llm._build_model_config(),
+            memory=TemporaryMemory(context["hot_memory"]),
+            tools=role_def["tools"],
+            max_iters=role_def.get("max_iters", 15),
         )
-        result = await self.graph.ainvoke(initial_state, config)
-        return result
 
-    async def _node_understand(self, state: AgentState) -> AgentState:
-        """读取任务详情 + 知识库相关文档 → 构建完整上下文"""
-        ...
+        execution_id = str(uuid4())
+        self._running_agents[execution_id] = agent
+        return execution_id
 
-    async def _node_plan(self, state: AgentState) -> AgentState:
-        """分析任务，规划执行步骤"""
-        ...
+    async def _build_context(self, agent_role: str, workspace_id: str, task_id: str, db_session):
+        """构建 Agent 三层上下文（设计规范 §6.4 和 §7.4）。
 
-    async def _node_act(self, state: AgentState) -> AgentState:
-        """调用工具。LLM 决定调用哪个工具 → 执行 → 记录结果"""
-        ...
+        ┌──────────────────────────────────────────┐
+        │ System Prompt  │  ~1,000 tokens（角色定义）│
+        │ OpenSpec        │    ~800 tokens（项目宪法）│
+        │ 热记忆（摘要）  │  ~1,200 tokens（决策+状态）│
+        ├──────────────────────────────────────────┤
+        │ 合计            │  ~3,000 tokens           │
+        └──────────────────────────────────────────┘
+        """
+        # Layer 1: System Prompt（角色定义 + 通用行为约束）
+        system_prompt = await self._load_role_prompt(agent_role)
 
-    async def _node_generate(self, state: AgentState) -> AgentState:
-        """基于收集到的信息，生成最终输出（PRD/设计稿/代码 PR/日报）"""
-        ...
+        # Layer 2: OpenSpec — 项目行为规范（从 .openspec/ 目录加载）
+        openspec = await self._load_openspec(workspace_id, db_session)
+        system_prompt += f"\n\n## 项目行为规范 (OpenSpec)\n{openspec}"
 
-    async def _node_review(self, state: AgentState) -> AgentState:
-        """自检 Review：输出是否符合要求？是否需要补充？"""
+        # Layer 3: 热记忆 — 当前项目关键决策 + 状态摘要
+        hot_memory = await self.memory.get_hot_memory(workspace_id)
+
+        return {
+            "system_prompt": system_prompt,
+            "hot_memory": hot_memory,
+        }
+
+    async def _load_openspec(self, workspace_id: str, db_session) -> str:
+        """加载工作空间的 OpenSpec 核心内容。
+
+        从知识库 .openspec/ 目录读取（设计规范 §4.3）：
+        - conventions.md（代码规范）
+        - agents.md（Agent 行为约束）
+        - signals.md（风险信号规则）
+
+        OpenSpec 内容精炼、变化低频，天然适合 prompt caching。
+        """
+        openspec_parts = []
+        for filename in ["conventions.md", "agents.md", "signals.md"]:
+            doc = await self._get_openspec_doc(workspace_id, filename, db_session)
+            if doc:
+                openspec_parts.append(doc.content)
+        return "\n\n".join(openspec_parts) if openspec_parts else "使用默认项目规范。"
+
+    async def _load_role_prompt(self, agent_role: str) -> str:
+        """加载 Agent 角色 System Prompt"""
         ...
 ```
 
-### Task 3.2.2: 工具注册表
+```python
+# server/app/ai/agent_config.py
+"""
+Agent 角色定义 + 工具绑定。
+
+每个 Agent 角色绑定对应工具集（MCP 协议兼容），
+工具调用受双层权限约束（设计规范 §6.5）：
+  - AgentScope 层：工具白名单机制
+  - FastAPI 层：实际操作权限校验
+"""
+from agentscope.tool import Toolkit
+
+AGENT_ROLES = {
+    "ANALYST": {
+        "name": "需求分析师",
+        "description": "分析需求，生成 PRD 草案、用户故事、验收标准",
+        "tools": ["wiki_search", "source_read", "task_query", "task_detail"],
+        "output_type": "PRD 草案 / 用户故事 / 验收标准",
+        "max_iters": 12,
+    },
+    "DESIGNER": {
+        "name": "设计师",
+        "description": "设计任务，生成原型草图描述、交互流程",
+        "tools": ["wiki_search", "source_read", "task_query"],
+        "output_type": "原型草图描述 / 交互流程",
+        "max_iters": 10,
+    },
+    "DEVELOPER": {
+        "name": "开发工程师",
+        "description": "开发任务，生成代码草案、Bug 修复建议",
+        "tools": ["wiki_search", "source_read", "sandbox_exec", "git_log", "git_diff"],
+        "output_type": "代码草案 / Bug 修复建议",
+        "max_iters": 15,
+    },
+    "PM": {
+        "name": "项目经理",
+        "description": "跟踪和报告，生成日报/周报草案、风险分析",
+        "tools": ["task_query", "task_detail", "get_workspace_stats", "get_risk_signals"],
+        "output_type": "日报 / 周报草案 / 风险分析",
+        "max_iters": 10,
+    },
+}
+```
+
+### Task 3.2.2: AgentScope 工具集配置（MCP 协议兼容）
+
+> AgentScope 原生支持 MCP 协议工具集成。本任务定义工具 Schema + 实现执行逻辑，注册到 AgentScope 的 `ToolRegistry`。
 
 **Files:**
 - Create: `server/app/ai/tools/__init__.py`
-- Create: `server/app/ai/tools/registry.py`
 - Create: `server/app/ai/tools/task_tools.py`
 - Create: `server/app/ai/tools/doc_tools.py`
 - Create: `server/app/ai/tools/report_tools.py`
 
 ```python
-# server/app/ai/tools/registry.py
-class Tool:
-    name: str
-    description: str
-    parameters: dict  # JSON Schema
+# server/app/ai/tools/__init__.py
+"""
+AgentScope MCP 兼容工具集。
 
-    async def execute(self, **kwargs) -> dict:
-        raise NotImplementedError
-
-class ToolRegistry:
-    def __init__(self):
-        self._tools: dict[str, Tool] = {}
-
-    def register(self, tool: Tool):
-        self._tools[tool.name] = tool
-
-    def get_openai_schemas(self) -> list[dict]:
-        """转换为 OpenAI function calling 格式"""
-        return [{
-            "type": "function",
-            "function": {
-                "name": t.name,
-                "description": t.description,
-                "parameters": t.parameters,
-            }
-        } for t in self._tools.values()]
-
-    async def execute(self, name: str, **kwargs) -> dict:
-        return await self._tools[name].execute(**kwargs)
+每个工具实现 AgentScope 的 Tool 接口，通过 ToolRegistry 注册。
+工具调用受双层权限约束（设计规范 §6.5）：
+  1. AgentScope 层：工具白名单（AGENT_ROLES 中定义每个角色的 tools 列表）
+  2. FastAPI 层：实际操作时校验权限（如 task_update 需要 Manager+ 角色）
+"""
 ```
 
-3 组工具集：
+3 组工具集（对应设计规范 §6.5 工具调用与命令执行）：
 
 **task_tools（任务操作）:**
 | 工具 | 功能 | 参数 |
@@ -361,175 +405,320 @@ class ToolRegistry:
 | `get_iteration_progress` | 获取 Sprint 进度 | iteration_id |
 | `get_risk_signals` | 获取风险信号 | workspace_id |
 
-### Task 3.2.3: Agent 执行管理 API
+### Task 3.2.3: Agent 执行管理 API（FastAPI ↔ AgentScope 协作）
+
+> 实现设计规范 §6.2 的三种交互方式：同步调用、异步调用、Webhook 回调。
 
 **Files:**
 - Create: `server/app/routers/agents.py`
+- Create: `server/app/services/agent_execution.py`
 
 端点：
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | `/api/agents/{id}/delegate` | 委托任务给 Agent（body: `{task_id}`） |
-| GET | `/api/agents/{id}/tasks/{task_id}` | 获取执行状态（QUEUED/RUNNING/COMPLETED/FAILED/REJECTED） |
-| GET | `/api/agents/{id}/tasks/{task_id}/stream` | SSE 流式获取思考日志 |
-| POST | `/api/agents/{id}/tasks/{task_id}/retry` | 重试失败的执行 |
-| POST | `/api/agents/{id}/tasks/{task_id}/cancel` | 取消正在执行的 Agent 任务 |
-| POST | `/api/agents/{id}/tasks/{task_id}/reject` | 驳回 Agent 产出（人类 Review 不通过） |
-| POST | `/api/agents/{id}/tasks/{task_id}/accept` | 接受 Agent 产出 → 自动创建文档存入知识库 |
+| 方法 | 路径 | 说明 | 交互方式 |
+|------|------|------|---------|
+| POST | `/api/workspaces/{ws_id}/ai/run` | 委托任务给 Agent，返回 task_id | 异步（长任务） |
+| GET | `/api/workspaces/{ws_id}/ai/status` | 查询 Agent 执行状态 | 同步（轮询） |
+| GET | `/api/workspaces/{ws_id}/ai/stream` | SSE 流式获取思考日志（Work-in-Public） | 同步（流式） |
+| POST | `/api/workspaces/{ws_id}/ai/review` | 提交 Review 结果（通过/打回） | 同步 |
+| POST | `/api/ai/webhook/agentscope` | AgentScope Webhook 回调（Agent 产出就绪） | Webhook 回调 |
+| POST | `/api/agents/{id}/tasks/{task_id}/retry` | 重试失败的执行 | 同步 |
+| POST | `/api/agents/{id}/tasks/{task_id}/cancel` | 取消正在执行的 Agent 任务 | 同步 |
+
+```python
+# server/app/routers/agents.py
+@router.post("/{workspace_id}/ai/run")
+async def delegate_to_agent(workspace_id: str, body: DelegateRequest, db=Depends(get_db)):
+    """创建 AgentScope ReActAgent 任务，异步执行。
+
+    FastAPI → AgentScope: 创建 ReActAgent 实例 → 注入三层上下文 → 启动执行
+    返回 execution_id 用于后续查询。
+    """
+    bridge = get_agentscope_bridge()
+    execution_id = await bridge.create_agent(
+        agent_role=body.agent_role,
+        workspace_id=workspace_id,
+        task_id=body.task_id,
+        db_session=db,
+    )
+    # 启动异步执行（不阻塞）
+    asyncio.create_task(bridge.execute_agent(execution_id, db))
+    return {"execution_id": execution_id, "status": "QUEUED"}
+
+@router.post("/ai/webhook/agentscope")
+async def agentscope_webhook(body: WebhookPayload, db=Depends(get_db)):
+    """AgentScope Webhook 回调：Agent 产出就绪时由 AgentScope 调用。
+
+    AgentScope → Webhook → FastAPI → 写入 Review 队列 → 推送通知（设计规范 §6.6）
+    """
+    execution = await db.get(AgentExecution, body.execution_id)
+    execution.status = "COMPLETED"
+    execution.output = body.output
+    execution.thinking_log = body.thinking_log
+    execution.tokens_used = body.tokens_used
+    execution.duration_ms = body.duration_ms
+    # 产出物进入 Review 队列
+    await create_review_item(execution.task_id, execution.id, body.output)
+    # 推送通知给任务委托者
+    await notify_service.send_review_ready(execution.task_id)
+    await db.commit()
+    return {"status": "ok"}
+```
 
 ```python
 # agent_executions 表
 class AgentExecution(Base, TimestampMixin, UUIDMixin):
     __tablename__ = "agent_executions"
-    agent_id: Mapped[str]
+    agent_role: Mapped[str]     # ANALYST / DESIGNER / DEVELOPER / PM
     task_id: Mapped[str]
+    workspace_id: Mapped[str]
     status: Mapped[str]  # QUEUED / RUNNING / COMPLETED / FAILED / REJECTED
     input: Mapped[dict] = mapped_column(JSON)
     output: Mapped[dict] = mapped_column(JSON, nullable=True)
-    output_document_id: Mapped[str] = mapped_column(nullable=True)  # 产出存入 KB 后的文档 ID
-    thinking_log: Mapped[str] = mapped_column(Text, nullable=True)  # 完整思考日志
+    output_document_id: Mapped[str] = mapped_column(nullable=True)
+    thinking_log: Mapped[str] = mapped_column(Text, nullable=True)  # ReAct 推理日志
+    reject_reason: Mapped[str] = mapped_column(Text, nullable=True)  # 打回原因
     tokens_used: Mapped[int] = mapped_column(default=0)
     duration_ms: Mapped[int] = mapped_column(default=0)
     error_message: Mapped[str] = mapped_column(Text, nullable=True)
 ```
 
-### Task 3.2.4: 前端 — 委托任务给 Agent + 执行监控
+### Task 3.2.4: 前端 — 委托任务给 Agent + Work-in-Public 透明执行
 
 **Files:**
 - Create: `apps/web/src/components/agent/AgentDelegation.tsx`
 - Create: `apps/web/src/components/agent/ExecutionMonitor.tsx`
 
-- [ ] **委托界面：** 任务分配下拉框增加 AI Agent 选项（带角色图标和模型标签）
-- [ ] **确认对话框：** 显示 Agent 将做什么、使用什么模型、预计耗时
-- [ ] **执行监控：** 任务详情中显示 Agent 执行状态徽章 + 进度动画
-- [ ] **思考日志：** 折叠面板逐步展示 understand → plan → act → generate → review 关键信息
-- [ ] **Review 操作：** 产出预览 +「接受」/「驳回」按钮；接受后自动存入知识库
+- [ ] **委托界面：** 任务分配下拉框增加 AI Agent 选项（带角色图标和模型标签），对应设计规范 §6.3 的 4 个 Agent 角色和 3 个辅助档位（建议/草稿/轻量辅助）
+- [ ] **确认对话框：** 显示 Agent 将做什么、使用什么模型、受什么 OpenSpec 规范约束、预计耗时
+- [ ] **Work-in-Public 透明执行（设计规范 §6.8）：**
+  - Agent 当前执行状态（AgentScope 状态机：准备中 → 分析中 → 生成中）
+  - ReAct 推理日志流（Thought → Action → Observation 循环），SSE 实时展示
+  - Agent 引用的 wiki 条目和源文档
+  - Agent 的中间产出物
+- [ ] **Review 操作：** 产出预览 +「接受」/「驳回（附原因）」按钮；接受后自动存入知识库
+- [ ] **打回处理（设计规范 §6.6）：** 驳回时填写原因 → AgentScope 重新生成，打回原因写入 AutoContextMemory
 
 ---
 
-## Week 5-6: Memory 系统 + 向量搜索
+## Week 5-7: 记忆系统（热/温/冷三层） + 关键词检索
 
-### Task 3.3.1: Memory 系统核心
+> **MVP 策略（设计规范 §7.5）：** 人工标注 + AI 辅助格式化，非全自动摘要。MySQL FULLTEXT 关键词检索，非向量语义搜索。向量化延后至 V1.1。
+
+### Task 3.3.1: 记忆系统核心（三层架构）
 
 **Files:**
 - Create: `server/app/ai/memory.py`
+- Create: `server/app/models/project_memory.py`
+
+设计规范 §7.2 定义的三层记忆架构：
+
+```
+第 0 层：即时上下文（当前 Agent 会话窗口内，~14K tokens）
+第 1 层：热记忆（结构化摘要，每次 AI 调用时注入，~1,200 tokens）
+  ├─ 项目关键决策记录（谁在什么时候决定了什么、为什么）
+  ├─ 当前迭代状态摘要（进度、阻塞、风险）
+  ├─ 最近 50 条重要变更
+  └─ Agent 执行历史（最近任务的执行反馈链，含打回记录）
+
+第 2 层：温记忆（MySQL FULLTEXT 按需检索）
+  ├─ 历史任务及其解决方案
+  ├─ 知识库文档索引
+  ├─ 历史讨论和评论
+  └─ 经验教训记录
+
+第 3 层：冷记忆（归档，稀疏访问）
+  └─ 已完成项目的完整历史（仅在明确需要时才检索）
+```
+
+```python
+# server/app/models/project_memory.py
+class ProjectMemory(Base, TimestampMixin, UUIDMixin):
+    """项目记忆表。存储结构化摘要，支持 MySQL FULLTEXT 关键词检索。"""
+    __tablename__ = "project_memories"
+
+    workspace_id: Mapped[str] = mapped_column(String(36), ForeignKey("workspaces.id"))
+    layer: Mapped[str] = mapped_column(String(10), default="WARM")  # HOT / WARM / COLD
+    category: Mapped[str]   # DECISION / STATUS / CHANGE / LESSON / AGENT_EXECUTION
+    title: Mapped[str] = mapped_column(String(500))
+    summary_short: Mapped[str] = mapped_column(String(300), nullable=True)   # ~50 tokens
+    summary_medium: Mapped[str] = mapped_column(Text, nullable=True)         # ~200 tokens
+    summary_detailed: Mapped[str] = mapped_column(Text, nullable=True)       # ~500 tokens
+    source_type: Mapped[str]  # TASK / DOCUMENT / COMMENT / AGENT_EXECUTION / MANUAL
+    source_id: Mapped[str] = mapped_column(nullable=True)
+    is_pinned: Mapped[bool] = mapped_column(default=False)  # 用户标记"记住这个"
+    is_expired: Mapped[bool] = mapped_column(default=False)  # 冲突检测后标记过期
+    tags: Mapped[list] = mapped_column(JSON, default=list)
+
+# MySQL FULLTEXT 索引（支持中文 ngram）
+# ALTER TABLE project_memories ADD FULLTEXT INDEX ft_memories
+#   (title, summary_short, summary_medium) WITH PARSER ngram;
+```
 
 ```python
 # server/app/ai/memory.py
-import chromadb
-from datetime import datetime
-
 class MemorySystem:
-    """4 种记忆类型：上下文(CONTEXT) / 经验(LESSON) / 能力(CAPABILITY) / 模板(TEMPLATE)"""
+    """三层记忆架构（设计规范 §7.2-§7.5）。
 
-    MEMORY_TYPES = ["CONTEXT", "LESSON", "CAPABILITY", "TEMPLATE"]
+    MVP 阶段：
+    - 热记忆：人工标注 + AI 辅助格式化
+    - 温记忆：MySQL FULLTEXT 关键词检索
+    - Token 预算静态分配（§7.4）
+    """
 
-    def __init__(self, db_session, chroma_client: chromadb.Client):
+    # Token 预算（设计规范 §7.4）
+    TOKEN_QUOTA = {
+        "system_prompt": 1000,
+        "openspec": 800,
+        "hot_memory": 1200,
+        "task_context": 2000,
+        "retrieval_results": 3000,
+        "compressed_history": 2000,
+        "output_reserved": 4000,
+    }
+
+    def __init__(self, db_session):
         self.db = db_session
-        self.chroma = chroma_client
-        self.collection = chroma_client.get_or_create_collection("memories")
 
-    async def save(self, workspace_id: str, type: str, title: str, content: str,
-                   tags: list[str] = None, source_task_id: str = None):
-        """保存记忆：MySQL 存元数据 + ChromaDB 存向量"""
-        # 1. 生成 embedding
-        embedding = await self._embed(content)
-        # 2. 存入 ChromaDB
-        self.collection.add(
-            ids=[str(uuid4())],
-            embeddings=[embedding],
-            metadatas=[{"workspace_id": workspace_id, "type": type, "tags": json.dumps(tags or [])}],
-            documents=[content],
+    async def get_hot_memory(self, workspace_id: str) -> dict:
+        """获取热记忆：当前迭代状态 + 关键决策 + 最近变更 + Agent 执行历史。
+
+        这些内容每次 AI 调用时注入 System Prompt，token 预算 ~1,200。
+        """
+        memories = await self.db.execute(
+            select(ProjectMemory).where(
+                ProjectMemory.workspace_id == workspace_id,
+                ProjectMemory.layer == "HOT",
+                ProjectMemory.is_expired == False,
+            ).order_by(ProjectMemory.created_at.desc()).limit(50)
         )
-        # 3. 存入 MySQL（project_memories 表）
+        return self._format_memories(memories.scalars().all())
+
+    async def mark_hot(self, workspace_id: str, category: str, title: str,
+                       content: str, source_type: str, source_id: str = None):
+        """人工标注热记忆（MVP 核心操作）。
+
+        人在关键节点标记"记住这个" → AI 辅助格式化为结构化摘要。
+        设计规范 §7.3 第 1 行策略：人工标注 + AI 辅助。
+        """
+        # AI 辅助生成多级摘要
+        short, medium = await self._ai_summarize(title, content)
+        memory = ProjectMemory(
+            workspace_id=workspace_id,
+            layer="HOT",
+            category=category,
+            title=title,
+            summary_short=short,     # ~50 tokens
+            summary_medium=medium,   # ~200 tokens
+            summary_detailed=content, # ~500 tokens
+            source_type=source_type,
+            source_id=source_id,
+            is_pinned=True,
+        )
+        self.db.add(memory)
+        await self.db.commit()
+
+    async def search_warm(self, workspace_id: str, query: str, k: int = 5) -> list:
+        """温记忆关键词检索（MySQL FULLTEXT + ngram）。
+
+        V1.1 升级为向量化语义检索（设计规范 §7.5）。
+        """
+        # MySQL FULLTEXT 布尔模式搜索
+        result = await self.db.execute(
+            select(ProjectMemory).where(
+                ProjectMemory.workspace_id == workspace_id,
+                ProjectMemory.layer.in_(["WARM", "HOT"]),
+                ProjectMemory.is_expired == False,
+                func.match(
+                    ProjectMemory.title,
+                    ProjectMemory.summary_short,
+                    ProjectMemory.summary_medium,
+                ).against(query),
+            ).order_by(
+                func.match(
+                    ProjectMemory.title,
+                    ProjectMemory.summary_medium,
+                ).against(query).desc()
+            ).limit(k)
+        )
+        return result.scalars().all()
+
+    async def _ai_summarize(self, title: str, content: str) -> tuple[str, str]:
+        """AI 辅助生成结构化摘要（非全自动 — 由人触发）。
+
+        生成 2 级：一句话（~50 tokens）/ 段落（~200 tokens）。
+        详细级（~500 tokens）由 content 直接存储。
+        V1.1 增加第 3 级自动摘要生成。
+        """
         ...
 
-    async def search(self, query: str, workspace_id: str = None, type: str = None, k: int = 5) -> list:
-        """语义搜索相关记忆"""
-        embedding = await self._embed(query)
-        where = {}
-        if workspace_id: where["workspace_id"] = workspace_id
-        if type: where["type"] = type
-        results = self.collection.query(query_embeddings=[embedding], n_results=k, where=where)
-        return results
-
-    async def _embed(self, text: str) -> list[float]:
-        """调用嵌入模型（可本地 sentence-transformers 或调用 LLM embedding API）"""
-        # 开发阶段：使用简单的 TF-IDF hash 或调用 DeepSeek embedding API
-        ...
-
-    async def capture_context(self, task_id: str):
-        """任务完成时自动捕获上下文记忆"""
-        ...
-
-    async def capture_lesson(self, task_id: str, lesson: str):
-        """用户标记的经验教训"""
-        ...
-
-    async def recommend_assignee(self, task: dict, workspace_id: str) -> list[dict]:
-        """基于能力画像推荐任务分配者"""
-        ...
-
-    async def warn_risks(self, workspace_id: str) -> list[dict]:
-        """基于经验库匹配，预警当前工作空间的风险"""
+    def _format_memories(self, memories: list) -> dict:
+        """格式化热记忆为 prompt 可注入的结构"""
         ...
 ```
 
-### Task 3.3.2: 向量数据库初始化
+### Task 3.3.2: 关键词检索配置
 
-- [ ] 安装 ChromaDB（`pip install chromadb`）
-- [ ] 嵌入函数实现：优先本地 `sentence-transformers`（`bge-small-zh-v1.5`），备选 `DeepSeek API embedding`
-- [ ] 测试：存入 10 条模拟记忆 → 语义搜索 → 验证相关性排序
+- [ ] MySQL FULLTEXT 索引创建（ALTER TABLE ... ADD FULLTEXT INDEX ... WITH PARSER ngram）
+- [ ] 中文分词测试（验证 ngram parser 对「数据库设计」「延期预警」等词的分词质量）
+- [ ] 相关性排序测试：存入 20 条模拟记忆 → 关键词搜索 → 验证排序合理
+- [ ] **延后至 V1.1：** ChromaDB 向量化语义检索 + sentence-transformers 嵌入
 
-### Task 3.3.3: Memory 自动捕获 Hooks
+### Task 3.3.3: 人工标注流程（MVP 核心）
 
-| 触发事件 | 捕获类型 | 内容 |
-|---------|---------|------|
-| 任务状态从 IN_REVIEW 变为 DONE | CONTEXT | 任务决策摘要 + 关键产出 |
-| 任务被重新打开（reopened） | LESSON | 重新打开原因 + 避免建议 |
-| Agent 执行完成且被接受 | TEMPLATE | Agent 输出作为可复用模板 |
-| 用户驳回 Agent 产出 | CAPABILITY | 驳回原因 → 改善该 Agent 的能力画像 |
-| 手动触发「保存为记忆」 | 用户选择类型 | 在任务详情/文档详情中操作 |
+| 触发方式 | 操作 | 说明 |
+|---------|------|------|
+| 用户手动触发「记住这个」 | UI 按钮 → 弹出标注表单 | 在任务详情/文档详情中操作，选类型 + 确认摘要 |
+| 任务状态变更 | 提示"是否记录为关键决策？" | 仅当任务为 Epic 级别或有关键词匹配时提示 |
+| Agent 执行完成 | 人 Review 通过后提示捕获 | 打回记录自动写入（失败学习 §6.9） |
+| PM 周报生成 | 询问"是否保存为项目经验？" | 周报中的关键结论可转为记忆 |
 
-### Task 3.3.4: 智能分配推荐
+- [ ] 前端「记住这个」按钮（星形图标，hover 提示"添加为项目记忆"）
+- [ ] 标注表单：标题 + 摘要（AI 预填，人可编辑）+ 类型选择 + 标签
+- [ ] 记忆列表页（按时间倒序、按类型筛选、搜索、固定/取消固定）
+
+### Task 3.3.4: Token 预算管理
 
 ```python
-async def recommend_assignee(self, task: dict, workspace_id: str):
-    """分析任务需求 → 匹配能力画像 → 推荐最佳分配者"""
-    # 1. 提取任务关键词
-    task_embedding = await self._embed(task["title"] + " " + task.get("description", ""))
-    # 2. 搜索能力画像
-    capabilities = await self.search(
-        query=task["title"], workspace_id=workspace_id, type="CAPABILITY", k=10
-    )
-    # 3. 按匹配度排序返回候选成员
-    ...
+# server/app/ai/token_budget.py
+class TokenBudget:
+    """静态分配 token 预算（设计规范 §7.4）。V1.1 升级为动态分配。"""
+
+    def build_context(self, workspace_id: str, task_id: str = None) -> dict:
+        """构建 AI 调用上下文，按配额注入各层内容。"""
+        context = {
+            "system_prompt": self._load_system_prompt(),        # ~1,000 tokens
+            "openspec": self._load_openspec(workspace_id),      #   ~800 tokens
+            "hot_memory": self.memory.get_hot_memory(ws_id),    # ~1,200 tokens
+            "task_context": self._load_task(task_id),            # ~2,000 tokens
+            "retrieval": self.memory.search_warm(ws_id, query), # ~3,000 tokens
+        }
+        self._validate_budget(context)  # 超限时截断
+        return context
 ```
 
 ### Task 3.3.5: 风险预警系统
 
 ```python
-async def warn_risks(self, workspace_id: str):
-    """定期扫描：基于历史 LESSON 记忆，识别类似模式的风险"""
-    # 1. 获取当前工作空间的关键特征（任务分布、成员结构、Sprint 进度）
-    # 2. 搜索历史 LESSON 记忆中的失败/延期案例
-    # 3. 匹配相似模式（关键词重合、任务类型分布相似）
-    # 4. 生成风险预警项
-    ...
+async def detect_risks(self, workspace_id: str) -> list[dict]:
+    """自动扫描风险信号（设计规范 §2.2）。
+
+    检查：延期/阻塞/过载/逾期未更新，匹配 OpenSpec signals.md 中的自定义规则。
+    """
+    risks = []
+    # 系统内置规则
+    risks += await self._check_overdue_tasks(workspace_id)
+    risks += await self._check_blocked_tasks(workspace_id)
+    risks += await self._check_member_overload(workspace_id)
+    # OpenSpec 自定义规则（signals.md）
+    custom_rules = await self._load_openspec_signals(workspace_id)
+    risks += await self._check_custom_rules(workspace_id, custom_rules)
+    return risks
 ```
-
-### Task 3.3.6: Memory 管理 UI
-
-- [ ] 工作空间 AI Agent 标签页中增加「记忆浏览器」
-- [ ] 按类型筛选（上下文/经验/能力/模板）
-- [ ] 搜索记忆内容
-- [ ] 手动创建/编辑/删除记忆
-- [ ] 关联记忆到任务/文档
 
 ---
 
-## Week 7: AI 对话 + AI 面板 + 日报 + 集成
+## Week 8-10: AI 对话 + OpenSpec 集成 + 端到端测试
 
 ### Task 3.4.1: AI 对话后端
 
@@ -650,13 +839,15 @@ async def generate_daily_report(workspace_id: str, db, llm_gateway):
 ## 验证清单
 
 - [ ] LLM 网关测试：Mock LLM 端点 → 验证请求格式正确 → 验证错误重试 3 次
-- [ ] Prompt 渲染：提供变量 → 验证模板插值结果正确
-- [ ] Agent 执行器：用 Mock LLM 驱动完整 5 节点流程 → 验证状态转换正确
-- [ ] 工具调用：Agent 在 act 节点正确选择工具 → 工具执行成功 → 结果反馈到 plan
-- [ ] Memory 保存：任务完成 → 自动捕获 CONTEXT 记忆 → 验证可搜索
-- [ ] Memory 搜索：「类似项目延期经验」→ 返回相关 LESSON 记忆
+- [ ] Prompt 渲染：提供变量 → 验证模板插值结果正确（含 OpenSpec 注入）
+- [ ] AgentScope 集成：用 Mock LLM 驱动 ReActAgent 完整 Thought→Action→Observation 循环 → 验证 Webhook 回调
+- [ ] 工具调用：AgentScope ReActAgent 正确选择 MCP 工具 → 执行成功 → 结果反馈
+- [ ] 三层上下文注入：System Prompt + OpenSpec + 热记忆 正确注入 AgentScope ReActAgent
+- [ ] 热记忆保存：人工触发"记住这个" → AI 辅助生成 2 级摘要 → 验证 MySQL FULLTEXT 可搜索
+- [ ] 温记忆搜索：「类似项目延期经验」关键词 → 返回相关记忆（MySQL ngram 分词）
 - [ ] AI 对话：发送消息 → SSE 流式返回 → Markdown 渲染 → 会话历史持久化
-- [ ] AI 日报：手动触发 → Agent 查询任务数据 → 生成结构化日报
-- [ ] Agent 委托→执行→产出→Review 全流程走通
+- [ ] AI 日报：手动触发 → PM Agent 查询任务数据 → 生成结构化日报
+- [ ] Agent 委托→执行（ReAct 透明可见）→产出→Review（通过/打回）全流程走通
+- [ ] 打回学习：驳回 Agent 产出 → 打回原因写入 AutoContextMemory → 后续任务引用
 
-**预计总工时：7 周（35 个工作日）**
+**预计总工时：10-12 周（50-60 个工作日）**

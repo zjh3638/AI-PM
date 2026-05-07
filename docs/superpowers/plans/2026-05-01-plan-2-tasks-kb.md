@@ -1,9 +1,11 @@
 # AI-PM Plan 2 — 任务系统 + 知识库 实施计划
 
 > **Prerequisite:** Foundation 完成（用户可登录、工作空间 CRUD 正常、RBAC 生效）
-> **Goal:** 构建项目管理核心能力。实现 5 种任务类型层级、Sprint/Iteration、Kanban 看板、可配置工作流、估算、评论、需求摄入 Inbox、Git 版本化知识库、Markdown 编辑器、全文搜索。覆盖全部 5 个致命差距 + 3 个重要差距。
+> **Goal:** 构建项目管理核心能力。实现 5 种任务类型层级、Sprint/Iteration、Kanban 看板、任务依赖、批量操作、预置工作流模板、评论、估算、需求摄入 Inbox、Git 版本化知识库、Markdown 编辑器、全文搜索。覆盖全部 5 个致命差距 + 3 个重要差距。
 
-**Duration:** 6 周（30 个工作日）
+> **MVP 工作流范围：** 设计规范 §2.1 要求固定状态机（Todo → In Progress → In Review → Done）。本 Phase 实现预置 2 套工作流模板（标准软件开发 / 运营项目），支持工作空间选用，但不支持自定义编辑工作流。可视化工作流编辑器延后至 V1.3。
+
+**Duration:** 8-10 周（40-50 个工作日）
 
 ---
 
@@ -185,6 +187,7 @@ class WorkflowTransition(Base, UUIDMixin):
 - [ ] 预置「标准软件开发」模板：Backlog → To Do → In Progress → In Review → QA → Done
 - [ ] 预置「运营项目」模板：Backlog → Doing → Review → Done
 - [ ] 工作流选用 API：`PUT /api/workspaces/{ws_id}/workflow`
+- [ ] **MVP 限制：** 仅支持从预置模板选择，不支持自定义编辑工作流。可视化编辑器延后至 V1.3。
 
 ### Task 2.3.2: 工作流可视化（前端）
 
@@ -448,4 +451,4 @@ async def search(db: AsyncSession, keyword: str, workspace_id: str = None, type:
 - [ ] 搜索「数据库设计」→ 验证返回标题或内容包含该关键词的任务和文档
 - [ ] 需求摄入：提交 → Triage → 接受并转换为 Epic → 验证 Epic 在工作空间可见
 
-**预计总工时：6 周（30 个工作日）**
+**预计总工时：8-10 周（40-50 个工作日）**

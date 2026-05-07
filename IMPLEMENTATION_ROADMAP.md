@@ -58,14 +58,15 @@ AI 引擎      协作 + 管理
 
 | 线框图页面 | Foundation | Plan 2 | Plan 3 | Plan 4 |
 |-----------|:----------:|:------:|:------:|:------:|
-| 1. 登录 | 完整实现 | -- | -- | LDAP/企微同步 |
+| 1. 登录 | 完整实现 | -- | -- | LDAP(V1.2) |
 | 2. 工作台 | 统计卡片(静态) | 任务统计、决策清单、项目关注 | AI 日报卡片 | 风险预警卡片 |
-| 3. 工作空间列表 | 网格卡片、搜索、创建(模板) | AI 创建入口(占位) | AI 创建(真实) | -- |
-| 4. 工作空间详情 | 壳 + 概览 + 成员 | 任务、知识、指引 | AI Agent 管理、AI 面板 | 分析、自动化、空间设置 |
+| 3. 工作空间列表 | 网格卡片、搜索、创建(模板+OpenSpec初始化) | AI 创建入口(占位) | AI 创建(真实) | -- |
+| 4. 工作空间详情 | 壳 + 概览 + 成员 + OpenSpec目录 | 任务、知识、指引 | AI Agent 管理、AI 面板 | 分析、自动化、空间设置 |
 | 5. 会议大屏 | -- | -- | -- | 完整实现(3 层级) |
 | 6. AI 对话 | -- | -- | 完整实现 | -- |
 | 7. 个人中心 | 个人信息 | 待办、Review 队列、消息 | -- | 通知偏好、已完成 |
 | 8. 系统管理 | -- | -- | 模型管理 | 用户/权限/Agent/企微/系统设置 |
+| 9. 需求处理流 | -- | 完整实现 | -- | -- |
 
 ---
 
@@ -86,7 +87,7 @@ AI 引擎      协作 + 管理
 |------|--------|-----------|
 | 无 Sprint/Iteration 模型 | 致命 | Plan 2 |
 | 无任务类型层级 (Epic/Story/Task/Bug) | 致命 | Plan 2 |
-| 无工作流引擎 | 致命 | Plan 2 + Plan 4 |
+| 无工作流引擎 | 致命 | Plan 2 (预置模板) + V1.3 (可自定义) |
 | 无需求摄入管理 | 致命 | Plan 2 |
 | 无估算/容量规划 | 致命 | Plan 2 + Plan 4 |
 | 无评论/讨论系统 | 重要 | Plan 2 |
@@ -148,6 +149,6 @@ AI 引擎      协作 + 管理
 | 0 | `IMPLEMENTATION_ROADMAP.md` | 本文件 — 总路线图 |
 | 1 | `docs/superpowers/plans/2026-05-01-foundation-plan.md` | Foundation — FastAPI 版基座计划 |
 | 2 | `docs/superpowers/plans/2026-05-01-plan-2-tasks-kb.md` | Plan 2 — 任务系统 + 知识库 |
-| 2.5 | 见本文档 §8 | Plan 2.5 — AgentScope 技术验证（关卡） |
+| 2.5 | `docs/superpowers/plans/2026-05-01-plan-2.5-agentscope-spike.md` | Plan 2.5 — AgentScope 技术验证（关卡） |
 | 3 | `docs/superpowers/plans/2026-05-01-plan-3-ai-engine.md` | Plan 3 — AI 引擎 |
 | 4 | `docs/superpowers/plans/2026-05-01-plan-4-collab-admin.md` | Plan 4 — 协作 + 系统管理 |
