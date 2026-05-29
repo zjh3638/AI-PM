@@ -130,7 +130,7 @@ async def add_member(db: AsyncSession, workspace_id: str, user_id: str, role: st
 
     user = await db.get(User, user_id)
     if user is None:
-        raise AppException(404, "用户不存在")
+        raise AppException(404, "用户不存在", 404)
 
     member = WorkspaceMember(workspace_id=workspace_id, user_id=user_id, role=role)
     db.add(member)

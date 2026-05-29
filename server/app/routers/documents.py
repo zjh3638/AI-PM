@@ -75,7 +75,7 @@ async def get_doc(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
     doc = await document_svc.get_doc(db, doc_id)
     if doc is None or doc.workspace_id != workspace_id:
-        raise AppException(404, "文档不存在")
+        raise AppException(404, "文档不存在", 404)
     return {"code": 0, "message": "ok", "data": document_svc._doc_to_dict(doc)}
 
 
@@ -91,7 +91,7 @@ async def update_doc(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
     doc = await document_svc.get_doc(db, doc_id)
     if doc is None or doc.workspace_id != workspace_id:
-        raise AppException(404, "文档不存在")
+        raise AppException(404, "文档不存在", 404)
     doc = await document_svc.update_doc(
         db, doc, title=req.title, content=req.content, tags=req.tags,
     )
@@ -108,7 +108,7 @@ async def delete_doc(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     doc = await document_svc.get_doc(db, doc_id)
     if doc is None or doc.workspace_id != workspace_id:
-        raise AppException(404, "文档不存在")
+        raise AppException(404, "文档不存在", 404)
     await db.delete(doc)
     await db.commit()
     return {"code": 0, "message": "ok", "data": None}

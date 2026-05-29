@@ -78,7 +78,7 @@ async def get_workspace(
 ):
     ws = await ws_service.get_workspace(db, workspace_id)
     if ws is None:
-        raise AppException(404, "工作空间不存在")
+        raise AppException(404, "工作空间不存在", 404)
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
     mc = await _count_members(db, workspace_id)
     return {"code": 0, "message": "ok", "data": _ws_to_dict(ws, mc)}
@@ -94,7 +94,7 @@ async def update_workspace(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     ws = await ws_service.get_workspace(db, workspace_id)
     if ws is None:
-        raise AppException(404, "工作空间不存在")
+        raise AppException(404, "工作空间不存在", 404)
     ws = await ws_service.update_workspace(db, ws, name=req.name, description=req.description, visibility=req.visibility)
     mc = await _count_members(db, workspace_id)
     return {"code": 0, "message": "ok", "data": _ws_to_dict(ws, mc)}
@@ -109,7 +109,7 @@ async def archive_workspace(
     await pc.require_workspace_role(workspace_id, "OWNER")
     ws = await ws_service.get_workspace(db, workspace_id)
     if ws is None:
-        raise AppException(404, "工作空间不存在")
+        raise AppException(404, "工作空间不存在", 404)
     await ws_service.update_workspace(db, ws, status="ARCHIVED")
     return {"code": 0, "message": "ok", "data": None}
 
@@ -157,7 +157,7 @@ async def update_member(
     await pc.require_workspace_role(workspace_id, "OWNER")
     member = await ws_service.get_member(db, workspace_id, member_id)
     if member is None:
-        raise AppException(404, "成员不存在")
+        raise AppException(404, "成员不存在", 404)
     member = await ws_service.update_member_role(db, member, req.role)
     data = {
         "id": member.id, "workspace_id": member.workspace_id,
@@ -179,7 +179,7 @@ async def remove_member(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     member = await ws_service.get_member(db, workspace_id, member_id)
     if member is None:
-        raise AppException(404, "成员不存在")
+        raise AppException(404, "成员不存在", 404)
     if member.role == "OWNER":
         raise AppException(400, "不能移除工作空间所有者")
     await ws_service.remove_member(db, member)

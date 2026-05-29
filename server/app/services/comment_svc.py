@@ -43,6 +43,11 @@ async def delete_comment(db: AsyncSession, comment: Comment):
 
 
 def _comment_to_dict(c: Comment) -> dict:
+    from sqlalchemy import inspect
+    replies = []
+    insp = inspect(c)
+    if 'replies' not in insp.unloaded:
+        replies = [_comment_to_dict(r) for r in (c.replies or [])]
     return {
         "id": c.id, "task_id": c.task_id, "document_id": c.document_id,
         "author_id": c.author_id,
@@ -50,6 +55,6 @@ def _comment_to_dict(c: Comment) -> dict:
         "author_avatar": c.author.avatar_url if c.author else None,
         "parent_comment_id": c.parent_comment_id,
         "content": c.content, "mentions": c.mentions or [],
-        "replies": [_comment_to_dict(r) for r in (c.replies or [])],
+        "replies": replies,
         "created_at": c.created_at.isoformat() if c.created_at else "",
     }

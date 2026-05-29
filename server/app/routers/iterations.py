@@ -61,7 +61,7 @@ async def get_iteration(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
     it = await it_service.get_iteration(db, iteration_id)
     if it is None or it.workspace_id != workspace_id:
-        raise AppException(404, "迭代不存在")
+        raise AppException(404, "迭代不存在", 404)
     from sqlalchemy import select, func
     from app.models.task import Task
     tc_result = await db.execute(select(func.count(Task.id)).where(Task.iteration_id == it.id))
@@ -93,7 +93,7 @@ async def update_iteration(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     it = await it_service.get_iteration(db, iteration_id)
     if it is None or it.workspace_id != workspace_id:
-        raise AppException(404, "迭代不存在")
+        raise AppException(404, "迭代不存在", 404)
     it = await it_service.update_iteration(
         db, it, name=req.name, goal=req.goal,
         start_date=req.start_date, end_date=req.end_date,
@@ -125,7 +125,7 @@ async def start_iteration(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     it = await it_service.get_iteration(db, iteration_id)
     if it is None or it.workspace_id != workspace_id:
-        raise AppException(404, "迭代不存在")
+        raise AppException(404, "迭代不存在", 404)
     if it.status != "PLANNING":
         raise AppException(400, "只能启动规划中的迭代")
     await it_service.update_iteration(db, it, status="ACTIVE")
@@ -142,7 +142,7 @@ async def close_iteration(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     it = await it_service.get_iteration(db, iteration_id)
     if it is None or it.workspace_id != workspace_id:
-        raise AppException(404, "迭代不存在")
+        raise AppException(404, "迭代不存在", 404)
     if it.status != "ACTIVE":
         raise AppException(400, "只能关闭进行中的迭代")
     # Move incomplete tasks out of iteration

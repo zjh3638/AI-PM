@@ -68,7 +68,7 @@ async def get_user(
 ):
     user = await user_service.get_user(db, user_id)
     if user is None:
-        raise AppException(404, "用户不存在")
+        raise AppException(404, "用户不存在", 404)
     data = await user_service.get_user_with_department(db, user)
     return {"code": 0, "message": "ok", "data": data}
 
@@ -83,7 +83,7 @@ async def update_user(
     await pc.require_system_role("SUPER_ADMIN", "ADMIN")
     user = await user_service.get_user(db, user_id)
     if user is None:
-        raise AppException(404, "用户不存在")
+        raise AppException(404, "用户不存在", 404)
     user = await user_service.update_user(
         db, user,
         display_name=req.display_name,
@@ -105,7 +105,7 @@ async def disable_user(
     await pc.require_system_role("SUPER_ADMIN")
     user = await user_service.get_user(db, user_id)
     if user is None:
-        raise AppException(404, "用户不存在")
+        raise AppException(404, "用户不存在", 404)
     if user.id == pc.user.id:
         raise AppException(400, "不能禁用自己")
     await user_service.update_user(db, user, status="DISABLED")

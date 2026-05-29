@@ -80,7 +80,7 @@ async def triage_requirement(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     r = await db.get(RequirementInbox, req_id)
     if r is None or r.workspace_id != workspace_id:
-        raise AppException(404, "需求不存在")
+        raise AppException(404, "需求不存在", 404)
 
     if body.status == "CONVERTED":
         task = Task(

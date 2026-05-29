@@ -116,7 +116,7 @@ async def get_task(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
     task = await task_service.get_task(db, task_id)
     if task is None or task.workspace_id != workspace_id:
-        raise AppException(404, "任务不存在")
+        raise AppException(404, "任务不存在", 404)
     children_count = await task_service.get_child_count(db, task_id)
     data = _task_to_dict(task)
     data["children_count"] = children_count
@@ -134,7 +134,7 @@ async def update_task(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
     task = await task_service.get_task(db, task_id)
     if task is None or task.workspace_id != workspace_id:
-        raise AppException(404, "任务不存在")
+        raise AppException(404, "任务不存在", 404)
     task = await task_service.update_task(
         db, task,
         title=req.title, description=req.description, status=req.status,
@@ -157,7 +157,7 @@ async def delete_task(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     task = await task_service.get_task(db, task_id)
     if task is None or task.workspace_id != workspace_id:
-        raise AppException(404, "任务不存在")
+        raise AppException(404, "任务不存在", 404)
     await db.delete(task)
     await db.commit()
     return {"code": 0, "message": "ok", "data": None}
@@ -186,6 +186,6 @@ async def move_task(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
     task = await task_service.get_task(db, task_id)
     if task is None or task.workspace_id != workspace_id:
-        raise AppException(404, "任务不存在")
+        raise AppException(404, "任务不存在", 404)
     task = await task_service.move_task(db, task, req.new_status, req.sort_order)
     return {"code": 0, "message": "ok", "data": _task_to_dict(task)}

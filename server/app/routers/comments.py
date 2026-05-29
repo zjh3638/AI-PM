@@ -55,9 +55,9 @@ async def update_comment(
 ):
     comment = await comment_svc.get_comment(db, comment_id)
     if comment is None:
-        raise AppException(404, "评论不存在")
+        raise AppException(404, "评论不存在", 404)
     if comment.author_id != user.id:
-        raise AppException(403, "只能编辑自己的评论")
+        raise AppException(403, "只能编辑自己的评论", 403)
     comment = await comment_svc.update_comment(db, comment, req.content)
     return {"code": 0, "message": "ok", "data": comment_svc._comment_to_dict(comment)}
 
@@ -70,8 +70,8 @@ async def delete_comment(
 ):
     comment = await comment_svc.get_comment(db, comment_id)
     if comment is None:
-        raise AppException(404, "评论不存在")
+        raise AppException(404, "评论不存在", 404)
     if comment.author_id != user.id:
-        raise AppException(403, "只能删除自己的评论")
+        raise AppException(403, "只能删除自己的评论", 403)
     await comment_svc.delete_comment(db, comment)
     return {"code": 0, "message": "ok", "data": None}

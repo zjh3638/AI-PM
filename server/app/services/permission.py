@@ -18,7 +18,7 @@ class PermissionChecker:
 
     async def require_system_role(self, *roles: str):
         if self.user.system_role not in roles:
-            raise AppException(403, "无权访问此功能")
+            raise AppException(403, "无权访问此功能", 403)
 
     async def require_workspace_role(self, workspace_id: str, *roles: str):
         if self._is_super_admin():
@@ -31,9 +31,9 @@ class PermissionChecker:
         )
         member = result.scalar_one_or_none()
         if member is None:
-            raise AppException(403, "不是该工作空间的成员")
+            raise AppException(403, "不是该工作空间的成员", 403)
         if member.role not in roles:
-            raise AppException(403, "无权执行此操作")
+            raise AppException(403, "无权执行此操作", 403)
 
     @property
     def data_scope(self) -> str:
