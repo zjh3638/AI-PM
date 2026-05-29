@@ -6,7 +6,7 @@
 
 AI-native 项目管理平台，面向 50-200 人中型企业，核心差异化：4 个 AI Agent 角色（需求分析师 / 设计师 / 开发工程师 / 项目经理）像人类成员一样被分配任务、执行产出、接受 Review。
 
-**技术栈：** Python FastAPI 后端 + React/Vite/Ant Design 前端 + MySQL 8 + Redis + Git(GitPython) + 本地 LLM (DeepSeek/Qwen)
+**技术栈：** Python FastAPI 后端 + React/Vite/Ant Design 前端 + MySQL 8 + Redis + Git(GitPython) + 本地 LLM (DeepSeek/Qwen) + Hermes Agent (Nous Research)
 
 ---
 
@@ -16,7 +16,7 @@ AI-native 项目管理平台，面向 50-200 人中型企业，核心差异化�
 |-------|------|------|-----------|
 | Foundation | 基座：脚手架 + 认证 + 工作空间 + RBAC | 6-7 周 | 用户可登录、创建空间、RBAC 生效 |
 | Plan 2 | 任务系统 + 知识库 | 8-10 周 | 完整任务管理 + Git 版本化知识库 |
-| Plan 2.5 | AgentScope 技术验证 | 1-2 周 | ReActAgent 工具调用稳定、Webhook 可靠、Memory 摘要质量验证 |
+| Plan 2.5 | Hermes 技术验证 | 1-2 周 | Skill 文件生成稳定、API/Webhook 可靠、Memory 召回质量验证 |
 | Plan 3 | AI 引擎 | 10-12 周 | AI Agent 被分配任务 → 执行 → 产出 → 人类 Review |
 | Plan 4 | 协作 + 系统管理 | 6-7 周 | 全部 9 页完整可用的 MVP |
 
@@ -29,7 +29,7 @@ AI-native 项目管理平台，面向 50-200 人中型企业，核心差异化�
 | M0 | 开发环境就绪 | Foundation 前 | `pnpm dev` 启动前端(3000)，`uvicorn` 启动后端(8000)，MySQL/Redis 可连接 |
 | M1 | 基座可用 | Foundation | 用户密码/企微登录 → 创建工作空间(含 OpenSpec) → 邀请成员 → 权限生效 |
 | M2 | 核心 PM 可用 | Plan 2 | Epic→Story→Task 层级创建 → Kanban 拖拽 → Git 版本文档 CRUD → 全文搜索 |
-| M3 | AgentScope 验证通过 | Plan 2.5 | 5 项验证全部通过，输出验证报告，Go/No-Go 决策 |
+| M3 | Hermes 验证通过 | Plan 2.5 | 5 项验证全部通过，输出验证报告，Go/No-Go 决策 |
 | M4 | AI 引擎可用 | Plan 3 | Agent 被委托任务 → ReAct 执行 → 产出 PRD/日报 → 人类 Review 通过/打回 |
 | M5 | MVP 完整 | Plan 4 | 全部 9 页可用，通知/企微/自动化/会议大屏完整闭环 |
 
@@ -44,7 +44,7 @@ Foundation (6-7 周)
 Plan 2: 任务 + 知识库 (8-10 周)
     │
     ▼
-Plan 2.5: AgentScope 技术验证 (1-2 周)
+Plan 2.5: Hermes 技术验证 (1-2 周)
     │
     ├──────────┐
     │          │
@@ -61,7 +61,7 @@ AI 引擎      协作 + 管理
 
 - **关键路径：** Foundation → Plan 2 → Plan 2.5 → Plan 3
 - **可并行：** Plan 3 和 Plan 4 可在 Plan 2.5 后部分并行
-- **Plan 2.5 是 P0 关卡**：验证 AgentScope 核心能力。若验证不通过，需要重新评估 AI 引擎方案
+- **Plan 2.5 是 P0 关卡**：验证 Hermes Agent 内网部署可行性和核心能力。若验证不通过，需要重新评估 AI 引擎方案
 
 ---
 
@@ -117,7 +117,7 @@ AI 引擎      协作 + 管理
 4. **Agent 任务异步执行**（asyncio 后台 + SSE 流式），MVP 不引入 Celery
 5. **3 级 RBAC 从 Foundation 即为所有路由统一入口**，后续新增路由无需改动权限架构
 6. **认证和通知层使用接口抽象**（`auth/AuthProvider`、`notify/NotifyProvider`），企微作为首个实现，后续可扩展飞书/钉钉/邮件
-7. **AI Agent 全链路可观测**：AgentScope 执行日志结构化输出 + FastAPI 侧 tracing + 关键指标（任务成功率/延迟/摘要质量）监控
+7. **AI Agent 全链路可观测**：Hermes 执行日志结构化输出 + FastAPI 侧 tracing + 关键指标（任务成功率/延迟/Skill 质量）监控
 8. **OpenSpec 项目宪法**：工作空间创建时自动初始化 OpenSpec（设计规范 §4.3），AI 调用时注入 System Prompt。OpenSpec 定义行为边界，记忆系统提供历史上下文，二者独立管理
 9. **AuthProvider + NotifyProvider 接口抽象**：外部集成通过接口隔离，企微为首个实现，后续可扩展飞书/钉钉/邮件而不影响业务逻辑
 
@@ -178,7 +178,7 @@ ai-pm/
 │   │   ├── integrations/            # 外部集成 (企微/AuthProvider)
 │   │   └── ai/                      # AI 引擎 (独立包, Plan 3+)
 │   │       ├── gateway.py           # LLM 网关
-│   │       ├── agentscope_bridge.py # AgentScope 桥接
+│   │       ├── hermes_client.py    # Hermes Agent HTTP 客户端
 │   │       ├── agent_config.py      # Agent 角色定义
 │   │       ├── prompt_manager.py    # Prompt 模板管理
 │   │       ├── memory.py            # 记忆系统
@@ -233,14 +233,14 @@ ai-pm/
 
 | 编号 | 风险 | 影响 | 概率 | 缓解措施 |
 |------|------|------|------|---------|
-| R1 | AgentScope 本地 LLM tool calling 准确率不达标 | Plan 3 阻塞 | 中 | Plan 2.5 提前验证；备选 LangGraph |
+| R1 | Hermes Agent 内网部署无法完成或本地 LLM tool calling 准确率不达标 | Plan 3 阻塞 | 中 | Plan 2.5 提前验证；降级策略（禁用自学习，仅用执行引擎）；备选 LangGraph |
 | R2 | DeepSeek/Qwen API 不可用或限流 | Plan 3 开发停滞 | 低 | Mock LLM 开发模式；多模型备选 |
 | R3 | AI 摘要质量无法达到可用标准 (3/5) | Memory 系统降级 | 中 | MVP 人工标注 + AI 辅助；非全自动摘要 |
 | R4 | 企微 API 接口变更或审批延迟 | 企微集成延期 | 低 | AuthProvider 接口抽象；密码登录兜底 |
 | R5 | 知识库 Git 仓库在多人并发写入时冲突 | 文档丢失风险 | 低 | 文件锁 + 自动合并 + 冲突告警 |
 | R6 | 单人开发瓶颈——AI 引擎开发周期超预期 | 整体延期 4-6 周 | 中 | Mock LLM 并行开发；Plan 3/4 部分并行 |
 | R7 | MySQL FULLTEXT ngram 中文分词质量不足 | 搜索体验差 | 低 | V1.1 升级向量搜索；Plan 2 阶段即可验证 |
-| R8 | AgentScope 与 FastAPI 进程通信延迟过高 | 同步调用超时 | 低 | Plan 2.5 提前验证；降级为同进程调用 |
+| R8 | Hermes 容器与 FastAPI 容器间网络通信延迟过高 | 同步调用超时 | 低 | Plan 2.5 提前验证；降级为 FastAPI 轮询模式 |
 
 ---
 
@@ -268,25 +268,25 @@ ai-pm/
 
 ---
 
-## 11. AgentScope 技术验证（Plan 2.5）关卡详情
+## 11. Hermes Agent 技术验证（Plan 2.5）关卡详情
 
 在 Plan 2 完成后、Plan 3 AI 引擎开发前，必须通过此验证关卡。
 
-**目标：** 确认 AgentScope 框架在真实场景下满足项目需求。
+**目标：** 确认 Hermes Agent 在内网环境下满足项目需求。
 
 **验证项：**
 
 | 验证项 | 成功标准 | 方法 |
 |--------|---------|------|
-| ReActAgent 工具调用稳定性 | 连续 50 次工具调用零异常 | 自动化循环测试 |
-| Webhook 回调可靠性 | 回调延迟 < 3s，成功率 > 99% | 压力测试 |
-| Memory 摘要质量 | 人工评分 ≥ 3/5（5 分制） | 样例盲评 |
-| AgentScope + FastAPI 集成 | RTT < 5s（同步模式） | 端到端集成测试 |
-| 本地 LLM 兼容性 | DeepSeek/Qwen 均可正常运行 | 模型切换测试 |
+| Skill 文件生成与自学习闭环稳定性 | 连续 20 次复杂任务零异常，Skill 正常生成和复用 | 自动化循环测试 |
+| API 与 Webhook 回调可靠性 | API RTT < 5s，回调延迟 < 3s，成功率 > 99% | 压力测试 |
+| Memory 召回准确率与 Skill 质量 | 人工评分 ≥ 3/5（5 分制） | 样例盲评 |
+| Hermes + FastAPI 集成 | RTT < 5s（同步模式），Docker Compose 编排稳定 | 端到端集成测试 |
+| 内网本地 LLM 兼容性 | DeepSeek/Qwen 均可正常运行 | 模型切换测试 |
 
-**交付物：** 验证报告（通过/不通过 + 数据 + 风险项）
+**交付物：** 验证报告（通过/不通过 + 数据 + 风险项 + 内网部署配置文档）
 
-**若不通过：** 重新评估 AI 引擎方案（备选：LangGraph / 自建 Agent 编排 / 降级为 API 直调）
+**若不通过：** 启用降级策略（禁用自学习 / 降级为轮询模式），或重新评估 AI 引擎方案（备选：LangGraph / 自建 Agent 编排 / 降级为 API 直调）
 
 ---
 
@@ -307,6 +307,6 @@ ai-pm/
 | 0 | `IMPLEMENTATION_ROADMAP.md` | 本文件 — 总路线图 |
 | 1 | `docs/superpowers/plans/2026-05-01-foundation-plan.md` | Foundation — FastAPI 版基座计划 |
 | 2 | `docs/superpowers/plans/2026-05-01-plan-2-tasks-kb.md` | Plan 2 — 任务系统 + 知识库 |
-| 2.5 | `docs/superpowers/plans/2026-05-01-plan-2.5-agentscope-spike.md` | Plan 2.5 — AgentScope 技术验证（关卡） |
+| 2.5 | `docs/superpowers/plans/2026-05-01-plan-2.5-hermes-spike.md` | Plan 2.5 — Hermes Agent 技术验证（关卡） |
 | 3 | `docs/superpowers/plans/2026-05-01-plan-3-ai-engine.md` | Plan 3 — AI 引擎 |
 | 4 | `docs/superpowers/plans/2026-05-01-plan-4-collab-admin.md` | Plan 4 — 协作 + 系统管理 |

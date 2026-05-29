@@ -30,7 +30,7 @@ prototypes/
 ## Architecture (planned)
 
 - **Frontend:** React SPA, 6 pages: 工作台 / 工作空间 / 会议大屏 / AI对话 / 个人中心 / 系统管理
-- **Backend:** FastAPI modular monolith (10 services, JWT auth) + AgentScope (AI agent runtime)
+- **Backend:** FastAPI modular monolith (10 services, JWT auth) + Hermes Agent (AI agent runtime)
 - **DB:** MySQL for core data, Git (GitPython) for knowledge base versioning
 - **AI:** 4 Agent roles — 需求分析师 / 设计师 / 开发工程师 / 项目经理 — assigned tasks like human members
 - **Project skeleton:** pnpm monorepo (Turborepo), Node.js >= 20, pnpm 9.15.0
