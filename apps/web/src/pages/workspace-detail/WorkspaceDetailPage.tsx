@@ -329,13 +329,19 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
         <button onClick={() => { setSelected(new Set()); setBatchAction(null); }}>✕</button>
       </div>
 
-      <div className="kanban-grid">
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: `repeat(${colDefs.length}, minmax(180px, 1fr))`,
+        gap: 10,
+        overflowX: 'auto',
+      }}>
         {colDefs.map((col) => (
           <div
             key={col.key}
             className="kanban-col"
             onDrop={(e) => handleDrop(col.key, e)}
             onDragOver={(e) => e.preventDefault()}
+            style={{ margin: 0 }}
           >
             <div className="col-head">
               <span>{isFull && col.icon ? `${col.icon} ` : ''}{col.title}</span>
@@ -348,13 +354,14 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
                 onClick={(e) => { if (e.shiftKey) toggleSelect(task.id); else onEditTask(task); }}
                 draggable
                 onDragStart={(e) => handleDragStart(e, task.id, isFull ? task.phase : task.status)}
+                style={isFull ? { padding: '6px 8px', fontSize: '0.72rem', marginBottom: 4 } : {}}
               >
-                <div className="card-title">{task.title}</div>
-                <div className="card-meta">
-                  {isFull && <span className="badge" style={{ fontSize: '0.58rem', background: statusBadge[task.status]?.bg || 'var(--bg-hover)', color: 'var(--text-secondary)' }}>{statusBadge[task.status]?.label || task.status}</span>}
-                  <span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>{task.task_type}</span>
-                  <span style={{ color: task.priority === 'CRITICAL' ? 'var(--red-600)' : 'var(--text-muted)' }}>{task.priority}</span>
-                  {task.assignee_name && <span>{task.assignee_name}</span>}
+                <div className="card-title" style={isFull ? { fontSize: '0.72rem', marginBottom: 2 } : {}}>{task.title}</div>
+                <div className="card-meta" style={isFull ? { gap: 4, flexWrap: 'wrap' } : {}}>
+                  {isFull && <span className="badge" style={{ fontSize: '0.55rem', padding: '0 4px', background: statusBadge[task.status]?.bg || 'var(--bg-hover)', color: 'var(--text-secondary)' }}>{statusBadge[task.status]?.label || task.status}</span>}
+                  {!isFull && <span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>{task.task_type}</span>}
+                  {task.priority === 'CRITICAL' && <span style={{ fontSize: '0.6rem', color: 'var(--red-600)' }}>紧急</span>}
+                  {task.assignee_name && <span style={isFull ? { fontSize: '0.6rem', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}}>{task.assignee_name}</span>}
                 </div>
               </div>
             ))}
