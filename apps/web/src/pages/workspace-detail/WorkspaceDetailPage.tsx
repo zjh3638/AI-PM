@@ -225,8 +225,9 @@ function PulseChat() {
    ═══════════════════════════════════════════ */
 function KanbanView({ onCreateTask, onEditTask, milestoneFilter }: { onCreateTask: (status: string) => void; onEditTask: (task: Task) => void; milestoneFilter: string }) {
   const { id: wsId } = useParams<{ id: string }>();
-  const { kanban, loading, fetchKanban, moveTask } = useTaskStore();
+  const { kanban, loading, fetchKanban, moveTask, update } = useTaskStore();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchAction, setBatchAction] = useState<string | null>(null);
 
   useEffect(() => { if (wsId) fetchKanban(wsId); }, [wsId]);
 
@@ -255,6 +256,19 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter }: { onCreateTas
     }
   };
 
+  const handleBatchAction = async (value: string) => {
+    if (!wsId || selected.size === 0) return;
+    const promises: Promise<any>[] = [];
+    selected.forEach((taskId) => {
+      if (batchAction === 'status') promises.push(update(wsId, taskId, { status: value } as any));
+      else if (batchAction === 'priority') promises.push(update(wsId, taskId, { priority: value } as any));
+    });
+    await Promise.all(promises);
+    await fetchKanban(wsId);
+    setSelected(new Set());
+    setBatchAction(null);
+  };
+
   if (loading) return <div className="empty-state"><div className="empty-icon">⏳</div>加载中...</div>;
 
   return (
@@ -262,10 +276,35 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter }: { onCreateTas
       {/* Batch bar */}
       <div className={`batch-bar${selected.size > 0 ? ' visible' : ''}`}>
         <span className="batch-count">已选 {selected.size} 项</span>
-        <button>改状态</button>
-        <button>改分配</button>
-        <button>改优先级</button>
-        <button onClick={() => setSelected(new Set())}>✕</button>
+        {!batchAction ? (
+          <>
+            <button onClick={() => setBatchAction('status')}>改状态</button>
+            <button onClick={() => setBatchAction('priority')}>改优先级</button>
+          </>
+        ) : (
+          <>
+            {batchAction === 'status' && (
+              <select onChange={(e) => handleBatchAction(e.target.value)} autoFocus style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: 4, border: '1px solid var(--border)' }}>
+                <option value="">选择状态...</option>
+                <option value="TODO">待办</option>
+                <option value="IN_PROGRESS">进行中</option>
+                <option value="IN_REVIEW">待 Review</option>
+                <option value="DONE">已完成</option>
+              </select>
+            )}
+            {batchAction === 'priority' && (
+              <select onChange={(e) => handleBatchAction(e.target.value)} autoFocus style={{ padding: '2px 6px', fontSize: '0.75rem', borderRadius: 4, border: '1px solid var(--border)' }}>
+                <option value="">选择优先级...</option>
+                <option value="CRITICAL">紧急</option>
+                <option value="HIGH">高</option>
+                <option value="MEDIUM">中</option>
+                <option value="LOW">低</option>
+              </select>
+            )}
+            <button onClick={() => setBatchAction(null)}>取消</button>
+          </>
+        )}
+        <button onClick={() => { setSelected(new Set()); setBatchAction(null); }}>✕</button>
       </div>
 
       <div className="kanban-grid">
@@ -342,22 +381,65 @@ function ListView({ onEditTask, milestoneFilter }: { onEditTask: (task: Task) =>
    GANTT VIEW
    ═══════════════════════════════════════════ */
 function GanttView({ milestoneFilter }: { milestoneFilter: string }) {
-  const msName = useMilestoneStore((s) => s.milestones.find((m) => m.id === milestoneFilter)?.name || '');
-  const days = ['5/1', '5/3', '5/5', '5/7', '5/9', '5/11', '5/13', '5/15', '5/17', '5/20'];
-  const rowCount = 7;
+  const { id: wsId } = useParams<{ id: string }>();
+  const ms = useMilestoneStore((s) => s.milestones.find((m) => m.id === milestoneFilter));
+  const { tasks, fetchList } = useTaskStore();
+
+  useEffect(() => { if (wsId) fetchList(wsId, { milestone_id: milestoneFilter, page_size: 100 }); }, [wsId, milestoneFilter]);
+
+  // Build date range from milestone dates or task dates
+  const now = new Date();
+  const startDate = ms?.start_date ? new Date(ms.start_date) : new Date(now.getTime() - 14 * 86400000);
+  const endDate = ms?.end_date ? new Date(ms.end_date) : new Date(now.getTime() + 14 * 86400000);
+  const totalDays = Math.max((endDate.getTime() - startDate.getTime()) / 86400000, 1);
+
+  // Generate day labels (max ~20)
+  const dayCount = Math.min(Math.ceil(totalDays) + 1, 20);
+  const days: string[] = [];
+  for (let i = 0; i < dayCount; i++) {
+    const d = new Date(startDate.getTime() + i * 86400000);
+    days.push(`${d.getMonth() + 1}/${d.getDate()}`);
+  }
+
+  const statusColors: Record<string, string> = {
+    TODO: 'var(--text-muted)', IN_PROGRESS: 'var(--blue-400)', IN_REVIEW: 'var(--amber-400)', DONE: 'var(--green-400)',
+  };
+
+  // Compute bar position from task dates or default to a spread
+  const getBarStyle = (task: Task, idx: number) => {
+    const tStart = task.created_at ? new Date(task.created_at) : new Date(startDate.getTime() + idx * 2 * 86400000);
+    const tEnd = task.due_date ? new Date(task.due_date) : new Date(tStart.getTime() + 3 * 86400000);
+    const leftPct = Math.max(0, ((tStart.getTime() - startDate.getTime()) / 86400000) / totalDays * 100);
+    const widthPct = Math.max(3, ((tEnd.getTime() - tStart.getTime()) / 86400000) / totalDays * 100);
+    return { left: `${leftPct}%`, width: `${widthPct}%` };
+  };
+
   return (
     <div className="gantt-wrap">
       <div className="gantt-head">
-        <div className="gantt-label">任务 / {msName || '里程碑'}</div>
+        <div className="gantt-label">任务 / {ms?.name || '里程碑'}</div>
         <div className="gantt-timeline">
           {days.map((d) => <div key={d} className="gantt-day">{d}</div>)}
         </div>
       </div>
-      {Array.from({ length: rowCount }).map((_, i) => (
-        <div key={i} className="gantt-row">
-          <div className="gantt-label">{i === 0 ? 'M2 · 核心开发' : i === 4 ? 'M3 · UI Review' : `├ 任务 ${i}`}</div>
+      {tasks.length === 0 && (
+        <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>暂无任务数据</div>
+      )}
+      {tasks.map((task, idx) => (
+        <div key={task.id} className="gantt-row">
+          <div className="gantt-label" style={{ fontSize: '0.74rem' }}>
+            <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>{task.task_type === 'STORY' ? '📋' : '├'}</span>
+            {task.title}
+          </div>
           <div className="gantt-timeline">
-            <div className={`gantt-bar ${i < 4 ? 'blue' : 'amber'}`} style={{ left: `${i * 30}px`, width: `${80 + i * 20}px` }} />
+            <div
+              className="gantt-bar"
+              style={{
+                ...getBarStyle(task, idx),
+                background: statusColors[task.status] || 'var(--text-muted)',
+              }}
+              title={`${task.title}: ${task.status}`}
+            />
           </div>
         </div>
       ))}
@@ -953,15 +1035,31 @@ function ReportsPanel() {
         <div className="report-chart">
           <div style={{ width: '100%', padding: '0 16px' }}>
             {members.length > 0 ? (
-              members.filter((m: WorkspaceMember) => m.role !== 'AI_AGENT').map((m: WorkspaceMember) => (
-                <div key={m.id} className="report-bar">
-                  <span className="bar-label">{m.user_name || m.user_id}</span>
-                  <span className="bar-track">
-                    <span className="bar-fill" style={{ width: '78%', background: 'var(--blue-500)' }} />
-                  </span>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>78%</span>
-                </div>
-              ))
+              (() => {
+                // Calculate real workload: active tasks per member / max active tasks
+                const memberLoad = members
+                  .filter((m: WorkspaceMember) => m.role !== 'AI_AGENT')
+                  .map((m: WorkspaceMember) => {
+                    const total = allTasks.filter((t: any) => t.assignee_id === (m.user_id || m.id) && t.status !== 'DONE').length;
+                    const inProgress = allTasks.filter((t: any) => t.assignee_id === (m.user_id || m.id) && t.status === 'IN_PROGRESS').length;
+                    return { member: m, total, inProgress };
+                  });
+                const maxLoad = Math.max(...memberLoad.map((l) => l.total), 1);
+                return memberLoad.map(({ member: m, total, inProgress }) => (
+                  <div key={m.id} className="report-bar">
+                    <span className="bar-label">{m.user_name || m.user_id}</span>
+                    <span className="bar-track">
+                      <span className="bar-fill" style={{
+                        width: `${(total / maxLoad) * 100}%`,
+                        background: total > 5 ? 'var(--red-400)' : total > 2 ? 'var(--amber-400)' : 'var(--blue-400)',
+                      }} />
+                    </span>
+                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', minWidth: 48, textAlign: 'right' }}>
+                      {total} 进行中({inProgress})
+                    </span>
+                  </div>
+                ));
+              })()
             ) : (
               <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20 }}>暂无数据</div>
             )}
