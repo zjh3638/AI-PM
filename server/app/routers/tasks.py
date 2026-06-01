@@ -1,6 +1,7 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -13,6 +14,10 @@ from app.services.permission import PermissionChecker, get_permission_checker
 from app.exceptions import AppException
 
 router = APIRouter(prefix="/api/workspaces/{workspace_id}", tags=["tasks"])
+
+
+class AdvanceRequest(BaseModel):
+    content: str = ""
 
 
 def _task_to_dict(task) -> dict:
@@ -232,6 +237,7 @@ async def get_task_activity(
 async def advance_task_phase(
     workspace_id: str,
     task_id: str,
+    req: AdvanceRequest,
     db: AsyncSession = Depends(get_db),
     pc: PermissionChecker = Depends(get_permission_checker),
     current_user: User = Depends(get_current_user),
@@ -241,12 +247,22 @@ async def advance_task_phase(
     if task is None or task.workspace_id != workspace_id:
         raise AppException(404, "任务不存在", 404)
 
-    phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE", "ACCEPTANCE"]
+    if task.status != "DONE":
+        raise AppException(400, "任务未完成，不能推进阶段（需要先完成当前阶段的任务）", 400)
+
+    phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE"]
     idx = phases.index(task.phase) if task.phase in phases else -1
     if idx < 0 or idx == len(phases) - 1:
         raise AppException(400, "已是最后一个阶段", 400)
 
     task = await task_service.update_task(db, task, phase=phases[idx + 1], status="TODO")
+
+    # Log deliverable as a review comment
+    if req.content:
+        from app.services import comment_svc
+        await comment_svc.create_comment(db, current_user.id,
+            task_id=task_id, content=f"[阶段推进: {phases[idx]} → {phases[idx + 1]}]\n产出物说明：{req.content}")
+
     from app.services import activity_svc
     await activity_svc.log_activity(db, task_id, current_user.id, "UPDATE",
         field_name="阶段", old_value=phases[idx], new_value=phases[idx + 1])

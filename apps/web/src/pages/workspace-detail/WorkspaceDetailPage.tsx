@@ -238,13 +238,12 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
     { key: 'IN_REVIEW', title: '待 Review' },
     { key: 'DONE', title: '已完成' },
   ];
-  const phaseColDefs: { key: string; title: string; icon?: string }[] = [
-    { key: 'REQUIREMENTS', title: '需求分析', icon: '📋' },
-    { key: 'DESIGN', title: '方案设计', icon: '🎨' },
-    { key: 'DEVELOPMENT', title: '开发实现', icon: '💻' },
-    { key: 'TESTING', title: '测试验证', icon: '🧪' },
-    { key: 'RELEASE', title: '发布上线', icon: '🚀' },
-    { key: 'ACCEPTANCE', title: '验收交付', icon: '✅' },
+  const phaseColDefs: { key: string; title: string; icon?: string; deliverables: string }[] = [
+    { key: 'REQUIREMENTS', title: '需求分析', icon: '📋', deliverables: 'PRD文档、用户故事列表、需求评审结论' },
+    { key: 'DESIGN', title: '方案设计', icon: '🎨', deliverables: '技术方案文档、UI设计稿、API接口定义' },
+    { key: 'DEVELOPMENT', title: '开发实现', icon: '💻', deliverables: '代码、单元测试、Code Review通过' },
+    { key: 'TESTING', title: '测试验证', icon: '🧪', deliverables: '测试用例、测试报告、Bug修复确认' },
+    { key: 'RELEASE', title: '发布上线', icon: '🚀', deliverables: '发布说明、部署checklist、线上验证' },
   ];
   const colDefs = isFull ? phaseColDefs : statusColDefs;
 
@@ -265,18 +264,48 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
     e.dataTransfer.setData('fromKey', colKey);
   };
 
+  const [gateOpen, setGateOpen] = useState<string | null>(null); // phase key
+  const [gateNote, setGateNote] = useState('');
+
   const handleDrop = async (colKey: string, e: React.DragEvent) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('taskId');
     const fromKey = e.dataTransfer.getData('fromKey');
     if (!taskId || !wsId || fromKey === colKey) return;
     if (isFull) {
-      await update(wsId, taskId, { phase: colKey, status: 'TODO' } as any);
-      // Re-fetch with correct grouping — store's update auto-refresh uses default status grouping
+      // Strict: only allow dragging to the NEXT phase, and task must be DONE
+      const phaseIdx = phaseColDefs.findIndex(p => p.key === fromKey);
+      const targetIdx = phaseColDefs.findIndex(p => p.key === colKey);
+      if (targetIdx !== phaseIdx + 1) return; // Only allow next phase
+      // Advance via API with gate check
+      try {
+        await fetch(`/api/workspaces/${wsId}/tasks/${taskId}/advance-phase`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+          body: JSON.stringify({ content: '通过拖拽推进阶段' }),
+        });
+      } catch { return; }
       await fetchKanban(wsId, 'phase');
     } else {
       await moveTask(wsId, taskId, colKey, 0);
     }
+  };
+
+  const handleAdvancePhase = async () => {
+    if (!wsId || !gateOpen || !gateNote.trim()) return;
+    const tasks = (kanban[gateOpen] || []).filter((t: Task) => t.status === 'DONE');
+    for (const t of tasks) {
+      try {
+        await fetch(`/api/workspaces/${wsId}/tasks/${t.id}/advance-phase`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+          body: JSON.stringify({ content: gateNote }),
+        });
+      } catch { /* skip */ }
+    }
+    setGateOpen(null);
+    setGateNote('');
+    await fetchKanban(wsId, 'phase');
   };
 
   const handleBatchAction = async (value: string) => {
@@ -344,9 +373,40 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
             onDragOver={(e) => e.preventDefault()}
             style={{ margin: 0 }}
           >
-            <div className="col-head">
-              <span>{isFull && col.icon ? `${col.icon} ` : ''}{col.title}</span>
-              <span className="badge" style={{ background: 'var(--bg-hover)' }}>{(kanban[col.key] || []).length}</span>
+            <div className="col-head" style={isFull ? { flexDirection: 'column', gap: 4, marginBottom: 12 } : {}}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                <span>{isFull && col.icon ? `${col.icon} ` : ''}{col.title}</span>
+                <span className="badge" style={{ background: 'var(--bg-hover)' }}>{(kanban[col.key] || []).length}</span>
+              </div>
+              {isFull && (() => {
+                const colTasks = (kanban[col.key] || []);
+                const doneCount = colTasks.filter((t: Task) => t.status === 'DONE').length;
+                const total = colTasks.length;
+                const allDone = total > 0 && doneCount === total;
+                const phaseIdx = phaseColDefs.findIndex(p => p.key === col.key);
+                const isLast = phaseIdx === phaseColDefs.length - 1;
+                return (
+                  <>
+                    {total > 0 && (
+                      <div style={{ width: '100%', height: 4, background: 'var(--border-light)', borderRadius: 2 }}>
+                        <div style={{ height: '100%', width: `${Math.round((doneCount/total)*100)}%`, background: allDone ? 'var(--green-400)' : 'var(--blue-400)', borderRadius: 2, transition: 'width 0.3s' }} />
+                      </div>
+                    )}
+                    {allDone && !isLast && (
+                      <button
+                        className="btn btn-primary btn-xs"
+                        style={{ width: '100%', fontSize: '0.68rem', marginTop: 2 }}
+                        onClick={() => setGateOpen(col.key)}
+                      >
+                        推进到「{phaseColDefs[phaseIdx + 1]?.title}」
+                      </button>
+                    )}
+                    {total > 0 && !allDone && (
+                      <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>{doneCount}/{total} 完成</div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
             {(kanban[col.key] || []).filter((t: Task) => !milestoneFilter || t.milestone_id === milestoneFilter).map((task: Task) => (
               <div
@@ -370,6 +430,44 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
           </div>
         ))}
       </div>
+
+      {/* Gate dialog */}
+      {gateOpen && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.4)', zIndex: 1000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }} onClick={() => { setGateOpen(null); setGateNote(''); }}>
+          <div style={{
+            background: 'var(--bg-surface)', borderRadius: 'var(--radius-lg)',
+            padding: 24, width: 420, maxWidth: '90vw',
+            boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+          }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 4 }}>推进阶段</h3>
+            <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: 16 }}>
+              从「{phaseColDefs.find(p => p.key === gateOpen)?.title}」推进到「{phaseColDefs[phaseColDefs.findIndex(p => p.key === gateOpen) + 1]?.title}」
+            </p>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginBottom: 12, padding: '8px 12px', background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)' }}>
+              <strong>要求产出物：</strong>
+              <span style={{ marginLeft: 4 }}>{phaseColDefs.find(p => p.key === gateOpen)?.deliverables}</span>
+            </div>
+            <textarea
+              placeholder="填写产出物说明（必填）..."
+              value={gateNote}
+              onChange={(e) => setGateNote(e.target.value)}
+              rows={3}
+              style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', fontFamily: 'inherit', resize: 'vertical' }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+              <button className="btn btn-ghost" onClick={() => { setGateOpen(null); setGateNote(''); }}>取消</button>
+              <button className="btn btn-primary" disabled={!gateNote.trim()} onClick={handleAdvancePhase}>
+                确认推进（{kanban[gateOpen]?.filter((t: Task) => t.status === 'DONE').length || 0} 个任务）
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

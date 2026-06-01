@@ -144,7 +144,7 @@ async def get_kanban(db: AsyncSession, workspace_id: str, group_by: str = "statu
     all_tasks = result.scalars().all()
 
     if group_by == "phase":
-        phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE", "ACCEPTANCE"]
+        phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE"]
         return {p: [_task_to_dict(t) for t in all_tasks if t.phase == p] for p in phases}
     else:
         columns = {}
