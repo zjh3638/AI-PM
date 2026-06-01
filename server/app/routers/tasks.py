@@ -142,11 +142,22 @@ async def update_task(
     req: TaskUpdate,
     db: AsyncSession = Depends(get_db),
     pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
 ):
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
     task = await task_service.get_task(db, task_id)
     if task is None or task.workspace_id != workspace_id:
         raise AppException(404, "任务不存在", 404)
+
+    # Log activity for changed fields
+    from app.services import activity_svc
+    field_labels = {'status': '状态', 'priority': '优先级', 'assignee_id': '负责人', 'title': '标题', 'milestone_id': '里程碑', 'iteration_id': '迭代'}
+    for field, label in field_labels.items():
+        req_val = getattr(req, field, None)
+        old_val = getattr(task, field, None)
+        if req_val is not None and str(req_val) != str(old_val):
+            await activity_svc.log_activity(db, task_id, current_user.id, 'STATUS_CHANGE' if field == 'status' else 'ASSIGN' if field == 'assignee_id' else 'UPDATE', field_name=label, old_value=str(old_val), new_value=str(req_val))
+
     task = await task_service.update_task(
         db, task,
         title=req.title, description=req.description, status=req.status,
@@ -202,3 +213,16 @@ async def move_task(
         raise AppException(404, "任务不存在", 404)
     task = await task_service.move_task(db, task, req.new_status, req.sort_order)
     return {"code": 0, "message": "ok", "data": _task_to_dict(task)}
+
+
+@router.get("/tasks/{task_id}/activity", response_model=APIResponse)
+async def get_task_activity(
+    workspace_id: str,
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
+    from app.services import activity_svc
+    logs = await activity_svc.get_activity(db, task_id)
+    return {"code": 0, "message": "ok", "data": logs}

@@ -13,6 +13,7 @@ from app.models.comment import Comment
 from app.models.requirement_inbox import RequirementInbox
 from app.models.document import Document
 from app.models.notification import Notification
+from app.models.activity_log import ActivityLog
 
 __all__ = [
     "UUIDMixin",
@@ -33,4 +34,5 @@ __all__ = [
     "RequirementInbox",
     "Document",
     "Notification",
+    "ActivityLog",
 ]

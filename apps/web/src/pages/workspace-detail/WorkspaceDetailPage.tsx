@@ -1113,6 +1113,24 @@ export default function WorkspaceDetailPage() {
   const [stories, setStories] = useState<Task[]>([]);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [comments, setComments] = useState<any[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [commentSubmitting, setCommentSubmitting] = useState(false);
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const [activityLogs, setActivityLogs] = useState<any[]>([]);
+
+  const fetchComments = async (taskId: string) => {
+    const res: any = await api.get(`/tasks/${taskId}/comments`);
+    setComments(res.data || []);
+  };
+
+  const fetchActivity = async (taskId: string) => {
+    try {
+      const res: any = await api.get(`/workspaces/${id}/tasks/${taskId}/activity`);
+      setActivityLogs(res.data || []);
+    } catch { setActivityLogs([]); }
+  };
 
   // Auto-select first active milestone on load
   const milestones = useMilestoneStore((s) => s.milestones);
@@ -1133,8 +1151,12 @@ export default function WorkspaceDetailPage() {
     if (task) {
       setEditingTask(task);
       setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, parent_id: task.parent_id || undefined });
+      fetchComments(task.id);
+      fetchActivity(task.id);
     } else {
       setEditingTask(null);
+      setComments([]);
+      setActivityLogs([]);
       setTaskForm({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: status || 'TODO', iteration_id: undefined, milestone_id: selectedMilestone, assignee_id: undefined, parent_id: parentStoryId || undefined });
     }
     setShowDelete(false);
@@ -1468,6 +1490,118 @@ export default function WorkspaceDetailPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Comments section — edit mode only */}
+        {editingTask && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+            <h4 style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 12 }}>评论 ({comments.length})</h4>
+
+            {/* Comment list */}
+            <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 12 }}>
+              {comments.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.74rem', padding: 12 }}>暂无评论</div>
+              ) : (
+                comments.map((c: any) => (
+                  <div key={c.id} style={{ marginBottom: 10, padding: '8px 10px', background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)', fontSize: '0.74rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600, color: 'var(--blue-600)' }}>{c.author_name || '未知'}</span>
+                      <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>{c.created_at?.slice(0, 16).replace('T', ' ')}</span>
+                    </div>
+                    <div style={{ color: 'var(--text-primary)', lineHeight: 1.5 }}>{c.content}</div>
+                    {/* Reply button */}
+                    <div style={{ marginTop: 4 }}>
+                      <span
+                        style={{ fontSize: '0.64rem', color: 'var(--text-muted)', cursor: 'pointer' }}
+                        onClick={() => setReplyTo(replyTo === c.id ? null : c.id)}
+                      >
+                        {replyTo === c.id ? '取消回复' : '回复'}
+                      </span>
+                    </div>
+                    {/* Reply input */}
+                    {replyTo === c.id && (
+                      <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
+                        <input
+                          type="text"
+                          placeholder="输入回复..."
+                          value={replyText}
+                          onChange={(e) => setReplyText(e.target.value)}
+                          onKeyDown={async (e) => {
+                            if (e.key === 'Enter' && replyText.trim()) {
+                              await api.post(`/tasks/${editingTask.id}/comments`, { content: replyText, parent_comment_id: c.id });
+                              setReplyText(''); setReplyTo(null); fetchComments(editingTask.id);
+                            }
+                          }}
+                          style={{ flex: 1, padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.74rem', fontFamily: 'inherit' }}
+                        />
+                        <button className="btn btn-primary btn-xs" onClick={async () => {
+                          if (!replyText.trim()) return;
+                          await api.post(`/tasks/${editingTask.id}/comments`, { content: replyText, parent_comment_id: c.id });
+                          setReplyText(''); setReplyTo(null); fetchComments(editingTask.id);
+                        }}>回复</button>
+                      </div>
+                    )}
+                    {/* Replies */}
+                    {c.replies && c.replies.length > 0 && (
+                      <div style={{ marginTop: 6, marginLeft: 12, paddingLeft: 10, borderLeft: '2px solid var(--border-light)' }}>
+                        {c.replies.map((r: any) => (
+                          <div key={r.id} style={{ marginBottom: 4, fontSize: '0.72rem' }}>
+                            <span style={{ fontWeight: 600, color: 'var(--blue-600)' }}>{r.author_name}</span>
+                            <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: 6 }}>{r.created_at?.slice(0, 16).replace('T', ' ')}</span>
+                            <div style={{ color: 'var(--text-primary)' }}>{r.content}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* New comment input */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                type="text"
+                placeholder="添加评论..."
+                value={commentText}
+                onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={async (e) => {
+                  if (e.key === 'Enter' && commentText.trim()) {
+                    setCommentSubmitting(true);
+                    await api.post(`/tasks/${editingTask.id}/comments`, { content: commentText });
+                    setCommentText(''); setCommentSubmitting(false); fetchComments(editingTask.id);
+                  }
+                }}
+                style={{ flex: 1, padding: '6px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', fontFamily: 'inherit', outline: 'none' }}
+              />
+              <button className="btn btn-primary btn-sm" disabled={commentSubmitting || !commentText.trim()} onClick={async () => {
+                if (!commentText.trim()) return;
+                setCommentSubmitting(true);
+                await api.post(`/tasks/${editingTask.id}/comments`, { content: commentText });
+                setCommentText(''); setCommentSubmitting(false); fetchComments(editingTask.id);
+              }}>
+                {commentSubmitting ? '...' : '发送'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Activity log — edit mode only */}
+        {editingTask && activityLogs.length > 0 && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+            <h4 style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 10 }}>操作记录</h4>
+            <div style={{ maxHeight: 200, overflowY: 'auto' }}>
+              {activityLogs.map((log: any) => (
+                <div key={log.id} style={{ display: 'flex', gap: 8, padding: '4px 0', fontSize: '0.7rem', borderBottom: '1px solid var(--border-light)' }}>
+                  <span style={{ fontWeight: 600, color: 'var(--blue-600)', minWidth: 50 }}>{log.user_name}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{log.action_label}</span>
+                  {log.field_name && <span style={{ color: 'var(--text-primary)' }}>{log.field_name}</span>}
+                  {log.new_value && <span style={{ color: 'var(--green-600)' }}>→ {log.new_value}</span>}
+                  <span style={{ color: 'var(--text-muted)', marginLeft: 'auto', fontSize: '0.64rem', whiteSpace: 'nowrap' }}>{log.created_at?.slice(0, 16).replace('T', ' ')}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </SlidePanel>
