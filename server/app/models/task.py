@@ -26,6 +26,7 @@ class Task(Base, UUIDMixin, TimestampMixin):
     severity: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
     assignee_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    reviewer_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     estimation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     estimation_unit: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0)
@@ -39,4 +40,5 @@ class Task(Base, UUIDMixin, TimestampMixin):
     epic = relationship("Task", remote_side="Task.id", backref="stories", foreign_keys=[epic_id])
     iteration = relationship("Iteration", back_populates="tasks")
     assignee = relationship("User", backref="assigned_tasks", foreign_keys=[assignee_id])
+    reviewer = relationship("User", backref="review_tasks", foreign_keys=[reviewer_id])
     milestone = relationship("Milestone", back_populates="tasks")

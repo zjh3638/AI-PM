@@ -49,6 +49,8 @@ export interface Task {
   severity: string | null;
   assignee_id: string | null;
   assignee_name: string | null;
+  reviewer_id: string | null;
+  reviewer_name: string | null;
   estimation: number | null;
   estimation_unit: string | null;
   sort_order: number;

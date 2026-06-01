@@ -391,6 +391,10 @@
   gap: 10px;
 }
 
+.kanban-grid.six-col {
+  grid-template-columns: repeat(6, 1fr);
+}
+
 .kanban-col {
   background: var(--bg-raised);
   border-radius: var(--radius-lg);
@@ -428,6 +432,20 @@
 .kanban-card.selected {
   border-color: var(--blue-400);
   background: var(--blue-50);
+}
+
+.kanban-card.overdue {
+  border-left: 3px solid var(--red-500);
+  background: var(--red-50);
+}
+
+.kanban-card.overdue:hover {
+  border-color: var(--red-400);
+}
+
+.kanban-card.overdue .card-title::before {
+  content: '⚠️ ';
+  font-size: 0.65rem;
 }
 
 .kanban-card .card-title { font-weight: 500; margin-bottom: 4px; }

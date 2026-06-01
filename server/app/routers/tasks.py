@@ -37,6 +37,8 @@ def _task_to_dict(task) -> dict:
         "status": task.status, "phase": task.phase, "priority": task.priority,
         "severity": task.severity, "assignee_id": task.assignee_id,
         "assignee_name": task.assignee.display_name if task.assignee else None,
+        "reviewer_id": task.reviewer_id,
+        "reviewer_name": task.reviewer.display_name if task.reviewer else None,
         "estimation": task.estimation, "estimation_unit": task.estimation_unit,
         "sort_order": task.sort_order,
         "due_date": task.due_date.isoformat() if task.due_date else None,
@@ -60,7 +62,8 @@ async def create_task(
         status=req.status, phase=req.phase, priority=req.priority, severity=req.severity,
         parent_id=req.parent_id, epic_id=req.epic_id, iteration_id=req.iteration_id,
         milestone_id=req.milestone_id,
-        assignee_id=req.assignee_id, estimation=req.estimation,
+        assignee_id=req.assignee_id, reviewer_id=req.reviewer_id,
+        estimation=req.estimation,
         estimation_unit=req.estimation_unit, sort_order=req.sort_order,
         due_date=req.due_date,
     )
@@ -157,7 +160,7 @@ async def update_task(
 
     # Log activity for changed fields
     from app.services import activity_svc
-    field_labels = {'status': '状态', 'priority': '优先级', 'assignee_id': '负责人', 'title': '标题', 'milestone_id': '里程碑', 'iteration_id': '迭代'}
+    field_labels = {'status': '状态', 'priority': '优先级', 'assignee_id': '负责人', 'reviewer_id': '审核人', 'title': '标题', 'milestone_id': '里程碑', 'iteration_id': '迭代'}
     for field, label in field_labels.items():
         req_val = getattr(req, field, None)
         old_val = getattr(task, field, None)
@@ -170,7 +173,7 @@ async def update_task(
         priority=req.priority, severity=req.severity,
         parent_id=req.parent_id, epic_id=req.epic_id,
         iteration_id=req.iteration_id, milestone_id=req.milestone_id,
-        assignee_id=req.assignee_id,
+        assignee_id=req.assignee_id, reviewer_id=req.reviewer_id,
         estimation=req.estimation, estimation_unit=req.estimation_unit,
         sort_order=req.sort_order, due_date=req.due_date,
     )
@@ -247,10 +250,24 @@ async def advance_task_phase(
     if task is None or task.workspace_id != workspace_id:
         raise AppException(404, "任务不存在", 404)
 
+    # If task has a designated reviewer, only that person (or OWNER/MANAGER) can advance
+    if task.reviewer_id and task.reviewer_id != current_user.id:
+        # Check if current user is OWNER or MANAGER (already checked above, but double-check)
+        from app.models.workspace import WorkspaceMember
+        result = await db.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == current_user.id,
+                WorkspaceMember.role.in_(["OWNER", "MANAGER"]),
+            )
+        )
+        if not result.scalar_one_or_none():
+            raise AppException(403, f"只有指定的审核人（{task.reviewer.display_name}）或项目负责人才能推进阶段", 403)
+
     if task.status != "DONE":
         raise AppException(400, "任务未完成，不能推进阶段（需要先完成当前阶段的任务）", 400)
 
-    phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE"]
+    phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE", "ACCEPTANCE"]
     idx = phases.index(task.phase) if task.phase in phases else -1
     if idx < 0 or idx == len(phases) - 1:
         raise AppException(400, "已是最后一个阶段", 400)

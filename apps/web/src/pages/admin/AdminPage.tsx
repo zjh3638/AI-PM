@@ -4,8 +4,12 @@ import SlidePanel from '../../components/common/SlidePanel';
 
 interface User {
   id: string; username: string; display_name: string; email: string;
-  system_role: string; department_name: string; status: string;
+  system_role: string; department_name: string; department_id: string; status: string;
   created_at: string;
+}
+
+interface Department {
+  id: string; name: string; path: string;
 }
 
 const ROLE_LABELS: Record<string, string> = {
@@ -20,46 +24,157 @@ export default function AdminPage() {
   const [keyword, setKeyword] = useState('');
   const [panelOpen, setPanelOpen] = useState(false);
   const [editing, setEditing] = useState<User | null>(null);
-  const [form, setForm] = useState({ username: '', display_name: '', email: '', password: '', system_role: 'USER' });
+  const [form, setForm] = useState({ username: '', display_name: '', email: '', password: '', system_role: 'USER', department_id: '' });
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const res: any = await api.get('/users', { params: { keyword: keyword || undefined } });
+      const res: any = await api.get('/users', { params: { keyword: keyword || undefined, page_size: 100 } });
       setUsers(res.data || []);
       setTotal(res.total || 0);
     } finally { setLoading(false); }
   };
 
-  useEffect(() => { fetchUsers(); }, [keyword]);
+  const fetchDepartments = async () => {
+    try {
+      const res: any = await api.get('/users/departments/list');
+      setDepartments(res.data || []);
+    } catch { /* skip */ }
+  };
+
+  const [deptTree, setDeptTree] = useState<any[]>([]);
+  const [deptLoading, setDeptLoading] = useState(false);
+  const [deptPanelOpen, setDeptPanelOpen] = useState(false);
+  const [deptEditing, setDeptEditing] = useState<any>(null);
+  const [deptForm, setDeptForm] = useState({ name: '', parent_id: '', sort_order: 0 });
+  const [deptSubmitting, setDeptSubmitting] = useState(false);
+  const [deptError, setDeptError] = useState('');
+  const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
+
+  const fetchDeptTree = async () => {
+    setDeptLoading(true);
+    try {
+      const res: any = await api.get('/departments/tree');
+      setDeptTree(res.data || []);
+    } finally { setDeptLoading(false); }
+  };
+
+  useEffect(() => { fetchUsers(); fetchDepartments(); }, [keyword]);
 
   const openCreate = () => {
     setEditing(null);
-    setForm({ username: '', display_name: '', email: '', password: '', system_role: 'USER' });
+    setForm({ username: '', display_name: '', email: '', password: '', system_role: 'USER', department_id: '' });
+    setError('');
     setPanelOpen(true);
   };
 
   const openEdit = (u: User) => {
     setEditing(u);
-    setForm({ username: u.username, display_name: u.display_name, email: u.email || '', password: '', system_role: u.system_role });
+    setForm({ username: u.username, display_name: u.display_name, email: u.email || '', password: '', system_role: u.system_role, department_id: u.department_id || '' });
+    setError('');
     setPanelOpen(true);
   };
 
   const submit = async () => {
-    if (!form.username.trim()) return;
-    if (editing) {
-      const data: any = { display_name: form.display_name, system_role: form.system_role };
-      if (form.password) (data as any).password = form.password;
-      await api.patch(`/users/${editing.id}`, data);
-    } else {
-      await api.post('/users', form);
-    }
-    setPanelOpen(false);
+    if (!form.username.trim()) { setError('请输入用户名'); return; }
+    if (!editing && !form.password) { setError('请输入密码'); return; }
+    setSubmitting(true);
+    setError('');
+    try {
+      if (editing) {
+        const data: any = { display_name: form.display_name, system_role: form.system_role, department_id: form.department_id || null };
+        if (form.password) data.password = form.password;
+        await api.patch(`/users/${editing.id}`, data);
+      } else {
+        await api.post('/users', form);
+      }
+      setPanelOpen(false);
+      fetchUsers();
+    } catch (e: any) {
+      setError(e?.response?.data?.message || '操作失败');
+    } finally { setSubmitting(false); }
+  };
+
+  const toggleStatus = async (u: User) => {
+    const newStatus = u.status === 'ACTIVE' ? 'DISABLED' : 'ACTIVE';
+    await api.patch(`/users/${u.id}`, { status: newStatus });
     fetchUsers();
   };
 
+  // Department CRUD
+  const openDeptCreate = (parentId = '') => {
+    setDeptEditing(null);
+    setDeptForm({ name: '', parent_id: parentId, sort_order: 0 });
+    setDeptError('');
+    setDeptPanelOpen(true);
+  };
+
+  const openDeptEdit = (d: any) => {
+    setDeptEditing(d);
+    setDeptForm({ name: d.name, parent_id: d.parent_id || '', sort_order: d.sort_order || 0 });
+    setDeptError('');
+    setDeptPanelOpen(true);
+  };
+
+  const submitDept = async () => {
+    if (!deptForm.name.trim()) { setDeptError('请输入部门名称'); return; }
+    setDeptSubmitting(true);
+    setDeptError('');
+    try {
+      if (deptEditing) {
+        await api.patch(`/departments/${deptEditing.id}`, deptForm);
+      } else {
+        await api.post('/departments', deptForm);
+      }
+      setDeptPanelOpen(false);
+      fetchDeptTree();
+    } catch (e: any) {
+      setDeptError(e?.response?.data?.message || '操作失败');
+    } finally { setDeptSubmitting(false); }
+  };
+
+  const deleteDept = async (d: any) => {
+    if (!confirm(`确定删除「${d.name}」？\n${d.children?.length ? `该部门下还有 ${d.children.length} 个子部门，` : ''}${d.user_count > 0 ? `该部门有 ${d.user_count} 名成员` : ''}`)) return;
+    try {
+      await api.delete(`/departments/${d.id}`);
+      fetchDeptTree();
+    } catch (e: any) {
+      alert(e?.response?.data?.message || '删除失败');
+    }
+  };
+
+  const toggleExpand = (id: string) => {
+    setExpandedDepts((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleExpandAll = () => {
+    if (expandedDepts.size > 0) {
+      setExpandedDepts(new Set());
+    } else {
+      const all = new Set<string>();
+      const walk = (nodes: any[]) => {
+        nodes.forEach((n) => { all.add(n.id); if (n.children?.length) walk(n.children); });
+      };
+      walk(deptTree);
+      setExpandedDepts(all);
+    }
+  };
+
+  // Fetch dept tree when tab opens
+  useEffect(() => {
+    if (activeTab === 'departments') fetchDeptTree();
+  }, [activeTab]);
+
   const adminTabs = [
     { key: 'users', label: '用户管理' },
+    { key: 'departments', label: '部门管理' },
     { key: 'models', label: '模型配置' },
     { key: 'agents', label: 'Agent 配置' },
   ];
@@ -120,8 +235,11 @@ export default function AdminPage() {
                         {u.status === 'ACTIVE' ? '活跃' : '禁用'}
                       </span>
                     </td>
-                    <td style={{ padding: '10px 16px' }}>
+                    <td style={{ padding: '10px 16px', display: 'flex', gap: 6 }}>
                       <button className="btn btn-ghost btn-xs" onClick={() => openEdit(u)}>编辑</button>
+                      <button className="btn btn-ghost btn-xs" onClick={() => toggleStatus(u)} style={{ color: u.status === 'ACTIVE' ? 'var(--red-500)' : 'var(--green-600)' }}>
+                        {u.status === 'ACTIVE' ? '禁用' : '启用'}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -131,6 +249,32 @@ export default function AdminPage() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'departments' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                {deptTree.length > 0 ? `${countTree(deptTree)} 个部门` : ''}
+              </span>
+              <button className="btn btn-ghost btn-xs" onClick={toggleExpandAll}>
+                {expandedDepts.size > 0 ? '全部折叠' : '全部展开'}
+              </button>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => openDeptCreate()}>+ 添加部门</button>
+          </div>
+
+          {deptLoading ? (
+            <div style={{ textAlign: 'center', padding: 40, opacity: 0.5 }}>加载中...</div>
+          ) : deptTree.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>暂无部门，点击上方按钮创建</div>
+          ) : (
+            <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+              <DeptTree nodes={deptTree} expanded={expandedDepts} onToggle={toggleExpand} onEdit={openDeptEdit} onDelete={deleteDept} onAdd={openDeptCreate} />
+            </div>
+          )}
         </div>
       )}
 
@@ -173,6 +317,34 @@ export default function AdminPage() {
         </div>
       )}
 
+      {/* Department Create/Edit Panel */}
+      <SlidePanel open={deptPanelOpen} onClose={() => setDeptPanelOpen(false)} title={deptEditing ? '编辑部门' : '添加部门'}>
+        <div className="form-group">
+          <label>部门名称</label>
+          <input type="text" placeholder="部门名称" value={deptForm.name} onChange={(e) => setDeptForm((f) => ({ ...f, name: e.target.value }))} />
+        </div>
+        <div className="form-group">
+          <label>上级部门</label>
+          <select value={deptForm.parent_id} onChange={(e) => setDeptForm((f) => ({ ...f, parent_id: e.target.value }))}>
+            <option value="">无（顶级部门）</option>
+            {flattenDeptTree(deptTree).filter((d: any) => d.id !== deptEditing?.id).map((d: any) => (
+              <option key={d.id} value={d.id}>{d.path}</option>
+            ))}
+          </select>
+        </div>
+        <div className="form-group">
+          <label>排序</label>
+          <input type="number" value={deptForm.sort_order} onChange={(e) => setDeptForm((f) => ({ ...f, sort_order: parseInt(e.target.value) || 0 }))} style={{ width: 80 }} />
+        </div>
+        {deptError && (
+          <div style={{ color: 'var(--red-500)', fontSize: '0.78rem', padding: '8px 12px', background: 'var(--red-50)', borderRadius: 'var(--radius-sm)', marginBottom: 8 }}>{deptError}</div>
+        )}
+        <div className="form-actions">
+          <button className="btn btn-ghost" onClick={() => setDeptPanelOpen(false)}>取消</button>
+          <button className="btn btn-primary" onClick={submitDept} disabled={deptSubmitting}>{deptSubmitting ? '保存中...' : deptEditing ? '保存' : '添加'}</button>
+        </div>
+      </SlidePanel>
+
       {/* User Create/Edit Panel */}
       <SlidePanel open={panelOpen} onClose={() => setPanelOpen(false)} title={editing ? '编辑用户' : '添加用户'}>
         <div className="form-group">
@@ -192,6 +364,13 @@ export default function AdminPage() {
           <input type="password" placeholder={editing ? '留空则不修改密码' : '设置密码'} value={form.password} onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))} />
         </div>
         <div className="form-group">
+          <label>部门</label>
+          <select value={form.department_id} onChange={(e) => setForm((f) => ({ ...f, department_id: e.target.value }))}>
+            <option value="">不指定</option>
+            {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+        </div>
+        <div className="form-group">
           <label>系统角色</label>
           <select value={form.system_role} onChange={(e) => setForm((f) => ({ ...f, system_role: e.target.value }))}>
             <option value="SUPER_ADMIN">超级管理员</option>
@@ -199,11 +378,85 @@ export default function AdminPage() {
             <option value="USER">普通用户</option>
           </select>
         </div>
+        {error && (
+          <div style={{ color: 'var(--red-500)', fontSize: '0.78rem', padding: '8px 12px', background: 'var(--red-50)', borderRadius: 'var(--radius-sm)', marginBottom: 8 }}>{error}</div>
+        )}
         <div className="form-actions">
           <button className="btn btn-ghost" onClick={() => setPanelOpen(false)}>取消</button>
-          <button className="btn btn-primary" onClick={submit}>{editing ? '保存' : '添加'}</button>
+          <button className="btn btn-primary" onClick={submit} disabled={submitting}>{submitting ? '保存中...' : editing ? '保存' : '添加'}</button>
         </div>
       </SlidePanel>
     </div>
+  );
+}
+
+// Helper: count total nodes in tree
+function countTree(nodes: any[]): number {
+  let count = 0;
+  const walk = (ns: any[]) => { ns.forEach((n) => { count++; if (n.children?.length) walk(n.children); }); };
+  walk(nodes);
+  return count;
+}
+
+// Helper: flatten tree to array
+function flattenDeptTree(nodes: any[]): any[] {
+  const result: any[] = [];
+  const walk = (ns: any[]) => { ns.forEach((n) => { result.push(n); if (n.children?.length) walk(n.children); }); };
+  walk(nodes);
+  return result;
+}
+
+// Department tree node component
+function DeptTree({ nodes, expanded, onToggle, onEdit, onDelete, onAdd, depth = 0 }: {
+  nodes: any[]; expanded: Set<string>; onToggle: (id: string) => void;
+  onEdit: (d: any) => void; onDelete: (d: any) => void; onAdd: (parentId: string) => void; depth?: number;
+}) {
+  const levelColors = ['#6366f1', '#8b5cf6', '#a855f7', '#c084fc'];
+  const levelLabels = ['部门', '中心', '小组', '子组'];
+  return (
+    <>
+      {nodes.map((d) => {
+        const isOpen = expanded.has(d.id);
+        const hasChildren = d.children?.length > 0;
+        const levelLabel = levelLabels[Math.min(depth, 3)];
+        return (
+          <div key={d.id}>
+            <div
+              className="dept-row"
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px',
+                borderBottom: '1px solid var(--border-light)', cursor: 'pointer',
+                paddingLeft: 16 + depth * 24,
+              }}
+              onClick={() => onToggle(d.id)}
+            >
+              <span style={{ fontSize: '0.7rem', transition: 'transform 0.15s', transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)', opacity: hasChildren ? 1 : 0.2 }}>
+                ▶
+              </span>
+              <span style={{
+                fontSize: '0.6rem', fontWeight: 600, color: levelColors[Math.min(depth, 3)],
+                background: `${levelColors[Math.min(depth, 3)]}18`, padding: '1px 6px',
+                borderRadius: 3, minWidth: 28, textAlign: 'center',
+              }}>
+                {levelLabel}
+              </span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 500, flex: 1 }}>{d.name}</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>{d.path}</span>
+              {d.user_count > 0 && (
+                <span style={{ fontSize: '0.65rem', color: 'var(--blue-600)', background: 'var(--blue-50)', padding: '1px 6px', borderRadius: 8 }}>
+                  {d.user_count} 人
+                </span>
+              )}
+              <span onClick={(e) => { e.stopPropagation(); onAdd(d.id); }} title="添加子部门" style={{ cursor: 'pointer', fontSize: '0.7rem', padding: '2px 6px' }}>＋</span>
+              <span onClick={(e) => { e.stopPropagation(); onEdit(d); }} title="编辑" style={{ cursor: 'pointer', fontSize: '0.7rem', padding: '2px 6px' }}>✎</span>
+              <span onClick={(e) => { e.stopPropagation(); onDelete(d); }} title="删除" style={{ cursor: 'pointer', fontSize: '0.7rem', padding: '2px 6px', color: 'var(--red-500)' }}>✕</span>
+            </div>
+            {isOpen && hasChildren && (
+              <DeptTree nodes={d.children} expanded={expanded} onToggle={onToggle} onEdit={onEdit} onDelete={onDelete} onAdd={onAdd} depth={depth + 1} />
+            )}
+          </div>
+        );
+      })}
+    </>
   );
 }

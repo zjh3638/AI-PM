@@ -110,3 +110,14 @@ async def disable_user(
         raise AppException(400, "不能禁用自己")
     await user_service.update_user(db, user, status="DISABLED")
     return {"code": 0, "message": "ok", "data": None}
+
+@router.get("/departments/list", response_model=APIResponse)
+async def list_departments(
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    from sqlalchemy import select
+    from app.models.department import Department
+    result = await db.execute(select(Department).order_by(Department.sort_order))
+    depts = result.scalars().all()
+    return {"code": 0, "message": "ok", "data": [{"id": d.id, "name": d.name, "path": d.path} for d in depts]}

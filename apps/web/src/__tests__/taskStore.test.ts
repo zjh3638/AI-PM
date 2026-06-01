@@ -23,7 +23,7 @@ describe('taskStore', () => {
       epics: [],
       kanban: {},
     });
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   describe('initial state', () => {
@@ -100,7 +100,7 @@ describe('taskStore', () => {
 
       await useTaskStore.getState().fetchKanban('ws1');
 
-      expect(api.get).toHaveBeenCalledWith('/workspaces/ws1/kanban');
+      expect(api.get).toHaveBeenCalledWith('/workspaces/ws1/kanban', { params: { group_by: 'status' } });
       expect(useTaskStore.getState().kanban).toEqual(mockKanban);
     });
   });
@@ -109,6 +109,9 @@ describe('taskStore', () => {
     it('calls API and returns created task', async () => {
       const newTask = { id: '2', title: 'New Task' };
       vi.mocked(api.post).mockResolvedValueOnce({ data: newTask });
+      // create() now calls fetchKanban + fetchList after create
+      vi.mocked(api.get).mockResolvedValueOnce({ data: {} }); // kanban
+      vi.mocked(api.get).mockResolvedValueOnce({ data: [], total: 0 }); // list
 
       const result = await useTaskStore.getState().create('ws1', { title: 'New Task', priority: 'HIGH' });
 
@@ -120,22 +123,25 @@ describe('taskStore', () => {
   });
 
   describe('update', () => {
-    it('calls API and refetches detail', async () => {
+    it('calls API and refetches data', async () => {
       vi.mocked(api.patch).mockResolvedValueOnce({});
-      const updatedTask = { id: '1', title: 'Updated Task' };
-      vi.mocked(api.get).mockResolvedValueOnce({ data: updatedTask });
+      // update() now calls fetchKanban + fetchList after patch
+      vi.mocked(api.get).mockResolvedValueOnce({ data: {} }); // kanban
+      vi.mocked(api.get).mockResolvedValueOnce({ data: [], total: 0 }); // list
 
       await useTaskStore.getState().update('ws1', '1', { title: 'Updated Task' });
 
       expect(api.patch).toHaveBeenCalledWith('/workspaces/ws1/tasks/1', { title: 'Updated Task' });
-      expect(useTaskStore.getState().current).toEqual(updatedTask);
+      expect(useTaskStore.getState().tasks).toEqual([]);
     });
   });
 
   describe('remove', () => {
-    it('calls API and refetches list', async () => {
+    it('calls API and refetches data', async () => {
       vi.mocked(api.delete).mockResolvedValueOnce({});
-      vi.mocked(api.get).mockResolvedValueOnce({ data: [], total: 0 });
+      // remove() now calls fetchKanban + fetchList after delete
+      vi.mocked(api.get).mockResolvedValueOnce({ data: {} }); // kanban
+      vi.mocked(api.get).mockResolvedValueOnce({ data: [], total: 0 }); // list
 
       await useTaskStore.getState().remove('ws1', '1');
 
@@ -148,7 +154,8 @@ describe('taskStore', () => {
     it('calls API and refetches kanban', async () => {
       vi.mocked(api.patch).mockResolvedValueOnce({});
       const mockKanban = { TODO: [], IN_PROGRESS: [{ id: '1', title: 'Moved' }], DONE: [] };
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockKanban });
+      // moveTask() calls fetchKanban after move
+      vi.mocked(api.get).mockResolvedValueOnce({ data: mockKanban }); // kanban
 
       await useTaskStore.getState().moveTask('ws1', '1', 'IN_PROGRESS', 3);
 
@@ -156,6 +163,21 @@ describe('taskStore', () => {
         new_status: 'IN_PROGRESS', sort_order: 3,
       });
       expect(useTaskStore.getState().kanban).toEqual(mockKanban);
+    });
+  });
+
+  describe('advancePhase', () => {
+    it('calls API and refetches kanban with phase grouping', async () => {
+      const advancedTask = { id: '1', title: 'Advanced', phase: 'DESIGN', status: 'TODO' };
+      vi.mocked(api.post).mockResolvedValueOnce({ data: advancedTask });
+      const mockPhaseKanban = { REQUIREMENTS: [], DESIGN: [{ id: '1' }], DEVELOPMENT: [], TESTING: [], RELEASE: [], ACCEPTANCE: [] };
+      vi.mocked(api.get).mockResolvedValueOnce({ data: mockPhaseKanban });
+
+      const result = await useTaskStore.getState().advancePhase('ws1', '1', 'PRD审核通过');
+
+      expect(api.post).toHaveBeenCalledWith('/workspaces/ws1/tasks/1/advance-phase', { content: 'PRD审核通过' });
+      expect(result).toEqual(advancedTask);
+      expect(useTaskStore.getState().kanban).toEqual(mockPhaseKanban);
     });
   });
 });

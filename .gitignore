@@ -9,3 +9,6 @@ __pycache__/
 .venv/
 *.egg-info/
 *.db
+e2e/.auth/
+test-results/
+playwright-report/

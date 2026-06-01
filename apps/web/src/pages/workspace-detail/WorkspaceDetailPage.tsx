@@ -5,9 +5,10 @@ import { useTaskStore } from '../../stores/taskStore';
 import { useAuthStore } from '../../stores/authStore';
 import type { WorkspaceMember, Task, Iteration, Milestone } from '../../types';
 import { useIterationStore } from '../../stores/iterationStore';
-import { useDocumentStore } from '../../stores/documentStore';
+
 import { useMilestoneStore } from '../../stores/milestoneStore';
 import SlidePanel from '../../components/common/SlidePanel';
+import KnowledgeBasePanel from '../../components/KnowledgeBase/KnowledgeBasePanel';
 import api from '../../api/client';
 
 /* ═══════════════════════════════════════════
@@ -225,7 +226,7 @@ function PulseChat() {
    ═══════════════════════════════════════════ */
 function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onCreateTask: (status: string, phase?: string) => void; onEditTask: (task: Task) => void; milestoneFilter: string; isFull: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
-  const { kanban, loading, fetchKanban, moveTask, update } = useTaskStore();
+  const { kanban, loading, fetchKanban, moveTask, update, advancePhase } = useTaskStore();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchAction, setBatchAction] = useState<string | null>(null);
 
@@ -244,6 +245,7 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
     { key: 'DEVELOPMENT', title: '开发实现', icon: '💻', deliverables: '代码、单元测试、Code Review通过' },
     { key: 'TESTING', title: '测试验证', icon: '🧪', deliverables: '测试用例、测试报告、Bug修复确认' },
     { key: 'RELEASE', title: '发布上线', icon: '🚀', deliverables: '发布说明、部署checklist、线上验证' },
+    { key: 'ACCEPTANCE', title: '验收交付', icon: '✅', deliverables: '验收报告、用户反馈、干系人签字' },
   ];
   const colDefs = isFull ? phaseColDefs : statusColDefs;
 
@@ -279,13 +281,8 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
       if (targetIdx !== phaseIdx + 1) return; // Only allow next phase
       // Advance via API with gate check
       try {
-        await fetch(`/api/workspaces/${wsId}/tasks/${taskId}/advance-phase`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-          body: JSON.stringify({ content: '通过拖拽推进阶段' }),
-        });
+        await advancePhase(wsId, taskId, '通过拖拽推进阶段');
       } catch { return; }
-      await fetchKanban(wsId, 'phase');
     } else {
       await moveTask(wsId, taskId, colKey, 0);
     }
@@ -296,16 +293,11 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
     const tasks = (kanban[gateOpen] || []).filter((t: Task) => t.status === 'DONE');
     for (const t of tasks) {
       try {
-        await fetch(`/api/workspaces/${wsId}/tasks/${t.id}/advance-phase`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-          body: JSON.stringify({ content: gateNote }),
-        });
+        await advancePhase(wsId, t.id, gateNote);
       } catch { /* skip */ }
     }
     setGateOpen(null);
     setGateNote('');
-    await fetchKanban(wsId, 'phase');
   };
 
   const handleBatchAction = async (value: string) => {
@@ -408,10 +400,12 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
                 );
               })()}
             </div>
-            {(kanban[col.key] || []).filter((t: Task) => !milestoneFilter || t.milestone_id === milestoneFilter).map((task: Task) => (
+            {(kanban[col.key] || []).filter((t: Task) => !milestoneFilter || t.milestone_id === milestoneFilter).map((task: Task) => {
+                const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'DONE';
+                return (
               <div
                 key={task.id}
-                className={`kanban-card${selected.has(task.id) ? ' selected' : ''}`}
+                className={`kanban-card${selected.has(task.id) ? ' selected' : ''}${isOverdue ? ' overdue' : ''}`}
                 onClick={(e) => { if (e.shiftKey) toggleSelect(task.id); else onEditTask(task); }}
                 draggable
                 onDragStart={(e) => handleDragStart(e, task.id, isFull ? task.phase : task.status)}
@@ -422,10 +416,13 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
                   {isFull && <span className="badge" style={{ fontSize: '0.55rem', padding: '0 4px', background: statusBadge[task.status]?.bg || 'var(--bg-hover)', color: 'var(--text-secondary)' }}>{statusBadge[task.status]?.label || task.status}</span>}
                   {!isFull && <span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>{task.task_type}</span>}
                   {task.priority === 'CRITICAL' && <span style={{ fontSize: '0.6rem', color: 'var(--red-600)' }}>紧急</span>}
+                  {isOverdue && <span style={{ fontSize: '0.6rem', color: 'var(--red-500)' }}>逾期</span>}
+                  {task.due_date && <span style={{ fontSize: '0.58rem', color: isOverdue ? 'var(--red-500)' : 'var(--text-muted)' }}>📅 {task.due_date}</span>}
                   {task.assignee_name && <span style={isFull ? { fontSize: '0.6rem', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}}>{task.assignee_name}</span>}
                 </div>
               </div>
-            ))}
+                );
+            })}
             <div className="col-add" onClick={() => onCreateTask(isFull ? 'TODO' : col.key, isFull ? col.key : undefined)}>+ 新建任务</div>
           </div>
         ))}
@@ -490,15 +487,18 @@ function ListView({ onEditTask, milestoneFilter }: { onEditTask: (task: Task) =>
       <div className="list-head">
         <span>任务名称</span><span>状态</span><span>优先级</span><span>负责人</span><span />
       </div>
-      {tasks.map((t: Task) => (
-        <div key={t.id} className="list-row" onClick={() => onEditTask(t)}>
-          <span className="task-title">{t.title}</span>
+      {tasks.map((t: Task) => {
+        const isOverdue = t.due_date && new Date(t.due_date) < new Date() && t.status !== 'DONE';
+        return (
+        <div key={t.id} className="list-row" onClick={() => onEditTask(t)} style={isOverdue ? { borderLeft: '3px solid var(--red-500)', background: 'var(--red-50)' } : {}}>
+          <span className="task-title">{isOverdue ? '⚠️ ' : ''}{t.title}</span>
           <span><span className="badge" style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)' }}>{statusLabels[t.status] || t.status}</span></span>
-          <span>{t.priority}</span>
+          <span style={isOverdue ? { color: 'var(--red-500)', fontWeight: 600 } : {}}>{t.priority}{t.due_date && <span style={{ marginLeft: 4, fontSize: '0.62rem', color: isOverdue ? 'var(--red-500)' : 'var(--text-muted)' }}>📅 {t.due_date}</span>}</span>
           <span>{t.assignee_name || '—'}</span>
           <span />
         </div>
-      ))}
+        );
+      })}
       {tasks.length === 0 && (
         <div className="empty-state" style={{ padding: 30 }}>暂无任务</div>
       )}
@@ -687,140 +687,8 @@ function GanttView({ milestoneFilter }: { milestoneFilter: string }) {
     );
   }
 
-const KB_FOLDERS = ['产品需求文档', '设计稿', '技术方案', '会议纪要', '合同'];
-
 function KnowledgePanel() {
-  const { id: wsId } = useParams<{ id: string }>();
-  const { docs, loading, fetchList, create, update, remove } = useDocumentStore();
-  const [activeFolder, setActiveFolder] = useState(KB_FOLDERS[0]);
-  const [panelOpen, setPanelOpen] = useState(false);
-  const [editing, setEditing] = useState<any>(null);
-  const [form, setForm] = useState({ title: '', content: '', doc_type: 'MARKDOWN' });
-  const [viewing, setViewing] = useState<any>(null);
-
-  useEffect(() => { if (wsId) fetchList(wsId); }, [wsId]);
-
-  const openCreate = () => {
-    setEditing(null);
-    setForm({ title: '', content: '', doc_type: 'MARKDOWN' });
-    setPanelOpen(true);
-  };
-
-  const openEdit = (doc: any) => {
-    setEditing(doc);
-    setForm({ title: doc.title, content: doc.content || '', doc_type: doc.doc_type });
-    setPanelOpen(true);
-  };
-
-  const submit = async () => {
-    if (!wsId || !form.title.trim()) return;
-    if (editing) {
-      await update(wsId, editing.id, form);
-    } else {
-      await create(wsId, form);
-    }
-    setPanelOpen(false);
-  };
-
-  const handleDelete = async () => {
-    if (!wsId || !editing) return;
-    await remove(wsId, editing.id);
-    setPanelOpen(false);
-  };
-
-  return (
-    <div className="kb-layout">
-      <div className="kb-sidebar">
-        {KB_FOLDERS.map((f) => (
-          <div key={f} className={`kb-folder${f === activeFolder ? ' active' : ''}`} onClick={() => setActiveFolder(f)}>
-            📁 {f}
-          </div>
-        ))}
-      </div>
-      <div className="kb-main">
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
-          <span style={{ fontWeight: 600 }}>{activeFolder}</span>
-          <button className="btn btn-primary btn-xs" onClick={openCreate}>+ 新建文档</button>
-        </div>
-
-        {/* Viewer */}
-        {viewing && (
-          <div style={{ marginBottom: 12, padding: 16, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg-surface)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-              <strong style={{ fontSize: '0.9rem' }}>{viewing.title}</strong>
-              <button className="btn btn-ghost btn-xs" onClick={() => setViewing(null)}>关闭</button>
-            </div>
-            <div style={{ fontSize: '0.82rem', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{viewing.content || '(空内容)'}</div>
-            <div style={{ marginTop: 12 }}>
-              <button className="btn btn-ghost btn-xs" onClick={() => { openEdit(viewing); setViewing(null); }}>编辑</button>
-            </div>
-          </div>
-        )}
-
-        {loading ? (
-          <div className="empty-state">加载中...</div>
-        ) : docs.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">📄</div>
-            <div>暂无文档</div>
-          </div>
-        ) : (
-          docs.map((d: any) => (
-            <div
-              key={d.id}
-              className="kb-file"
-              onClick={() => setViewing(d)}
-            >
-              <div>
-                <div className="file-name">{d.title}</div>
-                <div className="file-meta">
-                  <span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>v{d.version || 1}</span>
-                  {' '}{d.updated_at || d.created_at}
-                  {d.author_name && <span> · {d.author_name}</span>}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
-                <button className="btn btn-ghost btn-xs" onClick={() => openEdit(d)}>编辑</button>
-                <button className="btn btn-ghost btn-xs" style={{ color: 'var(--red-500)' }}
-                  onClick={() => { if (wsId) remove(wsId, d.id); }}
-                >删除</button>
-              </div>
-            </div>
-          ))
-        )}
-        <div className="kb-upload" onClick={openCreate}>点击创建新文档</div>
-      </div>
-
-      {/* Create/Edit Panel */}
-      <SlidePanel open={panelOpen} onClose={() => setPanelOpen(false)} title={editing ? '编辑文档' : '新建文档'}>
-        <div className="form-group">
-          <label>标题</label>
-          <input type="text" placeholder="文档标题" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
-        </div>
-        <div className="form-group">
-          <label>内容 (Markdown)</label>
-          <textarea
-            rows={15}
-            placeholder="输入 Markdown 内容..."
-            style={{ width: '100%', padding: '10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', fontFamily: 'monospace', background: 'var(--bg-surface)', color: 'var(--text-primary)', resize: 'vertical' }}
-            value={form.content}
-            onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
-          />
-        </div>
-        <div className="form-actions">
-          <button className="btn btn-ghost" onClick={() => setPanelOpen(false)}>取消</button>
-          <button className="btn btn-primary" onClick={submit} disabled={!form.title.trim()}>
-            {editing ? '保存' : '创建'}
-          </button>
-        </div>
-        {editing && (
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)', borderColor: 'var(--red-200)', width: '100%' }} onClick={handleDelete}>删除文档</button>
-          </div>
-        )}
-      </SlidePanel>
-    </div>
-  );
+  return <KnowledgeBasePanel />;
 }
 
 /* ═══════════════════════════════════════════
@@ -1092,6 +960,82 @@ function IterationsPanel() {
 /* ═══════════════════════════════════════════
    REPORTS PANEL
    ═══════════════════════════════════════════ */
+function BurndownChart({ wsId }: { wsId: string }) {
+  const { iterations, fetchList, burndown, fetchBurndown } = useIterationStore();
+  const [iterId, setIterId] = useState<string>('');
+
+  useEffect(() => { fetchList(wsId); }, [wsId]);
+
+  useEffect(() => {
+    if (iterId) fetchBurndown(wsId, iterId);
+  }, [iterId, wsId]);
+
+  const data: { date: string; remaining: number; ideal: number }[] = burndown || [];
+  const w = 560, h = 200, pad = { top: 12, right: 16, bottom: 28, left: 40 };
+  const pw = w - pad.left - pad.right;
+  const ph = h - pad.top - pad.bottom;
+
+  const maxVal = Math.max(...data.map(d => Math.max(d.remaining, d.ideal)), 1);
+  const yTick = (v: number) => pad.top + ph * (1 - v / maxVal);
+  const xTick = (i: number) => pad.left + (data.length > 1 ? (i / (data.length - 1)) * pw : pw / 2);
+
+  const linePath = (field: 'remaining' | 'ideal') =>
+    data.length > 0
+      ? data.map((d, i) => `${i === 0 ? 'M' : 'L'}${xTick(i)},${yTick(d[field])}`).join(' ')
+      : '';
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+        <h4>迭代燃尽图</h4>
+        <select
+          style={{ padding: '4px 8px', fontSize: '0.74rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)' }}
+          value={iterId}
+          onChange={(e) => setIterId(e.target.value)}
+        >
+          <option value="">选择迭代...</option>
+          {iterations.filter((it) => it.status === 'ACTIVE' || it.status === 'PLANNING').map((it) => (
+            <option key={it.id} value={it.id}>{it.name} ({it.status === 'ACTIVE' ? '进行中' : '计划中'})</option>
+          ))}
+        </select>
+      </div>
+      {data.length === 0 ? (
+        <div className="report-chart" style={{ height: h, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>{iterId ? '暂无燃尽数据' : '请选择一个迭代'}</span>
+        </div>
+      ) : (
+        <svg width={w} height={h} style={{ display: 'block', margin: '0 auto' }}>
+          {/* Grid lines */}
+          {[0, 0.25, 0.5, 0.75, 1].map((pct) => (
+            <g key={pct}>
+              <line x1={pad.left} x2={w - pad.right} y1={yTick(maxVal * pct)} y2={yTick(maxVal * pct)} stroke="var(--border-light)" strokeWidth={0.5} />
+              <text x={pad.left - 6} y={yTick(maxVal * pct) + 3} textAnchor="end" fontSize={8} fill="var(--text-muted)">{Math.round(maxVal * pct)}</text>
+            </g>
+          ))}
+          {/* Ideal line */}
+          <path d={linePath('ideal')} fill="none" stroke="var(--text-muted)" strokeWidth={1.5} strokeDasharray="4,3" />
+          {/* Actual line */}
+          <path d={linePath('remaining')} fill="none" stroke="var(--blue-500)" strokeWidth={2} />
+          {/* Dots */}
+          {data.map((d, i) => (
+            <g key={i}>
+              <circle cx={xTick(i)} cy={yTick(d.remaining)} r={3} fill="var(--blue-500)" />
+              <text x={xTick(i)} y={h - 4} textAnchor="middle" fontSize={7} fill="var(--text-muted)">
+                {d.date.slice(5)}
+              </text>
+            </g>
+          ))}
+          {/* Legend */}
+          <rect x={w - 180} y={pad.top} width={8} height={8} fill="var(--blue-500)" rx={2} />
+          <text x={w - 168} y={pad.top + 7} fontSize={8} fill="var(--text-secondary)">实际剩余</text>
+          <rect x={w - 100} y={pad.top} width={8} height={8} fill="none" stroke="var(--text-muted)" strokeWidth={1} rx={2} />
+          <text x={w - 88} y={pad.top + 7} fontSize={8} fill="var(--text-secondary)">理想线</text>
+        </svg>
+      )}
+    </div>
+  );
+}
+
 function ReportsPanel() {
   const { id: wsId } = useParams<{ id: string }>();
   const { kanban, fetchKanban } = useTaskStore();
@@ -1196,6 +1140,10 @@ function ReportsPanel() {
         </div>
       </div>
 
+      <div className="report-card" style={{ gridColumn: '1 / -1' }}>
+        <BurndownChart wsId={wsId!} />
+      </div>
+
       <div className="report-card">
         <h4>概览统计</h4>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -1242,7 +1190,7 @@ export default function WorkspaceDetailPage() {
   const isFull = wsType === 'PROJECT';
   const isLight = wsType === 'OTHER';
 
-  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; phase: string; iteration_id?: string; milestone_id: string; assignee_id?: string; parent_id?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', phase: 'REQUIREMENTS', milestone_id: '' });
+  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; phase: string; iteration_id?: string; milestone_id: string; assignee_id?: string; reviewer_id?: string; parent_id?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', phase: 'REQUIREMENTS', milestone_id: '' });
   const [stories, setStories] = useState<Task[]>([]);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -1283,14 +1231,14 @@ export default function WorkspaceDetailPage() {
     }
     if (task) {
       setEditingTask(task);
-      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'REQUIREMENTS', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, parent_id: task.parent_id || undefined });
+      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'REQUIREMENTS', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, reviewer_id: task.reviewer_id || undefined, parent_id: task.parent_id || undefined });
       fetchComments(task.id);
       fetchActivity(task.id);
     } else {
       setEditingTask(null);
       setComments([]);
       setActivityLogs([]);
-      setTaskForm({ title: '', description: '', task_type: isLight ? 'TASK' : 'TASK', priority: 'MEDIUM', status: status || 'TODO', phase: defaultPhase || 'REQUIREMENTS', iteration_id: undefined, milestone_id: isLight ? '' : selectedMilestone, assignee_id: undefined, parent_id: parentStoryId || undefined });
+      setTaskForm({ title: '', description: '', task_type: isLight ? 'TASK' : 'TASK', priority: 'MEDIUM', status: status || 'TODO', phase: defaultPhase || 'REQUIREMENTS', iteration_id: undefined, milestone_id: isLight ? '' : selectedMilestone, assignee_id: undefined, reviewer_id: undefined, parent_id: parentStoryId || undefined });
     }
     setShowDelete(false);
     setTaskPanelOpen(true);
@@ -1608,6 +1556,21 @@ export default function WorkspaceDetailPage() {
               .map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
           </select>
         </div>
+        {isFull && (
+          <div className="form-group">
+            <label>阶段审核人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（负责审核本阶段推进）</span></label>
+            <select
+              style={{ width: '100%' }}
+              value={taskForm.reviewer_id || ''}
+              onChange={(e) => setTaskForm((f) => ({ ...f, reviewer_id: e.target.value || undefined }))}
+            >
+              <option value="">不限（由项目负责人审核）</option>
+              {useWorkspaceStore.getState().members
+                .filter((m) => m.role !== 'AI_AGENT' && m.role !== 'VIEWER')
+                .map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+            </select>
+          </div>
+        )}
         <div className="form-actions">
           <button className="btn btn-ghost" onClick={() => setTaskPanelOpen(false)}>取消</button>
           <button

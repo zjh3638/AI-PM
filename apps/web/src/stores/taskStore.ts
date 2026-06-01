@@ -10,6 +10,7 @@ interface TaskState {
   children: Task[];
   epics: Epic[];
   kanban: Record<string, Task[]>;
+  kanbanGroupBy: string;
 
   fetchList: (wsId: string, params?: Record<string, any>) => Promise<void>;
   fetchDetail: (wsId: string, taskId: string) => Promise<void>;
@@ -20,6 +21,7 @@ interface TaskState {
   update: (wsId: string, taskId: string, data: Partial<Task>) => Promise<void>;
   remove: (wsId: string, taskId: string) => Promise<void>;
   moveTask: (wsId: string, taskId: string, newStatus: string, sortOrder: number) => Promise<void>;
+  advancePhase: (wsId: string, taskId: string, content?: string) => Promise<Task>;
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -30,6 +32,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   children: [],
   epics: [],
   kanban: {},
+  kanbanGroupBy: 'status',
 
   fetchList: async (wsId, params = {}) => {
     set({ loading: true });
@@ -54,30 +57,36 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   fetchKanban: async (wsId, groupBy = 'status') => {
     const result = await api.get(`/workspaces/${wsId}/kanban`, { params: { group_by: groupBy } });
-    set({ kanban: result.data });
+    set({ kanban: result.data, kanbanGroupBy: groupBy });
   },
 
   create: async (wsId, payload) => {
     const result = await api.post(`/workspaces/${wsId}/tasks`, payload);
-    await get().fetchKanban(wsId);
+    await get().fetchKanban(wsId, get().kanbanGroupBy);
     await get().fetchList(wsId);
     return result.data;
   },
 
   update: async (wsId, taskId, payload) => {
     await api.patch(`/workspaces/${wsId}/tasks/${taskId}`, payload);
-    await get().fetchKanban(wsId);
+    await get().fetchKanban(wsId, get().kanbanGroupBy);
     await get().fetchList(wsId);
   },
 
   remove: async (wsId, taskId) => {
     await api.delete(`/workspaces/${wsId}/tasks/${taskId}`);
-    await get().fetchKanban(wsId);
+    await get().fetchKanban(wsId, get().kanbanGroupBy);
     await get().fetchList(wsId);
   },
 
   moveTask: async (wsId, taskId, newStatus, sortOrder) => {
     await api.patch(`/workspaces/${wsId}/tasks/${taskId}/move`, { new_status: newStatus, sort_order: sortOrder });
-    await get().fetchKanban(wsId);
+    await get().fetchKanban(wsId, get().kanbanGroupBy);
+  },
+
+  advancePhase: async (wsId, taskId, content = '') => {
+    const result = await api.post(`/workspaces/${wsId}/tasks/${taskId}/advance-phase`, { content });
+    await get().fetchKanban(wsId, 'phase');
+    return result.data;
   },
 }));

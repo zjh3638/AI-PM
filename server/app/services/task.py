@@ -20,7 +20,7 @@ async def create_task(db: AsyncSession, workspace_id: str, **kwargs) -> Task:
 
 async def get_task(db: AsyncSession, task_id: str) -> Optional[Task]:
     result = await db.execute(
-        select(Task).where(Task.id == task_id).options(selectinload(Task.assignee), selectinload(Task.milestone))
+        select(Task).where(Task.id == task_id).options(selectinload(Task.assignee), selectinload(Task.reviewer), selectinload(Task.milestone))
     )
     return result.scalar_one_or_none()
 
@@ -42,7 +42,7 @@ async def list_tasks(
     sort_by: str = "created_at",
     sort_dir: str = "desc",
 ) -> tuple[list[Task], int]:
-    query = select(Task).where(Task.workspace_id == workspace_id).options(selectinload(Task.milestone), selectinload(Task.assignee))
+    query = select(Task).where(Task.workspace_id == workspace_id).options(selectinload(Task.milestone), selectinload(Task.assignee), selectinload(Task.reviewer))
     count_query = select(func.count(Task.id)).where(Task.workspace_id == workspace_id)
 
     if task_type:
@@ -144,7 +144,7 @@ async def get_kanban(db: AsyncSession, workspace_id: str, group_by: str = "statu
     all_tasks = result.scalars().all()
 
     if group_by == "phase":
-        phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE"]
+        phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE", "ACCEPTANCE"]
         return {p: [_task_to_dict(t) for t in all_tasks if t.phase == p] for p in phases}
     else:
         columns = {}
@@ -189,6 +189,8 @@ def _task_to_dict(task: Task) -> dict:
         "status": task.status, "phase": task.phase, "priority": task.priority,
         "severity": task.severity, "assignee_id": task.assignee_id,
         "assignee_name": task.assignee.display_name if task.assignee else None,
+        "reviewer_id": task.reviewer_id,
+        "reviewer_name": task.reviewer.display_name if task.reviewer else None,
         "estimation": task.estimation, "estimation_unit": task.estimation_unit,
         "sort_order": task.sort_order,
         "due_date": task.due_date.isoformat() if task.due_date else None,

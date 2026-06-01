@@ -17,6 +17,7 @@ class TaskCreate(BaseModel):
     iteration_id: Optional[str] = None
     milestone_id: str
     assignee_id: Optional[str] = None
+    reviewer_id: Optional[str] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
     sort_order: int = 0
@@ -35,6 +36,7 @@ class TaskUpdate(BaseModel):
     iteration_id: Optional[str] = None
     milestone_id: Optional[str] = None
     assignee_id: Optional[str] = None
+    reviewer_id: Optional[str] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
     sort_order: Optional[int] = None
@@ -58,6 +60,8 @@ class TaskResponse(BaseModel):
     severity: Optional[str] = None
     assignee_id: Optional[str] = None
     assignee_name: Optional[str] = None
+    reviewer_id: Optional[str] = None
+    reviewer_name: Optional[str] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
     sort_order: int = 0
