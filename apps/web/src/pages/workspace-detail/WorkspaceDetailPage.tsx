@@ -1530,6 +1530,15 @@ export default function WorkspaceDetailPage() {
             </select>
           </div>
           <div className="form-group">
+            <label>状态</label>
+            <select value={taskForm.status} onChange={(e) => setTaskForm((f) => ({ ...f, status: e.target.value }))}>
+              <option value="TODO">待办</option>
+              <option value="IN_PROGRESS">进行中</option>
+              <option value="IN_REVIEW">审核中</option>
+              <option value="DONE">已完成</option>
+            </select>
+          </div>
+          <div className="form-group">
             <label>优先级</label>
             <select value={taskForm.priority} onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value }))}>
               <option value="CRITICAL">紧急</option>
