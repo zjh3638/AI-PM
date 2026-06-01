@@ -1,0 +1,90 @@
+/* ═══════════════════════════════════════════
+   WORKSPACE STREAM
+   ═══════════════════════════════════════════ */
+.stream-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.stream-header h2 { font-size: 1.25rem; font-weight: 700; }
+
+.stream-header .actions { display: flex; gap: 8px; }
+
+.stream-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.ws-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 18px 20px;
+  transition: all var(--fast);
+  cursor: pointer;
+}
+
+.ws-card:hover {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+
+.ws-card .ws-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.ws-card .ws-name { font-size: 0.95rem; font-weight: 600; }
+
+.ws-card .ws-tier {
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.ws-card .ws-tier.company { background: var(--red-50); color: var(--red-600); }
+.ws-card .ws-tier.dept { background: var(--amber-50); color: var(--amber-600); }
+.ws-card .ws-tier.normal { background: var(--bg-raised); color: var(--text-muted); }
+
+.ws-card .ws-summary {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+
+.ws-card .ws-stats {
+  display: flex;
+  gap: 16px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.ws-card .ws-stats .sv { font-weight: 600; color: var(--text-primary); }
+
+.health-bar {
+  width: 60px;
+  height: 3px;
+  background: var(--bg-hover);
+  border-radius: 2px;
+  display: inline-block;
+  overflow: hidden;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+
+.health-bar .fill { height: 100%; border-radius: 2px; }
+.fill.good { background: var(--green-500); }
+.fill.warn { background: var(--amber-500); }
+.fill.bad { background: var(--red-500); }
+
+@media (max-width: 768px) {
+  .stream-grid { grid-template-columns: 1fr; }
+}

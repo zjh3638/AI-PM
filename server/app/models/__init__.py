@@ -5,6 +5,7 @@ from app.models.role import Role
 from app.models.user_role import UserRole
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
+from app.models.milestone import Milestone
 from app.models.task import Task
 from app.models.iteration import Iteration
 from app.models.workflow import WorkflowTemplate, WorkflowState, WorkflowTransition
@@ -22,6 +23,7 @@ __all__ = [
     "UserRole",
     "Workspace",
     "WorkspaceMember",
+    "Milestone",
     "Task",
     "Iteration",
     "WorkflowTemplate",

@@ -20,7 +20,6 @@ const theme: ThemeConfig = {
     borderRadius: 8,
     borderRadiusSM: 6,
     borderRadiusLG: 12,
-    borderRadiusXL: 16,
     controlHeight: 36,
     controlHeightLG: 40,
     lineHeight: 1.6,
@@ -70,7 +69,7 @@ const theme: ThemeConfig = {
     Tag: {
       borderRadiusSM: 8,
       fontSize: 11,
-      lineHeight: '18px',
+      lineHeight: 1.5,
     },
     Table: {
       borderColor: '#e2e8f0',

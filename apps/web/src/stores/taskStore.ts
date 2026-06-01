@@ -59,16 +59,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   create: async (wsId, payload) => {
     const result = await api.post(`/workspaces/${wsId}/tasks`, payload);
+    await get().fetchKanban(wsId);
+    await get().fetchList(wsId);
     return result.data;
   },
 
   update: async (wsId, taskId, payload) => {
     await api.patch(`/workspaces/${wsId}/tasks/${taskId}`, payload);
-    await get().fetchDetail(wsId, taskId);
+    await get().fetchKanban(wsId);
+    await get().fetchList(wsId);
   },
 
   remove: async (wsId, taskId) => {
     await api.delete(`/workspaces/${wsId}/tasks/${taskId}`);
+    await get().fetchKanban(wsId);
     await get().fetchList(wsId);
   },
 

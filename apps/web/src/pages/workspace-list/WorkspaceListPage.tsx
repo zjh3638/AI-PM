@@ -1,13 +1,24 @@
 import { useEffect, useState } from 'react';
-import { Card, Typography, Button, Input, Select, Row, Col, Space, Empty, Modal, Form, Tag, Spin, message, Dropdown } from 'antd';
-import { PlusOutlined, SearchOutlined, AppstoreOutlined, EllipsisOutlined, UserOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
+import { Form, Input, Select, Row, Col, Modal, message } from 'antd';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 
-const { Title, Text, Paragraph } = Typography;
+const tierMap: Record<string, { label: string; cls: string }> = {
+  COMPANY: { label: '公司重点', cls: 'company' },
+  DEPARTMENT: { label: '部门重点', cls: 'dept' },
+  NORMAL: { label: '普通', cls: 'normal' },
+};
 
-const typeLabels: Record<string, string> = { PROJECT: '项目', OPERATION: '运维', OTHER: '其他' };
-const typeColors: Record<string, string> = { PROJECT: 'blue', OPERATION: 'green', OTHER: 'default' };
+// Mock health data — will come from backend later
+function getHealthColor(idx: number): string {
+  const colors = ['warn', 'good', 'good'];
+  return colors[idx % colors.length];
+}
+
+function getHealthPct(idx: number): number {
+  const pcts = [67, 85, 92];
+  return pcts[idx % pcts.length];
+}
 
 export default function WorkspaceListPage() {
   const navigate = useNavigate();
@@ -40,83 +51,109 @@ export default function WorkspaceListPage() {
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
-        <Title level={4} style={{ margin: 0 }}>工作空间</Title>
-        <Space>
-          <Input
-            prefix={<SearchOutlined />}
-            placeholder="搜索工作空间"
-            style={{ width: 240 }}
-            value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
-            allowClear
-          />
-          <Select
-            placeholder="类型筛选"
-            style={{ width: 120 }}
-            value={filterType || undefined}
-            onChange={(v) => setFilterType(v || '')}
-            allowClear
-            options={[
-              { label: '项目', value: 'PROJECT' },
-              { label: '运维', value: 'OPERATION' },
-              { label: '其他', value: 'OTHER' },
-            ]}
-          />
-          <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
-            创建工作空间
-          </Button>
-        </Space>
+      {/* Header */}
+      <div className="stream-header">
+        <h2>工作空间</h2>
+        <div className="actions">
+          <button className="btn btn-primary" onClick={() => setModalOpen(true)}>
+            + 从模板创建
+          </button>
+          <button className="btn btn-ghost" onClick={() => setModalOpen(true)}>
+            空白创建
+          </button>
+        </div>
       </div>
 
-      <Spin spinning={loading}>
-        {workspaces.length === 0 ? (
-          <Empty description="暂无工作空间，点击上方按钮创建第一个项目" />
-        ) : (
-          <Row gutter={[16, 16]}>
-            {workspaces.map((ws) => (
-              <Col key={ws.id} xs={24} sm={12} lg={8} xl={6}>
-                <Card
-                  hoverable
-                  onClick={() => navigate(`/workspaces/${ws.id}`)}
-                  actions={[
-                    <FolderOpenOutlined key="open" onClick={(e) => { e.stopPropagation(); navigate(`/workspaces/${ws.id}`); }} />,
-                  ]}
-                >
-                  <Card.Meta
-                    avatar={<AppstoreOutlined style={{ fontSize: 24, color: '#1677ff' }} />}
-                    title={
-                      <Space>
-                        <Text strong>{ws.name}</Text>
-                        <Tag color={typeColors[ws.type]}>{typeLabels[ws.type]}</Tag>
-                      </Space>
-                    }
-                    description={
-                      <>
-                        <Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 8 }}>
-                          {ws.description || '暂无描述'}
-                        </Paragraph>
-                        <Space size={12}>
-                          <Text type="secondary" style={{ fontSize: 12 }}>
-                            <UserOutlined /> {ws.member_count} 人
-                          </Text>
-                          <Text type="secondary" style={{ fontSize: 12 }}>{ws.key}</Text>
-                        </Space>
-                      </>
-                    }
-                  />
-                </Card>
-              </Col>
-            ))}
-          </Row>
-        )}
-      </Spin>
+      {/* Filters */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18 }}>
+        <Input
+          placeholder="搜索工作空间..."
+          value={keyword}
+          onChange={(e) => setKeyword(e.target.value)}
+          allowClear
+          style={{ width: 240 }}
+        />
+        <Select
+          placeholder="类型筛选"
+          value={filterType || undefined}
+          onChange={(v) => setFilterType(v || '')}
+          allowClear
+          style={{ width: 120 }}
+          options={[
+            { label: '项目', value: 'PROJECT' },
+            { label: '运维', value: 'OPERATION' },
+            { label: '其他', value: 'OTHER' },
+          ]}
+        />
+      </div>
 
+      {/* Workspace Cards Grid */}
+      {loading ? (
+        <div className="empty-state">
+          <div className="empty-icon">⏳</div>
+          <div>加载中...</div>
+        </div>
+      ) : workspaces.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">📂</div>
+          <div>暂无工作空间</div>
+          <button className="btn btn-primary" style={{ marginTop: 12 }} onClick={() => setModalOpen(true)}>
+            创建第一个工作空间
+          </button>
+        </div>
+      ) : (
+        <div className="stream-grid">
+          {workspaces.map((ws, idx) => {
+            const tier = tierMap[ws.type] || tierMap.NORMAL;
+            const healthColor = getHealthColor(idx);
+            return (
+              <div
+                key={ws.id}
+                className="ws-card"
+                onClick={() => navigate(`/workspaces/${ws.id}`)}
+              >
+                <div className="ws-head">
+                  <span className="ws-name">{ws.name}</span>
+                  <span className={`ws-tier ${tier.cls}`}>{tier.label}</span>
+                </div>
+                <div className="ws-summary">
+                  {ws.description || '暂无描述'}。成员 {ws.member_count} 人，标识 {ws.key}。
+                </div>
+                <div className="ws-stats">
+                  <span>
+                    任务 <span className="sv">—</span>
+                  </span>
+                  <span>
+                    风险{' '}
+                    <span className="sv" style={{ color: healthColor === 'warn' ? 'var(--amber-600)' : 'var(--green-600)' }}>
+                      {healthColor === 'warn' ? '1' : '0'}
+                    </span>
+                  </span>
+                  <span>
+                    健康度
+                    <span className="health-bar">
+                      <span
+                        className={`fill ${healthColor}`}
+                        style={{ width: `${getHealthPct(idx)}%` }}
+                      />
+                    </span>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create Modal */}
       <Modal
         title="创建工作空间"
         open={modalOpen}
         onOk={handleCreate}
-        onCancel={() => { setModalOpen(false); form.resetFields(); }}
+        onCancel={() => {
+          setModalOpen(false);
+          form.resetFields();
+        }}
         confirmLoading={submitting}
         okText="创建"
         cancelText="取消"

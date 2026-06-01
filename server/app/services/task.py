@@ -20,7 +20,7 @@ async def create_task(db: AsyncSession, workspace_id: str, **kwargs) -> Task:
 
 async def get_task(db: AsyncSession, task_id: str) -> Optional[Task]:
     result = await db.execute(
-        select(Task).where(Task.id == task_id).options(selectinload(Task.assignee))
+        select(Task).where(Task.id == task_id).options(selectinload(Task.assignee), selectinload(Task.milestone))
     )
     return result.scalar_one_or_none()
 
@@ -35,13 +35,14 @@ async def list_tasks(
     priority: Optional[str] = None,
     assignee_id: Optional[str] = None,
     iteration_id: Optional[str] = None,
+    milestone_id: Optional[str] = None,
     epic_id: Optional[str] = None,
     parent_id: Optional[str] = None,
     keyword: Optional[str] = None,
     sort_by: str = "created_at",
     sort_dir: str = "desc",
 ) -> tuple[list[Task], int]:
-    query = select(Task).where(Task.workspace_id == workspace_id)
+    query = select(Task).where(Task.workspace_id == workspace_id).options(selectinload(Task.milestone), selectinload(Task.assignee))
     count_query = select(func.count(Task.id)).where(Task.workspace_id == workspace_id)
 
     if task_type:
@@ -59,6 +60,9 @@ async def list_tasks(
     if iteration_id:
         query = query.where(Task.iteration_id == iteration_id)
         count_query = count_query.where(Task.iteration_id == iteration_id)
+    if milestone_id:
+        query = query.where(Task.milestone_id == milestone_id)
+        count_query = count_query.where(Task.milestone_id == milestone_id)
     if epic_id is not None:
         query = query.where(Task.epic_id == epic_id)
         count_query = count_query.where(Task.epic_id == epic_id)
@@ -135,7 +139,7 @@ async def get_epics(db: AsyncSession, workspace_id: str) -> list[dict]:
 async def get_kanban(db: AsyncSession, workspace_id: str) -> dict:
     result = await db.execute(
         select(Task).where(Task.workspace_id == workspace_id)
-        .order_by(Task.sort_order).options(selectinload(Task.assignee))
+        .order_by(Task.sort_order).options(selectinload(Task.assignee), selectinload(Task.milestone))
     )
     all_tasks = result.scalars().all()
 
@@ -165,10 +169,18 @@ async def get_child_count(db: AsyncSession, task_id: str) -> int:
 
 
 def _task_to_dict(task: Task) -> dict:
+    from sqlalchemy import inspect
+    insp = inspect(task)
+    milestone_name = None
+    if 'milestone' not in insp.unloaded and task.milestone:
+        milestone_name = task.milestone.name
+
     return {
         "id": task.id, "workspace_id": task.workspace_id,
         "parent_id": task.parent_id, "epic_id": task.epic_id,
-        "iteration_id": task.iteration_id, "task_type": task.task_type,
+        "iteration_id": task.iteration_id, "milestone_id": task.milestone_id,
+        "milestone_name": milestone_name,
+        "task_type": task.task_type,
         "title": task.title, "description": task.description,
         "status": task.status, "priority": task.priority,
         "severity": task.severity, "assignee_id": task.assignee_id,

@@ -34,7 +34,7 @@ describe('authStore', () => {
 
   describe('login', () => {
     it('sets token and user on successful login', async () => {
-      const mockUser = { id: '1', username: 'admin', display_name: 'Admin', system_role: 'SUPER_ADMIN' };
+      const mockUser = { id: '1', username: 'admin', display_name: 'Admin', system_role: 'SUPER_ADMIN', email: '', avatar_url: '', department_name: '' };
       vi.mocked(api.post).mockResolvedValueOnce({
         data: { access_token: 'test-token', user: mockUser },
       });
@@ -65,7 +65,7 @@ describe('authStore', () => {
     it('clears token and user', () => {
       useAuthStore.setState({
         token: 'some-token',
-        user: { id: '1', username: 'admin', display_name: 'Admin', system_role: 'SUPER_ADMIN' },
+        user: { id: '1', username: 'admin', display_name: 'Admin', system_role: 'SUPER_ADMIN', email: '', avatar_url: '', department_name: '' },
       });
       localStorage.setItem('token', 'some-token');
 
@@ -80,7 +80,7 @@ describe('authStore', () => {
 
   describe('fetchUser', () => {
     it('sets user from API response', async () => {
-      const mockUser = { id: '1', username: 'admin', display_name: 'Admin', system_role: 'SUPER_ADMIN' };
+      const mockUser = { id: '1', username: 'admin', display_name: 'Admin', system_role: 'SUPER_ADMIN', email: '', avatar_url: '', department_name: '' };
       vi.mocked(api.get).mockResolvedValueOnce({ data: mockUser });
 
       await useAuthStore.getState().fetchUser();

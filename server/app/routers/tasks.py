@@ -16,10 +16,18 @@ router = APIRouter(prefix="/api/workspaces/{workspace_id}", tags=["tasks"])
 
 
 def _task_to_dict(task) -> dict:
+    from sqlalchemy import inspect
+    insp = inspect(task)
+    milestone_name = None
+    if 'milestone' not in insp.unloaded and task.milestone:
+        milestone_name = task.milestone.name
+
     return {
         "id": task.id, "workspace_id": task.workspace_id,
         "parent_id": task.parent_id, "epic_id": task.epic_id,
-        "iteration_id": task.iteration_id, "task_type": task.task_type,
+        "iteration_id": task.iteration_id, "milestone_id": task.milestone_id,
+        "milestone_name": milestone_name,
+        "task_type": task.task_type,
         "title": task.title, "description": task.description,
         "status": task.status, "priority": task.priority,
         "severity": task.severity, "assignee_id": task.assignee_id,
@@ -46,10 +54,13 @@ async def create_task(
         task_type=req.task_type, title=req.title, description=req.description,
         status=req.status, priority=req.priority, severity=req.severity,
         parent_id=req.parent_id, epic_id=req.epic_id, iteration_id=req.iteration_id,
+        milestone_id=req.milestone_id,
         assignee_id=req.assignee_id, estimation=req.estimation,
         estimation_unit=req.estimation_unit, sort_order=req.sort_order,
         due_date=req.due_date,
     )
+    # Eager load milestone for response
+    task = await task_service.get_task(db, task.id)
     return {"code": 0, "message": "ok", "data": _task_to_dict(task)}
 
 
@@ -63,6 +74,7 @@ async def list_tasks(
     priority: str = Query(default=""),
     assignee_id: str = Query(default=""),
     iteration_id: str = Query(default=""),
+    milestone_id: str = Query(default=""),
     epic_id: str = Query(default=""),
     parent_id: str = Query(default=""),
     keyword: str = Query(default=""),
@@ -76,8 +88,8 @@ async def list_tasks(
         db, workspace_id, page=page, page_size=page_size,
         task_type=task_type or None, status=status or None,
         priority=priority or None, assignee_id=assignee_id or None,
-        iteration_id=iteration_id or None, epic_id=epic_id or None,
-        parent_id=parent_id or None, keyword=keyword or None,
+        iteration_id=iteration_id or None, milestone_id=milestone_id or None,
+        epic_id=epic_id or None, parent_id=parent_id or None, keyword=keyword or None,
         sort_by=sort_by, sort_dir=sort_dir,
     )
     data = [_task_to_dict(t) for t in tasks]
@@ -140,7 +152,8 @@ async def update_task(
         title=req.title, description=req.description, status=req.status,
         priority=req.priority, severity=req.severity,
         parent_id=req.parent_id, epic_id=req.epic_id,
-        iteration_id=req.iteration_id, assignee_id=req.assignee_id,
+        iteration_id=req.iteration_id, milestone_id=req.milestone_id,
+        assignee_id=req.assignee_id,
         estimation=req.estimation, estimation_unit=req.estimation_unit,
         sort_order=req.sort_order, due_date=req.due_date,
     )

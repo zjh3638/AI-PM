@@ -15,6 +15,7 @@ class Task(Base, UUIDMixin, TimestampMixin):
     parent_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tasks.id"), nullable=True)
     epic_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("tasks.id"), nullable=True, index=True)
     iteration_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("iterations.id"), nullable=True)
+    milestone_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("milestones.id"), nullable=True, index=True)
 
     task_type: Mapped[str] = mapped_column(String(20), nullable=False, default="TASK")
     title: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -37,3 +38,4 @@ class Task(Base, UUIDMixin, TimestampMixin):
     epic = relationship("Task", remote_side="Task.id", backref="stories", foreign_keys=[epic_id])
     iteration = relationship("Iteration", back_populates="tasks")
     assignee = relationship("User", backref="assigned_tasks", foreign_keys=[assignee_id])
+    milestone = relationship("Milestone", back_populates="tasks")

@@ -38,6 +38,8 @@ export interface Task {
   parent_id: string | null;
   epic_id: string | null;
   iteration_id: string | null;
+  milestone_id: string | null;
+  milestone_name: string | null;
   task_type: TaskType;
   title: string;
   description: string | null;
@@ -51,6 +53,25 @@ export interface Task {
   sort_order: number;
   due_date: string | null;
   children_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Milestone {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  plan: string | null;
+  owner_id: string | null;
+  owner_name: string | null;
+  start_date: string;
+  end_date: string;
+  status: string;
+  sort_order: number;
+  color: string | null;
+  task_count: number;
+  done_count: number;
   created_at: string;
   updated_at: string;
 }

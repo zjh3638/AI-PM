@@ -1,0 +1,123 @@
+/* ═══════════════════════════════════════════
+   LOGIN
+   ═══════════════════════════════════════════ */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-root);
+}
+
+.login-card {
+  background: var(--bg-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--border);
+  width: 400px;
+  overflow: hidden;
+}
+
+.login-card .brand {
+  padding: 32px 0 16px;
+  text-align: center;
+}
+
+.login-card .brand .brand-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius);
+  background: var(--blue-600);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
+.login-card .brand h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+}
+
+.login-card .brand p {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+
+.login-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.login-tab {
+  flex: 1;
+  text-align: center;
+  padding: 11px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  transition: all var(--fast);
+  background: transparent;
+}
+
+.login-tab.active {
+  color: var(--blue-600);
+  border-bottom-color: var(--blue-600);
+}
+
+.login-form {
+  padding: 24px;
+  display: none;
+}
+
+.login-form.active { display: block; }
+
+.login-form .field { margin-bottom: 14px; }
+
+.login-form .field label {
+  display: block;
+  font-size: 0.76rem;
+  font-weight: 500;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+
+.login-form .field input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color var(--fast);
+}
+
+.login-form .field input:focus {
+  border-color: var(--blue-400);
+  box-shadow: 0 0 0 3px var(--blue-50);
+}
+
+.login-form .login-btn {
+  width: 100%;
+  padding: 10px;
+  background: var(--blue-600);
+  color: #fff;
+  border-radius: var(--radius);
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-top: 4px;
+  transition: all var(--fast);
+}
+
+.login-form .login-btn:hover { background: var(--blue-700); }
+
+.login-form .login-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}

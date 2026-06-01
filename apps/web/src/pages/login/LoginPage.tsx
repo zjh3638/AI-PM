@@ -1,98 +1,111 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Form, Input, Button, Typography, message } from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
-
-const { Title } = Typography;
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
 
-  const onFinish = async (values: { username: string; password: string }) => {
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const username = (form.elements.namedItem('username') as HTMLInputElement).value;
+    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
     setLoading(true);
     try {
-      await login(values.username, values.password);
-      message.success('登录成功');
+      await login(username, password);
       navigate('/dashboard');
     } catch {
-      message.error('用户名或密码错误');
+      // error handled by API client
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#f8fafc',
-        fontFamily: "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif",
-      }}
-    >
-      <div
-        style={{
-          background: '#fff',
-          borderRadius: 16,
-          boxShadow: '0 10px 25px rgba(0,0,0,0.05), 0 4px 10px rgba(0,0,0,0.03)',
-          border: '1px solid #e2e8f0',
-          width: 400,
-          overflow: 'hidden',
-        }}
-      >
-        {/* Brand */}
-        <div style={{ padding: '32px 0 16px', textAlign: 'center' }}>
-          <div
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: 8,
-              background: '#2563eb',
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#fff',
-              fontSize: 16,
-              fontWeight: 800,
-              marginBottom: 8,
-            }}
-          >
-            PM
-          </div>
-          <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, color: '#0f172a' }}>AI-PM</h2>
-          <p style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0 0' }}>
-            AI 原生项目管理平台
-          </p>
+    <div className="login-page">
+      <div className="login-card">
+        <div className="brand">
+          <div className="brand-icon">PM</div>
+          <h2>AI PM</h2>
+          <p>项目管理工具，AI 让每个人更高效</p>
         </div>
 
-        {/* Login form */}
-        <div style={{ padding: '0 24px 24px' }}>
-          <Form onFinish={onFinish} size="large">
-            <Form.Item name="username" rules={[{ required: true, message: '请输入用户名' }]}>
-              <Input prefix={<UserOutlined style={{ color: '#94a3b8' }} />} placeholder="用户名" />
-            </Form.Item>
-            <Form.Item name="password" rules={[{ required: true, message: '请输入密码' }]}>
-              <Input.Password prefix={<LockOutlined style={{ color: '#94a3b8' }} />} placeholder="密码" />
-            </Form.Item>
-            <Form.Item>
-              <Button
-                type="primary"
-                htmlType="submit"
-                loading={loading}
-                block
-                style={{ height: 40, borderRadius: 8, fontWeight: 600, fontSize: 14 }}
-              >
-                登录
-              </Button>
-            </Form.Item>
-          </Form>
-          <div style={{ textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>
-            默认账号: admin / admin123
+        <div className="login-tabs">
+          <button
+            className={`login-tab${activeTab === 0 ? ' active' : ''}`}
+            onClick={() => setActiveTab(0)}
+          >
+            密码登录
+          </button>
+          <button
+            className={`login-tab${activeTab === 1 ? ' active' : ''}`}
+            onClick={() => setActiveTab(1)}
+          >
+            LDAP
+          </button>
+          <button
+            className={`login-tab${activeTab === 2 ? ' active' : ''}`}
+            onClick={() => setActiveTab(2)}
+          >
+            企微扫码
+          </button>
+        </div>
+
+        {/* Password Login */}
+        <form
+          className={`login-form${activeTab === 0 ? ' active' : ''}`}
+          onSubmit={handlePasswordLogin}
+        >
+          <div className="field">
+            <label>用户名</label>
+            <input type="text" name="username" placeholder="请输入用户名" defaultValue="admin" />
+          </div>
+          <div className="field">
+            <label>密码</label>
+            <input type="password" name="password" placeholder="请输入密码" defaultValue="admin123" />
+          </div>
+          <button className="login-btn" type="submit" disabled={loading}>
+            {loading ? '登录中...' : '登 录'}
+          </button>
+        </form>
+
+        {/* LDAP Login */}
+        <form className={`login-form${activeTab === 1 ? ' active' : ''}`} onSubmit={handlePasswordLogin}>
+          <div className="field">
+            <label>企业账号</label>
+            <input type="text" name="username" placeholder="请输入 LDAP 账号" />
+          </div>
+          <div className="field">
+            <label>密码</label>
+            <input type="password" name="password" placeholder="请输入 LDAP 密码" />
+          </div>
+          <button className="login-btn" type="submit" disabled={loading}>
+            {loading ? '登录中...' : 'LDAP 登录'}
+          </button>
+        </form>
+
+        {/* WeChat QR */}
+        <div className={`login-form${activeTab === 2 ? ' active' : ''}`}>
+          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+            <div
+              style={{
+                width: 120,
+                height: 120,
+                background: 'var(--bg-raised)',
+                margin: '0 auto 12px',
+                borderRadius: 'var(--radius)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '2.5rem',
+              }}
+            >
+              扫码
+            </div>
+            请使用企业微信扫描二维码
           </div>
         </div>
       </div>

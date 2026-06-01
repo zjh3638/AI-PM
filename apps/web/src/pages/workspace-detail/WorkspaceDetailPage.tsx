@@ -1,230 +1,1428 @@
-import { useEffect, useState } from 'react';
-import { Tabs, Typography, Descriptions, Tag, Button, Space, Spin, message, Modal, Select, List, Avatar, Popconfirm } from 'antd';
-import { PlusOutlined, UserOutlined, DeleteOutlined, EditOutlined } from '@ant-design/icons';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { useTaskStore } from '../../stores/taskStore';
 import { useAuthStore } from '../../stores/authStore';
-import type { WorkspaceMember } from '../../types';
-import PlaceholderPage from '../placeholder/PlaceholderPage';
-import TasksTab from './tabs/TasksTab';
-import KanbanBoard from '../../components/task/KanbanBoard';
-import KnowledgeTab from './tabs/KnowledgeTab';
+import type { WorkspaceMember, Task, Iteration, Milestone } from '../../types';
+import { useIterationStore } from '../../stores/iterationStore';
+import { useDocumentStore } from '../../stores/documentStore';
+import { useMilestoneStore } from '../../stores/milestoneStore';
+import SlidePanel from '../../components/common/SlidePanel';
+import api from '../../api/client';
 
-const { Title } = Typography;
+/* ═══════════════════════════════════════════
+   PULSE SIDEBAR
+   ═══════════════════════════════════════════ */
+function MilestoneSidebar({ selectedId, onSelect, onEdit }: { selectedId: string; onSelect: (id: string) => void; onEdit: (ms: Milestone) => void }) {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { milestones, loading, fetchList, remove } = useMilestoneStore();
+  const [showCreate, setShowCreate] = useState(false);
+  const [newName, setNewName] = useState('');
 
-const typeLabels: Record<string, string> = { PROJECT: '项目', OPERATION: '运维', OTHER: '其他' };
-const roleLabels: Record<string, string> = { OWNER: '所有者', MANAGER: '管理员', MEMBER: '成员', VIEWER: '观察者', AI_AGENT: 'AI Agent' };
-const roleColors: Record<string, string> = { OWNER: 'red', MANAGER: 'blue', MEMBER: 'green', VIEWER: 'default', AI_AGENT: 'purple' };
+  useEffect(() => { if (wsId) fetchList(wsId); }, [wsId]);
 
-export default function WorkspaceDetailPage() {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { current, members, loading, fetchDetail, fetchMembers, update, archive, addMember, updateMember, removeMember } = useWorkspaceStore();
-  const user = useAuthStore((s) => s.user);
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [selectedUserId, setSelectedUserId] = useState('');
-  const [selectedRole, setSelectedRole] = useState('MEMBER');
-  const [editingMember, setEditingMember] = useState<WorkspaceMember | null>(null);
-  const [editRole, setEditRole] = useState('');
+  const handleCreate = async () => {
+    if (!wsId || !newName.trim()) return;
+    await useMilestoneStore.getState().create(wsId, { name: newName, sort_order: milestones.length });
+    setNewName('');
+    setShowCreate(false);
+  };
+
+  // Compute all-tasks counts
+  const totalTasks = milestones.reduce((s, m) => s + m.task_count, 0);
+  const totalDone = milestones.reduce((s, m) => s + m.done_count, 0);
+  const totalPct = totalTasks > 0 ? Math.round((totalDone / totalTasks) * 100) : 0;
+
+  return (
+    <div className="pulse-sidebar">
+      <div className="sidebar-section">
+        <div className="ss-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>里程碑</span>
+          <button className="btn-icon-sm" onClick={() => setShowCreate(!showCreate)} title="新建里程碑" style={{ width: 22, height: 22, borderRadius: 4, fontSize: '0.78rem', fontWeight: 600, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', cursor: 'pointer', background: 'var(--bg-raised)', border: '1px solid var(--border-light)', lineHeight: 1 }}>+</button>
+        </div>
+
+        {/* Inline create form */}
+        {showCreate && (
+          <div style={{ padding: '6px 8px', background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)', marginBottom: 6 }}>
+            <input
+              type="text"
+              placeholder="里程碑名称"
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); if (e.key === 'Escape') setShowCreate(false); }}
+              style={{ width: '100%', padding: '4px 6px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.75rem', fontFamily: 'inherit', outline: 'none', marginBottom: 4 }}
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button className="btn btn-primary btn-xs" onClick={handleCreate}>创建</button>
+              <button className="btn btn-ghost btn-xs" onClick={() => setShowCreate(false)}>取消</button>
+            </div>
+          </div>
+        )}
+
+        <div className="sidebar-ms-list" style={{ maxHeight: 'calc(100vh - 300px)', overflowY: 'auto' }}>
+          {loading ? (
+            <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.76rem' }}>加载中...</div>
+          ) : milestones.length === 0 ? (
+            <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.76rem' }}>暂无里程碑</div>
+          ) : (
+            milestones.map((ms) => {
+              const pct = ms.task_count > 0 ? Math.round((ms.done_count / ms.task_count) * 100) : 0;
+              const isActive = selectedId === ms.id;
+              const st = ms.status;
+
+              return (
+                <div
+                  key={ms.id}
+                  className={`sidebar-ms${isActive ? ' active' : ''}`}
+                  onClick={() => onSelect(ms.id)}
+                  onDoubleClick={() => onEdit(ms)}
+                >
+                  <div className="sms-row1">
+                    <span className="sms-name">{ms.name}</span>
+                    <span className={`sms-badge ${st === 'DONE' ? 'done' : st === 'ACTIVE' ? 'active' : 'upcoming'}`}>
+                      {st === 'DONE' ? '✓' : st === 'ACTIVE' ? '◎' : '○'}
+                    </span>
+                  </div>
+                  {ms.description && (
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ms.description}</div>
+                  )}
+                  <div className="sms-bar">
+                    <div className={`sms-fill ${st === 'DONE' ? 'done' : st === 'ACTIVE' ? 'active' : 'pending'}`} style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="sms-pct">
+                    {ms.done_count}/{ms.task_count} · {pct}%
+                    {ms.owner_name && <span> · {ms.owner_name}</span>}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* AI Summary — compact */}
+      <div className="sidebar-ai expanded" style={{ borderTop: '1px solid var(--border-light)', paddingTop: 8 }}>
+        <div className="sai-head">
+          <span><span className="badge badge-blue" style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: 4 }}>AI</span> 摘要</span>
+        </div>
+        <div className="sai-body" style={{ display: 'block' }}>
+          本周完成 <strong>{totalDone} 个任务</strong>，在 <strong>{milestones.filter(m => m.status === 'ACTIVE').length} 个活跃里程碑</strong> 中推进。
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function KpiRow() {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { milestones, fetchList } = useMilestoneStore();
+  const { members, fetchMembers } = useWorkspaceStore();
+  const { kanban, fetchKanban } = useTaskStore();
 
   useEffect(() => {
-    if (id) {
-      fetchDetail(id);
-      fetchMembers(id);
+    if (wsId) { fetchList(wsId); fetchMembers(wsId); fetchKanban(wsId); }
+  }, [wsId]);
+
+  const totalTasks = Object.values(kanban).flat().length;
+  const doneTasks = (kanban['DONE'] || []).length;
+  const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
+  const activeMilestones = milestones.filter((m) => m.status === 'ACTIVE').length;
+  const humanMembers = members.filter((m) => m.role !== 'AI_AGENT').length;
+
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 14 }}>
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>任务完成</div>
+        <div style={{ fontSize: '1.8rem', fontWeight: 700 }}>{doneTasks}/{totalTasks}</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{pct}% 完成</div>
+      </div>
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>里程碑</div>
+        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--blue-600)' }}>{activeMilestones}</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{milestones.length} 个里程碑 · {activeMilestones} 活跃</div>
+      </div>
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>团队成员</div>
+        <div style={{ fontSize: '1.8rem', fontWeight: 700 }}>{humanMembers}</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>人 · +{members.filter(m => m.role === 'AI_AGENT').length} AI Agent</div>
+      </div>
+      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>项目健康度</div>
+        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: pct >= 70 ? 'var(--green-600)' : pct >= 40 ? 'var(--blue-600)' : 'var(--amber-600)' }}>
+          {pct >= 70 ? '良好' : pct >= 40 ? '正常' : '注意'}
+        </div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>整体进度 {pct}%</div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   INLINE CHAT PANEL
+   ═══════════════════════════════════════════ */
+function PulseChat() {
+  const [expanded, setExpanded] = useState(false);
+  const [messages, setMessages] = useState<{ role: string; text: string }[]>([]);
+  const [input, setInput] = useState('');
+
+  const send = () => {
+    if (!input.trim()) return;
+    setMessages((m) => [...m, { role: 'user', text: input }]);
+    setInput('');
+    setTimeout(() => {
+      setMessages((m) => [...m, { role: 'ai', text: '收到。作为 AI 助手，我会根据项目规范处理你的请求。' }]);
+    }, 800);
+  };
+
+  const commands = ['/创建任务', '/查询进度', '/查找文档', '/生成周报', '/风险分析'];
+
+  return (
+    <div className={`pulse-chat${expanded ? ' expanded' : ''}`}>
+      <button className="chat-toggle-tab" onClick={() => setExpanded(!expanded)}>
+        AI 对话
+      </button>
+      <div className="chat-inner">
+        <div className="chat-head">
+          <h3>AI 对话</h3>
+          <button className="chat-close-btn" onClick={() => setExpanded(false)}>✕</button>
+        </div>
+        <div className="chat-body">
+          {messages.length === 0 && (
+            <div className="chat-cmds">
+              {commands.map((c) => (
+                <button key={c} className="chat-cmd" onClick={() => { setMessages([{ role: 'user', text: c }]); setTimeout(() => setMessages((m) => [...m, { role: 'ai', text: '正在处理...' }]), 800); }}>
+                  <span className="cmd-slash">{c}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="chat-msgs">
+            {messages.map((m, i) => (
+              <div key={i} className={`chat-msg ${m.role}`}>
+                {m.text}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="chat-input-area">
+          <input
+            type="text"
+            placeholder="@知识库 输入指令..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && send()}
+          />
+          <button className="send-btn" onClick={send}>↑</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   KANBAN VIEW
+   ═══════════════════════════════════════════ */
+function KanbanView({ onCreateTask, onEditTask, milestoneFilter }: { onCreateTask: (status: string) => void; onEditTask: (task: Task) => void; milestoneFilter: string }) {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { kanban, loading, fetchKanban, moveTask } = useTaskStore();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  useEffect(() => { if (wsId) fetchKanban(wsId); }, [wsId]);
+
+  const colDefs = [
+    { key: 'TODO', title: '待办' },
+    { key: 'IN_PROGRESS', title: '进行中' },
+    { key: 'IN_REVIEW', title: '待 Review' },
+    { key: 'DONE', title: '已完成' },
+  ];
+
+  const toggleSelect = (id: string) => {
+    setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  };
+
+  const handleDragStart = (e: React.DragEvent, taskId: string, status: string) => {
+    e.dataTransfer.setData('taskId', taskId);
+    e.dataTransfer.setData('fromStatus', status);
+  };
+
+  const handleDrop = async (colKey: string, e: React.DragEvent) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('taskId');
+    const fromStatus = e.dataTransfer.getData('fromStatus');
+    if (taskId && wsId && fromStatus !== colKey) {
+      await moveTask(wsId, taskId, colKey, 0);
     }
-  }, [id]);
-
-  const handleAddMember = async () => {
-    if (!selectedUserId || !id) return;
-    await addMember(id, selectedUserId, selectedRole);
-    setAddModalOpen(false);
-    setSelectedUserId('');
-    setSelectedRole('MEMBER');
-    message.success('成员已添加');
   };
 
-  const handleUpdateRole = async () => {
-    if (!id || !editingMember) return;
-    await updateMember(id, editingMember.id, editRole);
-    setEditingMember(null);
-    message.success('角色已更新');
-  };
-
-  const handleRemoveMember = async (memberId: string) => {
-    if (!id) return;
-    await removeMember(id, memberId);
-    message.success('成员已移除');
-  };
-
-  const handleArchive = async () => {
-    if (!id) return;
-    await archive(id);
-    message.success('工作空间已归档');
-    navigate('/workspaces');
-  };
-
-  const currentUserMember = members.find((m) => m.user_id === user?.id);
-  const canManage = currentUserMember?.role === 'OWNER' || currentUserMember?.role === 'MANAGER';
-  const isOwner = currentUserMember?.role === 'OWNER';
-
-  if (loading || !current) {
-    return <Spin spinning style={{ display: 'block', marginTop: 100 }} />;
-  }
+  if (loading) return <div className="empty-state"><div className="empty-icon">⏳</div>加载中...</div>;
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={4} style={{ margin: 0 }}>{current.name}</Title>
-        <Space>
-          <Tag color={typeLabels[current.type] === '项目' ? 'blue' : 'green'}>{typeLabels[current.type]}</Tag>
-          {isOwner && current.status === 'ACTIVE' && (
-            <Popconfirm title="确定归档此工作空间？归档后不可编辑。" onConfirm={handleArchive}>
-              <Button danger size="small">归档</Button>
-            </Popconfirm>
-          )}
-        </Space>
+      {/* Batch bar */}
+      <div className={`batch-bar${selected.size > 0 ? ' visible' : ''}`}>
+        <span className="batch-count">已选 {selected.size} 项</span>
+        <button>改状态</button>
+        <button>改分配</button>
+        <button>改优先级</button>
+        <button onClick={() => setSelected(new Set())}>✕</button>
       </div>
 
-      <Tabs
-        defaultActiveKey="overview"
-        items={[
-          {
-            key: 'overview',
-            label: '概览',
-            children: (
-              <Descriptions bordered column={2} size="small">
-                <Descriptions.Item label="标识">{current.key}</Descriptions.Item>
-                <Descriptions.Item label="状态">
-                  <Tag color={current.status === 'ACTIVE' ? 'green' : 'orange'}>
-                    {current.status === 'ACTIVE' ? '活跃' : '已归档'}
-                  </Tag>
-                </Descriptions.Item>
-                <Descriptions.Item label="可见性">{current.visibility}</Descriptions.Item>
-                <Descriptions.Item label="成员数">{current.member_count} 人</Descriptions.Item>
-                <Descriptions.Item label="创建时间">{current.created_at}</Descriptions.Item>
-                <Descriptions.Item label="更新时间">{current.updated_at}</Descriptions.Item>
-                <Descriptions.Item label="描述" span={2}>
-                  {current.description || '暂无描述'}
-                </Descriptions.Item>
-              </Descriptions>
-            ),
-          },
-          { key: 'tasks', label: '任务列表', children: <TasksTab /> },
-          { key: 'kanban', label: '看板', children: <KanbanBoard /> },
-          { key: 'knowledge', label: '知识', children: <KnowledgeTab /> },
-          { key: 'analysis', label: '分析', children: <PlaceholderPage title="分析" /> },
-          { key: 'automation', label: '自动化', children: <PlaceholderPage title="自动化" /> },
-          {
-            key: 'members',
-            label: `成员 (${members.length})`,
-            children: (
+      <div className="kanban-grid">
+        {colDefs.map((col) => (
+          <div
+            key={col.key}
+            className="kanban-col"
+            onDrop={(e) => handleDrop(col.key, e)}
+            onDragOver={(e) => e.preventDefault()}
+          >
+            <div className="col-head">
+              <span>{col.title}</span>
+              <span className="badge" style={{ background: 'var(--bg-hover)' }}>{(kanban[col.key] || []).length}</span>
+            </div>
+            {(kanban[col.key] || []).filter((t: Task) => t.milestone_id === milestoneFilter).map((task: Task) => (
+              <div
+                key={task.id}
+                className={`kanban-card${selected.has(task.id) ? ' selected' : ''}`}
+                onClick={(e) => { if (e.shiftKey) toggleSelect(task.id); else onEditTask(task); }}
+                draggable
+                onDragStart={(e) => handleDragStart(e, task.id, task.status)}
+              >
+                <div className="card-title">{task.title}</div>
+                <div className="card-meta">
+                  <span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>{task.task_type}</span>
+                  <span style={{ color: task.priority === 'CRITICAL' ? 'var(--red-600)' : 'var(--text-muted)' }}>{task.priority}</span>
+                  {task.assignee_name && <span>{task.assignee_name}</span>}
+                </div>
+              </div>
+            ))}
+            <div className="col-add" onClick={() => onCreateTask(col.key)}>+ 新建任务</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   LIST VIEW
+   ═══════════════════════════════════════════ */
+function ListView({ onEditTask, milestoneFilter }: { onEditTask: (task: Task) => void; milestoneFilter: string }) {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { tasks, fetchList } = useTaskStore();
+
+  useEffect(() => { if (wsId) fetchList(wsId, { milestone_id: milestoneFilter || undefined }); }, [wsId, milestoneFilter]);
+
+  const statusLabels: Record<string, string> = {
+    TODO: '待办', IN_PROGRESS: '进行中', IN_REVIEW: '待 Review', DONE: '已完成',
+  };
+
+  return (
+    <div className="task-list">
+      <div className="list-head">
+        <span>任务名称</span><span>状态</span><span>优先级</span><span>负责人</span><span />
+      </div>
+      {tasks.map((t: Task) => (
+        <div key={t.id} className="list-row" onClick={() => onEditTask(t)}>
+          <span className="task-title">{t.title}</span>
+          <span><span className="badge" style={{ background: 'var(--bg-raised)', color: 'var(--text-secondary)' }}>{statusLabels[t.status] || t.status}</span></span>
+          <span>{t.priority}</span>
+          <span>{t.assignee_name || '—'}</span>
+          <span />
+        </div>
+      ))}
+      {tasks.length === 0 && (
+        <div className="empty-state" style={{ padding: 30 }}>暂无任务</div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   GANTT VIEW
+   ═══════════════════════════════════════════ */
+function GanttView({ milestoneFilter }: { milestoneFilter: string }) {
+  const msName = useMilestoneStore((s) => s.milestones.find((m) => m.id === milestoneFilter)?.name || '');
+  const days = ['5/1', '5/3', '5/5', '5/7', '5/9', '5/11', '5/13', '5/15', '5/17', '5/20'];
+  const rowCount = 7;
+  return (
+    <div className="gantt-wrap">
+      <div className="gantt-head">
+        <div className="gantt-label">任务 / {msName || '里程碑'}</div>
+        <div className="gantt-timeline">
+          {days.map((d) => <div key={d} className="gantt-day">{d}</div>)}
+        </div>
+      </div>
+      {Array.from({ length: rowCount }).map((_, i) => (
+        <div key={i} className="gantt-row">
+          <div className="gantt-label">{i === 0 ? 'M2 · 核心开发' : i === 4 ? 'M3 · UI Review' : `├ 任务 ${i}`}</div>
+          <div className="gantt-timeline">
+            <div className={`gantt-bar ${i < 4 ? 'blue' : 'amber'}`} style={{ left: `${i * 30}px`, width: `${80 + i * 20}px` }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   KNOWLEDGE BASE
+   ═══════════════════════════════════════════ */
+  /* ═══════════════════════════════════════════
+     STORY BOARD — Stories + child tasks grouped by status
+     ═══════════════════════════════════════════ */
+  function StoryBoard({ milestoneFilter, onEditTask, onCreateTask }: { milestoneFilter: string; onEditTask: (task: Task) => void; onCreateTask: (status: string, parentId?: string) => void }) {
+    const { id: wsId } = useParams<{ id: string }>();
+    const [storyList, setStoryList] = useState<Task[]>([]);
+    const [expanded, setExpanded] = useState<Set<string>>(new Set());
+    const [childMap, setChildMap] = useState<Record<string, Task[]>>({});
+
+    const fetchStories = async () => {
+      if (!wsId) return;
+      await useTaskStore.getState().fetchList(wsId, { milestone_id: milestoneFilter, task_type: 'STORY', page_size: 100 });
+      const stories = useTaskStore.getState().tasks;
+      setStoryList(stories);
+      for (const s of stories) {
+        try {
+          const res: any = await api.get(`/workspaces/${wsId}/tasks`, { params: { parent_id: s.id, page_size: 100 } });
+          setChildMap(prev => ({ ...prev, [s.id]: res.data || [] }));
+        } catch { /* ignore */ }
+      }
+    };
+
+    useEffect(() => { fetchStories(); }, [wsId, milestoneFilter]);
+
+    const toggle = (id: string) => {
+      setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
+    };
+
+    const statusLabels: Record<string, { label: string; color: string }> = {
+      TODO: { label: '待办', color: 'var(--text-muted)' },
+      IN_PROGRESS: { label: '进行中', color: 'var(--blue-500)' },
+      IN_REVIEW: { label: '待 Review', color: 'var(--amber-500)' },
+      DONE: { label: '已完成', color: 'var(--green-500)' },
+    };
+
+    const columns = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE'] as const;
+    const colLabels = { TODO: '待办', IN_PROGRESS: '进行中', IN_REVIEW: '待 Review', DONE: '已完成' };
+
+    return (
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+        {columns.map(col => {
+          const colStories = storyList.filter(s => s.status === col);
+          return (
+            <div key={col} style={{
+              background: 'var(--bg-raised)', borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-light)', padding: '10px 12px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border-light)' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{colLabels[col]}</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '1px 7px', borderRadius: 10 }}>{colStories.length}</span>
+              </div>
+              {colStories.length === 0 && (
+                <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.72rem' }}>暂无需求</div>
+              )}
+              {colStories.map(story => {
+                const children = childMap[story.id] || [];
+                const doneCount = children.filter(c => c.status === 'DONE').length;
+                return (
+                  <div key={story.id} style={{
+                    background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
+                    borderRadius: 'var(--radius-sm)', padding: '8px 10px', marginBottom: 8
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', cursor: 'pointer' }} onClick={() => toggle(story.id)}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 3 }}>{story.title}</div>
+                        <div style={{ display: 'flex', gap: 8, fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                          <span>{children.length} 个任务</span>
+                          {children.length > 0 && <span style={{ color: 'var(--green-500)' }}>{doneCount} 完成</span>}
+                          {story.assignee_name && <span>👤 {story.assignee_name}</span>}
+                        </div>
+                        {children.length > 0 && (
+                          <div style={{ marginTop: 4, height: 3, background: 'var(--border-light)', borderRadius: 2 }}>
+                            <div style={{ height: '100%', width: `${Math.round((doneCount / children.length) * 100)}%`, background: 'var(--green-400)', borderRadius: 2 }} />
+                          </div>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '0.6rem', transform: expanded.has(story.id) ? 'rotate(90deg)' : '', transition: '0.2s' }}>▶</span>
+                    </div>
+                    {expanded.has(story.id) && (
+                      <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--border-light)' }}>
+                        {children.map(child => (
+                          <div key={child.id}
+                            onClick={(e) => { e.stopPropagation(); onEditTask(child); }}
+                            style={{ padding: '4px 6px', marginBottom: 3, borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.74rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-raised)' }}>
+                            <span>{child.title}</span>
+                            <span style={{ fontSize: '0.62rem', color: (statusLabels[child.status]?.color) || 'var(--text-muted)' }}>{statusLabels[child.status]?.label || child.status}</span>
+                          </div>
+                        ))}
+                        <div onClick={(e) => { e.stopPropagation(); onCreateTask('TODO', story.id); }}
+                          style={{ padding: '4px 6px', marginTop: 3, borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent' }}>
+                          + 添加任务
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              <div onClick={() => { onCreateTask(col, undefined); }}
+                style={{ padding: '4px 6px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent' }}>
+                + 新建需求
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+const KB_FOLDERS = ['产品需求文档', '设计稿', '技术方案', '会议纪要', '合同'];
+
+function KnowledgePanel() {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { docs, loading, fetchList, create, update, remove } = useDocumentStore();
+  const [activeFolder, setActiveFolder] = useState(KB_FOLDERS[0]);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [form, setForm] = useState({ title: '', content: '', doc_type: 'MARKDOWN' });
+  const [viewing, setViewing] = useState<any>(null);
+
+  useEffect(() => { if (wsId) fetchList(wsId); }, [wsId]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ title: '', content: '', doc_type: 'MARKDOWN' });
+    setPanelOpen(true);
+  };
+
+  const openEdit = (doc: any) => {
+    setEditing(doc);
+    setForm({ title: doc.title, content: doc.content || '', doc_type: doc.doc_type });
+    setPanelOpen(true);
+  };
+
+  const submit = async () => {
+    if (!wsId || !form.title.trim()) return;
+    if (editing) {
+      await update(wsId, editing.id, form);
+    } else {
+      await create(wsId, form);
+    }
+    setPanelOpen(false);
+  };
+
+  const handleDelete = async () => {
+    if (!wsId || !editing) return;
+    await remove(wsId, editing.id);
+    setPanelOpen(false);
+  };
+
+  return (
+    <div className="kb-layout">
+      <div className="kb-sidebar">
+        {KB_FOLDERS.map((f) => (
+          <div key={f} className={`kb-folder${f === activeFolder ? ' active' : ''}`} onClick={() => setActiveFolder(f)}>
+            📁 {f}
+          </div>
+        ))}
+      </div>
+      <div className="kb-main">
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+          <span style={{ fontWeight: 600 }}>{activeFolder}</span>
+          <button className="btn btn-primary btn-xs" onClick={openCreate}>+ 新建文档</button>
+        </div>
+
+        {/* Viewer */}
+        {viewing && (
+          <div style={{ marginBottom: 12, padding: 16, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--bg-surface)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+              <strong style={{ fontSize: '0.9rem' }}>{viewing.title}</strong>
+              <button className="btn btn-ghost btn-xs" onClick={() => setViewing(null)}>关闭</button>
+            </div>
+            <div style={{ fontSize: '0.82rem', lineHeight: 1.8, whiteSpace: 'pre-wrap' }}>{viewing.content || '(空内容)'}</div>
+            <div style={{ marginTop: 12 }}>
+              <button className="btn btn-ghost btn-xs" onClick={() => { openEdit(viewing); setViewing(null); }}>编辑</button>
+            </div>
+          </div>
+        )}
+
+        {loading ? (
+          <div className="empty-state">加载中...</div>
+        ) : docs.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">📄</div>
+            <div>暂无文档</div>
+          </div>
+        ) : (
+          docs.map((d: any) => (
+            <div
+              key={d.id}
+              className="kb-file"
+              onClick={() => setViewing(d)}
+            >
               <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <span></span>
-                  {canManage && (
-                    <Button type="primary" icon={<PlusOutlined />} onClick={() => setAddModalOpen(true)}>
-                      添加成员
-                    </Button>
+                <div className="file-name">{d.title}</div>
+                <div className="file-meta">
+                  <span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>v{d.version || 1}</span>
+                  {' '}{d.updated_at || d.created_at}
+                  {d.author_name && <span> · {d.author_name}</span>}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+                <button className="btn btn-ghost btn-xs" onClick={() => openEdit(d)}>编辑</button>
+                <button className="btn btn-ghost btn-xs" style={{ color: 'var(--red-500)' }}
+                  onClick={() => { if (wsId) remove(wsId, d.id); }}
+                >删除</button>
+              </div>
+            </div>
+          ))
+        )}
+        <div className="kb-upload" onClick={openCreate}>点击创建新文档</div>
+      </div>
+
+      {/* Create/Edit Panel */}
+      <SlidePanel open={panelOpen} onClose={() => setPanelOpen(false)} title={editing ? '编辑文档' : '新建文档'}>
+        <div className="form-group">
+          <label>标题</label>
+          <input type="text" placeholder="文档标题" value={form.title} onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))} />
+        </div>
+        <div className="form-group">
+          <label>内容 (Markdown)</label>
+          <textarea
+            rows={15}
+            placeholder="输入 Markdown 内容..."
+            style={{ width: '100%', padding: '10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.78rem', fontFamily: 'monospace', background: 'var(--bg-surface)', color: 'var(--text-primary)', resize: 'vertical' }}
+            value={form.content}
+            onChange={(e) => setForm((f) => ({ ...f, content: e.target.value }))}
+          />
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-ghost" onClick={() => setPanelOpen(false)}>取消</button>
+          <button className="btn btn-primary" onClick={submit} disabled={!form.title.trim()}>
+            {editing ? '保存' : '创建'}
+          </button>
+        </div>
+        {editing && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)', borderColor: 'var(--red-200)', width: '100%' }} onClick={handleDelete}>删除文档</button>
+          </div>
+        )}
+      </SlidePanel>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   MEMBERS PANEL
+   ═══════════════════════════════════════════ */
+function MembersPanel() {
+  const { id } = useParams<{ id: string }>();
+  const { members, loading, fetchMembers } = useWorkspaceStore();
+
+  useEffect(() => { if (id) fetchMembers(id); }, [id]);
+
+  const roleLabels: Record<string, string> = { OWNER: '所有者', MANAGER: '管理员', MEMBER: '成员', VIEWER: '观察者', AI_AGENT: 'AI Agent' };
+
+  return (
+    <div className="member-grid">
+      {members.map((m: WorkspaceMember) => (
+        <div key={m.id} className="member-card">
+          <div className={`m-avatar ${m.role === 'AI_AGENT' ? 'agent' : 'human'}`}>
+            {(m.user_name || m.ai_agent_id || '?')[0]}
+          </div>
+          <div className="m-info">
+            <div className="m-name">{m.user_name || m.ai_agent_id || m.user_id}</div>
+            <div className="m-role">{roleLabels[m.role] || m.role}</div>
+            {m.role !== 'AI_AGENT' && <div className="m-load">负载 78%</div>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   EPICS PANEL
+   ═══════════════════════════════════════════ */
+function EpicsPanel() {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { epics, fetchEpics } = useTaskStore();
+  const { tasks, fetchList } = useTaskStore();
+  const [expandedEpic, setExpandedEpic] = useState<string | null>(null);
+  const [epicTasks, setEpicTasks] = useState<Record<string, Task[]>>({});
+
+  useEffect(() => { if (wsId) fetchEpics(wsId); }, [wsId]);
+
+  const toggleExpand = async (epicId: string) => {
+    if (expandedEpic === epicId) { setExpandedEpic(null); return; }
+    setExpandedEpic(epicId);
+    if (!epicTasks[epicId] && wsId) {
+      // Fetch children of this epic
+      const res: any = await api.get(`/workspaces/${wsId}/tasks`, { params: { epic_id: epicId } });
+      setEpicTasks((prev) => ({ ...prev, [epicId]: res.data || [] }));
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <span style={{ fontWeight: 600 }}>共 {epics.length} 个 Epic</span>
+        <button className="btn btn-primary btn-sm" onClick={() => {
+          // Trigger task creation with EPIC type
+          const event = new CustomEvent('create-epic');
+          window.dispatchEvent(event);
+        }}>+ 新建 Epic</button>
+      </div>
+
+      {epics.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">🎯</div>
+          <div>暂无 Epic</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {epics.map((epic: any) => {
+            const progress = epic.total_stories > 0 ? Math.round((epic.done_stories / epic.total_stories) * 100) : 0;
+            const isExpanded = expandedEpic === epic.id;
+
+            return (
+              <div key={epic.id}>
+                <div
+                  className="need-card"
+                  onClick={() => toggleExpand(epic.id)}
+                  style={{ marginBottom: 0 }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>🎯 {epic.title}</h4>
+                    <span className="badge badge-blue" style={{ fontSize: '0.68rem' }}>Epic</span>
+                  </div>
+                  <div className="meta" style={{ marginTop: 4 }}>
+                    <span>{epic.total_stories || 0} 个 Story</span>
+                    <span>{epic.done_stories || 0} 已完成</span>
+                  </div>
+                  {epic.total_stories > 0 && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ height: 6, background: 'var(--bg-raised)', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', borderRadius: 3, background: 'var(--blue-500)', width: `${progress}%`, transition: 'width 0.5s var(--ease)' }} />
+                      </div>
+                    </div>
                   )}
                 </div>
-                <List
-                  dataSource={members}
-                  renderItem={(m: WorkspaceMember) => (
-                    <List.Item
-                      actions={
-                        canManage && m.role !== 'OWNER'
-                          ? [
-                              <Button
-                                key="edit"
-                                type="link"
-                                icon={<EditOutlined />}
-                                onClick={() => { setEditingMember(m); setEditRole(m.role); }}
-                              />,
-                              <Popconfirm
-                                key="remove"
-                                title="确定移除该成员？"
-                                onConfirm={() => handleRemoveMember(m.id)}
-                              >
-                                <Button type="link" danger icon={<DeleteOutlined />} />
-                              </Popconfirm>,
-                            ]
-                          : []
-                      }
-                    >
-                      <List.Item.Meta
-                        avatar={<Avatar icon={<UserOutlined />} src={m.user_avatar} />}
-                        title={
-                          <Space>
-                            {m.user_name || m.ai_agent_id || m.user_id}
-                            <Tag color={roleColors[m.role]}>{roleLabels[m.role]}</Tag>
-                          </Space>
-                        }
-                      />
-                    </List.Item>
-                  )}
-                />
+
+                {/* Expanded children */}
+                {isExpanded && (
+                  <div style={{ marginLeft: 16, marginTop: 4, marginBottom: 8 }}>
+                    {(epicTasks[epic.id] || []).map((t: Task) => (
+                      <div key={t.id} className="need-card" style={{ marginBottom: 0, fontSize: '0.82rem', padding: '10px 14px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <span>{t.title}</span>
+                          <span className="badge" style={{ fontSize: '0.65rem', background: 'var(--bg-raised)', color: 'var(--text-muted)' }}>
+                            {t.status === 'DONE' ? '✓ 已完成' : t.status === 'IN_PROGRESS' ? '进行中' : t.status === 'IN_REVIEW' ? '待 Review' : '待办'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {(!epicTasks[epic.id] || epicTasks[epic.id].length === 0) && (
+                      <div style={{ padding: '12px 14px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>暂无子任务</div>
+                    )}
+                  </div>
+                )}
               </div>
-            ),
-          },
-          { key: 'ai_agent', label: 'AI Agent', children: <PlaceholderPage title="AI Agent" /> },
-        ]}
-      />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
-      <Modal
-        title="添加成员"
-        open={addModalOpen}
-        onOk={handleAddMember}
-        onCancel={() => setAddModalOpen(false)}
-        okText="添加"
-        cancelText="取消"
-        okButtonProps={{ disabled: !selectedUserId }}
-      >
-        <Space direction="vertical" style={{ width: '100%' }}>
-          <div>
-            <span style={{ marginRight: 8 }}>用户 ID:</span>
-            <Select
-              showSearch
-              style={{ width: 280 }}
-              placeholder="输入用户 ID 搜索"
-              value={selectedUserId || undefined}
-              onChange={(v) => setSelectedUserId(v)}
-            />
-          </div>
-          <div>
-            <span style={{ marginRight: 8 }}>角色:</span>
-            <Select
-              style={{ width: 200 }}
-              value={selectedRole}
-              onChange={(v) => setSelectedRole(v)}
-              options={[
-                { label: '管理员', value: 'MANAGER' },
-                { label: '成员', value: 'MEMBER' },
-                { label: '观察者', value: 'VIEWER' },
-              ]}
-            />
-          </div>
-        </Space>
-      </Modal>
+/* ═══════════════════════════════════════════
+   ITERATIONS PANEL
+   ═══════════════════════════════════════════ */
+const ITER_STATUS: Record<string, { label: string; cls: string }> = {
+  PLANNING: { label: '规划中', cls: 'badge' },
+  ACTIVE: { label: '进行中', cls: 'badge-blue' },
+  CLOSED: { label: '已关闭', cls: 'badge-green' },
+};
 
-      <Modal
-        title="修改成员角色"
-        open={!!editingMember}
-        onOk={handleUpdateRole}
-        onCancel={() => setEditingMember(null)}
-        okText="保存"
-        cancelText="取消"
-      >
-        <Select
-          style={{ width: 200 }}
-          value={editRole}
-          onChange={(v) => setEditRole(v)}
-          options={[
-            { label: '管理员', value: 'MANAGER' },
-            { label: '成员', value: 'MEMBER' },
-            { label: '观察者', value: 'VIEWER' },
-          ]}
+function IterationsPanel() {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { iterations, loading, fetchList, create, update, startIter, closeIter } = useIterationStore();
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [editing, setEditing] = useState<Iteration | null>(null);
+  const [form, setForm] = useState({ name: '', goal: '', start_date: '', end_date: '', capacity_points: 0 });
+
+  useEffect(() => { if (wsId) fetchList(wsId); }, [wsId]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm({ name: '', goal: '', start_date: '', end_date: '', capacity_points: 0 });
+    setPanelOpen(true);
+  };
+
+  const openEdit = (it: Iteration) => {
+    setEditing(it);
+    setForm({ name: it.name, goal: it.goal || '', start_date: it.start_date?.slice(0, 10) || '', end_date: it.end_date?.slice(0, 10) || '', capacity_points: it.capacity_points || 0 });
+    setPanelOpen(true);
+  };
+
+  const submit = async () => {
+    if (!wsId || !form.name.trim()) return;
+    if (editing) {
+      await update(wsId, editing.id, form as any);
+    } else {
+      await create(wsId, form as any);
+    }
+    setPanelOpen(false);
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
+        <span style={{ fontWeight: 600 }}>共 {iterations.length} 个迭代</span>
+        <button className="btn btn-primary btn-sm" onClick={openCreate}>+ 新建迭代</button>
+      </div>
+
+      {loading ? (
+        <div className="empty-state">加载中...</div>
+      ) : iterations.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">🔄</div>
+          <div>暂无迭代</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {iterations.map((it: Iteration) => {
+            const st = ITER_STATUS[it.status] || ITER_STATUS.PLANNING;
+            const progress = it.capacity_points > 0 ? Math.round((it.committed_points / it.capacity_points) * 100) : 0;
+
+            return (
+              <div
+                key={it.id}
+                className="need-card"
+                onClick={() => openEdit(it)}
+                style={{ marginBottom: 0 }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600 }}>{it.name}</h4>
+                    <div className="meta" style={{ marginTop: 4 }}>
+                      <span>{it.start_date?.slice(0, 10)} → {it.end_date?.slice(0, 10)}</span>
+                      <span>{it.task_count || 0} 个任务</span>
+                    </div>
+                    {it.goal && <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 4 }}>{it.goal}</div>}
+                  </div>
+                  <span className={st.cls} style={{ fontSize: '0.68rem', padding: '2px 8px', borderRadius: 8 }}>
+                    {st.label}
+                  </span>
+                </div>
+
+                {/* Progress bar */}
+                {it.status !== 'CLOSED' && (
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: 3 }}>
+                      <span>进度</span>
+                      <span>{it.committed_points}/{it.capacity_points} pts ({progress}%)</span>
+                    </div>
+                    <div style={{ height: 6, background: 'var(--bg-raised)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', borderRadius: 3, background: progress > 80 ? 'var(--green-500)' : progress > 40 ? 'var(--blue-500)' : 'var(--amber-500)', width: `${Math.min(progress, 100)}%`, transition: 'width 0.5s var(--ease)' }} />
+                    </div>
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div style={{ marginTop: 8, display: 'flex', gap: 6 }} onClick={(e) => e.stopPropagation()}>
+                  {it.status === 'PLANNING' && (
+                    <button className="btn btn-xs btn-primary" onClick={() => wsId && startIter(wsId, it.id)}>启动迭代</button>
+                  )}
+                  {it.status === 'ACTIVE' && (
+                    <button className="btn btn-xs btn-ghost" onClick={() => wsId && closeIter(wsId, it.id)}>关闭迭代</button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Create/Edit Panel */}
+      <SlidePanel open={panelOpen} onClose={() => setPanelOpen(false)} title={editing ? '编辑迭代' : '新建迭代'}>
+        <div className="form-group">
+          <label>迭代名称</label>
+          <input type="text" placeholder="例如：Sprint 6" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} />
+        </div>
+        <div className="form-group">
+          <label>目标</label>
+          <textarea rows={3} placeholder="迭代目标（可选）" style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', fontFamily: 'inherit', background: 'var(--bg-surface)', color: 'var(--text-primary)', resize: 'vertical' }} value={form.goal} onChange={(e) => setForm((f) => ({ ...f, goal: e.target.value }))} />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>开始日期</label>
+            <input type="date" value={form.start_date} onChange={(e) => setForm((f) => ({ ...f, start_date: e.target.value }))} />
+          </div>
+          <div className="form-group">
+            <label>结束日期</label>
+            <input type="date" value={form.end_date} onChange={(e) => setForm((f) => ({ ...f, end_date: e.target.value }))} />
+          </div>
+        </div>
+        <div className="form-group">
+          <label>容量（故事点）</label>
+          <input type="number" value={form.capacity_points} onChange={(e) => setForm((f) => ({ ...f, capacity_points: Number(e.target.value) }))} />
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-ghost" onClick={() => setPanelOpen(false)}>取消</button>
+          <button className="btn btn-primary" onClick={submit}>{editing ? '保存' : '创建迭代'}</button>
+        </div>
+      </SlidePanel>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   REPORTS PANEL
+   ═══════════════════════════════════════════ */
+function ReportsPanel() {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { kanban, fetchKanban } = useTaskStore();
+  const { members, fetchMembers } = useWorkspaceStore();
+
+  useEffect(() => {
+    if (wsId) { fetchKanban(wsId); fetchMembers(wsId); }
+  }, [wsId]);
+
+  // Compute task distribution from kanban data
+  const statusLabels = ['待办', '进行中', '待 Review', '已完成'];
+  const statusKeys = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE'];
+  const statusColors = ['#94a3b8', '#60a5fa', '#f59e0b', '#34d399'];
+  const maxCount = Math.max(...statusKeys.map((k) => (kanban[k] || []).length), 1);
+
+  // Compute priority distribution from all tasks
+  const allTasks = Object.values(kanban).flat();
+  const priorityCounts: Record<string, number> = {};
+  allTasks.forEach((t: any) => { priorityCounts[t.priority] = (priorityCounts[t.priority] || 0) + 1; });
+  const maxPriority = Math.max(...Object.values(priorityCounts), 1);
+
+  return (
+    <div className="report-grid">
+      <div className="report-card">
+        <h4>任务分布</h4>
+        <div className="report-chart">
+          <div style={{ width: '100%', padding: '0 16px' }}>
+            {statusKeys.map((k, i) => {
+              const count = (kanban[k] || []).length;
+              return (
+                <div key={k} className="report-bar">
+                  <span className="bar-label">{statusLabels[i]}</span>
+                  <span className="bar-track">
+                    <span className="bar-fill" style={{ width: `${(count / maxCount) * 100}%`, background: statusColors[i] }} />
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', minWidth: 20, textAlign: 'right' }}>{count}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="report-card">
+        <h4>按优先级分布</h4>
+        <div className="report-chart">
+          <div style={{ width: '100%', padding: '0 16px' }}>
+            {Object.entries(priorityCounts).length > 0 ? (
+              Object.entries(priorityCounts).map(([p, c]) => (
+                <div key={p} className="report-bar">
+                  <span className="bar-label">{p === 'CRITICAL' ? '紧急' : p === 'HIGH' ? '高' : p === 'MEDIUM' ? '中' : '低'}</span>
+                  <span className="bar-track">
+                    <span className="bar-fill" style={{
+                      width: `${(c / maxPriority) * 100}%`,
+                      background: p === 'CRITICAL' ? 'var(--red-500)' : p === 'HIGH' ? 'var(--amber-500)' : p === 'MEDIUM' ? 'var(--blue-500)' : 'var(--text-muted)',
+                    }} />
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', minWidth: 20, textAlign: 'right' }}>{c}</span>
+                </div>
+              ))
+            ) : (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20 }}>暂无数据</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="report-card">
+        <h4>团队负载</h4>
+        <div className="report-chart">
+          <div style={{ width: '100%', padding: '0 16px' }}>
+            {members.length > 0 ? (
+              members.filter((m: WorkspaceMember) => m.role !== 'AI_AGENT').map((m: WorkspaceMember) => (
+                <div key={m.id} className="report-bar">
+                  <span className="bar-label">{m.user_name || m.user_id}</span>
+                  <span className="bar-track">
+                    <span className="bar-fill" style={{ width: '78%', background: 'var(--blue-500)' }} />
+                  </span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>78%</span>
+                </div>
+              ))
+            ) : (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 20 }}>暂无数据</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="report-card">
+        <h4>概览统计</h4>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ background: 'var(--bg-raised)', borderRadius: 'var(--radius)', padding: 14, textAlign: 'center' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--blue-600)' }}>{allTasks.length}</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>总任务数</div>
+          </div>
+          <div style={{ background: 'var(--bg-raised)', borderRadius: 'var(--radius)', padding: 14, textAlign: 'center' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--green-600)' }}>{(kanban['DONE'] || []).length}</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>已完成</div>
+          </div>
+          <div style={{ background: 'var(--bg-raised)', borderRadius: 'var(--radius)', padding: 14, textAlign: 'center' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--amber-600)' }}>{members.length}</div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>团队人数</div>
+          </div>
+          <div style={{ background: 'var(--bg-raised)', borderRadius: 'var(--radius)', padding: 14, textAlign: 'center' }}>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: 'var(--blue-600)' }}>
+              {allTasks.length > 0 ? Math.round(((kanban['DONE'] || []).length / allTasks.length) * 100) : 0}%
+            </div>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>完成率</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   WORKSPACE DETAIL PAGE
+   ═══════════════════════════════════════════ */
+export default function WorkspaceDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { current, loading, fetchDetail } = useWorkspaceStore();
+  const { create, update, remove } = useTaskStore();
+  const [activeTab, setActiveTab] = useState('tasks');
+  const [activeView, setActiveView] = useState('kanban');
+  const [taskPanelOpen, setTaskPanelOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+  const [selectedMilestone, setSelectedMilestone] = useState<string>('');
+  const [msEditOpen, setMsEditOpen] = useState(false);
+  const [msEditForm, setMsEditForm] = useState<{ id: string; name: string; description: string; plan: string; owner_id: string; status: string; start_date: string; end_date: string }>({ id: '', name: '', description: '', plan: '', owner_id: '', status: 'UPCOMING', start_date: '', end_date: '' });
+  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; iteration_id?: string; milestone_id: string; assignee_id?: string; parent_id?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', milestone_id: '' });
+  const [stories, setStories] = useState<Task[]>([]);
+  const [taskSubmitting, setTaskSubmitting] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
+
+  // Auto-select first active milestone on load
+  const milestones = useMilestoneStore((s) => s.milestones);
+  useEffect(() => {
+    if (!selectedMilestone && milestones.length > 0) {
+      const active = milestones.find((m) => m.status === 'ACTIVE') || milestones.find((m) => m.status === 'UPCOMING') || milestones[0];
+      setSelectedMilestone(active.id);
+    }
+  }, [milestones]);
+
+  const openTaskPanel = async (status?: string, task?: Task, parentStoryId?: string) => {
+    // Fetch available stories for parent selection
+    if (id && selectedMilestone) {
+      const result = await useTaskStore.getState().fetchList(id, { milestone_id: selectedMilestone, task_type: 'STORY', page_size: 100 });
+      const allTasks = useTaskStore.getState().tasks;
+      setStories(allTasks);
+    }
+    if (task) {
+      setEditingTask(task);
+      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, parent_id: task.parent_id || undefined });
+    } else {
+      setEditingTask(null);
+      setTaskForm({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: status || 'TODO', iteration_id: undefined, milestone_id: selectedMilestone, assignee_id: undefined, parent_id: parentStoryId || undefined });
+    }
+    setShowDelete(false);
+    setTaskPanelOpen(true);
+  };
+
+  const openMilestoneEdit = (ms: any) => {
+    setMsEditForm({ id: ms.id, name: ms.name, description: ms.description || '', plan: ms.plan || '', owner_id: ms.owner_id || '', status: ms.status, start_date: ms.start_date?.slice(0, 10) || '', end_date: ms.end_date?.slice(0, 10) || '' });
+    setMsEditOpen(true);
+  };
+
+  const submitMsEdit = async () => {
+    if (!id || !msEditForm.name.trim()) return;
+    await useMilestoneStore.getState().update(id, msEditForm.id, msEditForm);
+    setMsEditOpen(false);
+  };
+
+  const deleteMs = async () => {
+    if (!id) return;
+    await useMilestoneStore.getState().remove(id, msEditForm.id);
+    setMsEditOpen(false);
+    if (selectedMilestone === msEditForm.id) { const ms = milestones.find((m) => m.id !== msEditForm.id); setSelectedMilestone(ms?.id || ''); }
+  };
+
+  const submitTask = async () => {
+    if (!id || !taskForm.title.trim() || !taskForm.milestone_id) return;
+    setTaskSubmitting(true);
+    try {
+      if (editingTask) {
+        await update(id, editingTask.id, taskForm as any);
+      } else {
+        await create(id, taskForm as any);
+      }
+      setTaskPanelOpen(false);
+    } finally {
+      setTaskSubmitting(false);
+    }
+  };
+
+  const deleteTask = async () => {
+    if (!id || !editingTask) return;
+    setTaskSubmitting(true);
+    try {
+      await remove(id, editingTask.id);
+      setTaskPanelOpen(false);
+    } finally {
+      setTaskSubmitting(false);
+    }
+  };
+
+  useEffect(() => { if (id) fetchDetail(id); }, [id]);
+
+  if (loading || !current) {
+    return <div style={{ textAlign: 'center', padding: 100, color: 'var(--text-muted)' }}>加载中...</div>;
+  }
+
+  const tabs = [
+    { key: 'tasks', label: '任务看板' },
+    { key: 'epics', label: '需求' },
+    { key: 'kb', label: '知识库' },
+    { key: 'iterations', label: '迭代' },
+    { key: 'members', label: '成员' },
+    { key: 'reports', label: '报表' },
+  ];
+
+  return (
+    <div style={{ maxWidth: 'none', padding: '16px 20px 40px' }}>
+      {/* Pulse Header */}
+      <div className="pulse-header">
+        <div className="ph-left">
+          <div className="back" onClick={() => navigate('/workspaces')}>← 返回工作空间</div>
+          <div className="proj-name">{current.name}</div>
+          <div className="proj-meta">
+            公司重点项目 · Sprint 5 · 创建于 {current.created_at?.slice(0, 10)}
+            {' '}
+            <span className="ospec-badge">OpenSpec: 标准软件开发</span>
+          </div>
+        </div>
+        <div className="ph-actions">
+          <button className="btn btn-ghost btn-sm">投屏</button>
+        </div>
+      </div>
+
+      {/* Focus Strip */}
+      <div className="focus-strip">
+        <div className="fs-item">
+          <span className="fs-dot red" />
+          <span className="fs-text">前端首页重构延期 3 天 · 阻塞下游 2 个任务</span>
+          <button className="fs-btn primary">处理</button>
+        </div>
+        <div className="fs-item">
+          <span className="fs-dot green" />
+          <span className="fs-text">AI 设计师完成线框图 · 等待 Review</span>
+          <button className="fs-btn primary">Review</button>
+        </div>
+        <div className="fs-item">
+          <span className="fs-dot amber" />
+          <span className="fs-text">李四负载 120% · 建议暂缓新任务</span>
+          <button className="fs-btn">查看</button>
+        </div>
+      </div>
+
+      {/* KPI Row */}
+      <KpiRow />
+
+      {/* 3-Column Layout */}
+      <div className="pulse-layout">
+        <MilestoneSidebar
+          selectedId={selectedMilestone}
+          onSelect={(id) => setSelectedMilestone(id)}
+          onEdit={openMilestoneEdit}
         />
-      </Modal>
+
+        {/* Main Content */}
+        <div className="pulse-main">
+          {/* Workspace Tabs */}
+          <div className="ws-tabs">
+            {tabs.map((t) => (
+              <button
+                key={t.key}
+                className={`ws-tab${t.key === activeTab ? ' active' : ''}`}
+                onClick={() => setActiveTab(t.key)}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Tab Panels */}
+          <div>
+            {activeTab === 'tasks' && (
+              <div className="ws-panel active" id="ws-panel-tasks">
+                <div className="view-switcher">
+                  {[
+                    { key: 'kanban', label: '看板' },
+                    { key: 'story', label: '需求' },
+                    { key: 'list', label: '列表' },
+                    { key: 'gantt', label: '甘特图' },
+                  ].map((v) => (
+                    <button
+                      key={v.key}
+                      className={`view-switch${v.key === activeView ? ' active' : ''}`}
+                      onClick={() => setActiveView(v.key)}
+                    >
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+                {activeView === 'kanban' && <KanbanView onCreateTask={(status) => openTaskPanel(status)} onEditTask={(task) => openTaskPanel(undefined, task)} milestoneFilter={selectedMilestone} />}
+                {activeView === 'story' && <StoryBoard milestoneFilter={selectedMilestone} onEditTask={(task) => openTaskPanel(undefined, task)} onCreateTask={(status, parentId) => openTaskPanel(status, undefined, parentId)} />}
+                {activeView === 'list' && <ListView onEditTask={(task) => openTaskPanel(undefined, task)} milestoneFilter={selectedMilestone} />}
+                {activeView === 'gantt' && <GanttView milestoneFilter={selectedMilestone} />}
+              </div>
+            )}
+
+            {activeTab === 'epics' && (
+              <div className="ws-panel active">
+                <StoryBoard milestoneFilter={selectedMilestone} onEditTask={(task) => openTaskPanel(undefined, task)} onCreateTask={(status, parentId) => openTaskPanel(status, undefined, parentId)} />
+              </div>
+            )}
+
+            {activeTab === 'kb' && (
+              <div className="ws-panel active">
+                <KnowledgePanel />
+              </div>
+            )}
+
+            {activeTab === 'iterations' && (
+              <div className="ws-panel active">
+                <IterationsPanel />
+              </div>
+            )}
+
+            {activeTab === 'members' && (
+              <div className="ws-panel active">
+                <MembersPanel />
+              </div>
+            )}
+
+            {activeTab === 'reports' && (
+              <div className="ws-panel active">
+                <ReportsPanel />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Inline Chat */}
+        <PulseChat />
+      </div>
+
+      {/* Task Create/Edit Panel */}
+      <SlidePanel
+        open={taskPanelOpen}
+        onClose={() => setTaskPanelOpen(false)}
+        title={editingTask ? '编辑任务' : '新建任务'}
+      >
+        <div className="form-group">
+          <label>任务名称</label>
+          <input
+            type="text"
+            placeholder="输入任务名称"
+            value={taskForm.title}
+            onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
+          />
+        </div>
+        <div className="form-group">
+          <label>描述</label>
+          <textarea
+            rows={4}
+            placeholder="任务描述（可选）"
+            style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', fontFamily: 'inherit', background: 'var(--bg-surface)', color: 'var(--text-primary)', resize: 'vertical' }}
+            value={taskForm.description}
+            onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
+          />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>类型</label>
+            <select value={taskForm.task_type} onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value }))}>
+              <option value="STORY">需求 (Story)</option>
+              <option value="TASK">任务 (Task)</option>
+              <option value="SUB_TASK">子任务</option>
+              <option value="BUG">缺陷 (Bug)</option>
+              <option value="SPIKE">技术调研</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>优先级</label>
+            <select value={taskForm.priority} onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value }))}>
+              <option value="CRITICAL">紧急</option>
+              <option value="HIGH">高</option>
+              <option value="MEDIUM">中</option>
+              <option value="LOW">低</option>
+            </select>
+          </div>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>所属里程碑</label>
+            <select
+              style={{ width: '100%' }}
+              value={taskForm.milestone_id || ''}
+              onChange={(e) => setTaskForm((f) => ({ ...f, milestone_id: e.target.value }))}
+            >
+              {useMilestoneStore.getState().milestones.map((m) => (
+                <option key={m.id} value={m.id}>{m.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-group">
+            <label>所属迭代</label>
+            <select
+              style={{ width: '100%' }}
+              value={taskForm.iteration_id || ''}
+              onChange={(e) => setTaskForm((f: any) => ({ ...f, iteration_id: e.target.value || undefined }))}
+            >
+              <option value="">无</option>
+              {useIterationStore.getState().iterations.map((it) => (
+                <option key={it.id} value={it.id}>{it.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        {/* Parent Story selector — show for TASK/BUG/SPIKE/SUB_TASK */}
+        {taskForm.task_type !== 'STORY' && (
+          <div className="form-group">
+            <label>所属需求 (Story)</label>
+            <select
+              style={{ width: '100%' }}
+              value={taskForm.parent_id || ''}
+              onChange={(e) => setTaskForm((f) => ({ ...f, parent_id: e.target.value || undefined }))}
+            >
+              <option value="">无（独立任务）</option>
+              {stories.map((s) => (
+                <option key={s.id} value={s.id}>{s.title}</option>
+              ))}
+            </select>
+            {stories.length === 0 && (
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 2 }}>当前里程碑下暂无需求，可先创建一个 Story 再关联任务</div>
+            )}
+          </div>
+        )}
+        <div className="form-group" style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
+          <label>指派给</label>
+          <select
+            style={{ width: '100%' }}
+            value={taskForm.assignee_id || ''}
+            onChange={(e) => setTaskForm((f) => ({ ...f, assignee_id: e.target.value || undefined }))}
+          >
+            <option value="">不指派</option>
+            {useWorkspaceStore.getState().members
+              .filter((m) => m.role !== 'AI_AGENT')
+              .map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+          </select>
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-ghost" onClick={() => setTaskPanelOpen(false)}>取消</button>
+          <button
+            className="btn btn-primary"
+            disabled={taskSubmitting || !taskForm.title.trim() || !taskForm.milestone_id}
+            onClick={submitTask}
+          >
+            {taskSubmitting ? '保存中...' : editingTask ? '保存' : '创建任务'}
+          </button>
+        </div>
+
+        {/* Delete section — edit mode only */}
+        {editingTask && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+            {!showDelete ? (
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ color: 'var(--red-500)', borderColor: 'var(--red-200)', width: '100%' }}
+                onClick={() => setShowDelete(true)}
+              >
+                删除任务
+              </button>
+            ) : (
+              <div style={{ background: 'var(--red-50)', border: '1px solid var(--red-100)', borderRadius: 'var(--radius)', padding: '12px 14px', fontSize: '0.78rem', color: 'var(--red-600)' }}>
+                <div style={{ marginBottom: 8 }}>确定删除任务「{editingTask.title}」？此操作不可撤销。</div>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button className="btn btn-ghost btn-xs" onClick={() => setShowDelete(false)}>取消</button>
+                  <button
+                    className="btn btn-xs"
+                    style={{ background: 'var(--red-500)', color: '#fff', border: 'none' }}
+                    onClick={deleteTask}
+                  >
+                    {taskSubmitting ? '删除中...' : '确认删除'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </SlidePanel>
+
+      {/* Milestone Edit Panel */}
+      <SlidePanel open={msEditOpen} onClose={() => setMsEditOpen(false)} title={msEditForm.id ? '编辑里程碑' : '编辑里程碑'}>
+        <div className="form-group">
+          <label>名称</label>
+          <input type="text" value={msEditForm.name} onChange={(e) => setMsEditForm((f) => ({ ...f, name: e.target.value }))} />
+        </div>
+        <div className="form-group">
+          <label>描述</label>
+          <input type="text" placeholder="简要描述里程碑目标" value={msEditForm.description} onChange={(e) => setMsEditForm((f) => ({ ...f, description: e.target.value }))} />
+        </div>
+        <div className="form-group">
+          <label>执行计划</label>
+          <textarea rows={4} placeholder="详细的执行计划、步骤、注意事项..." style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', fontFamily: 'inherit', background: 'var(--bg-surface)', color: 'var(--text-primary)', resize: 'vertical' }} value={msEditForm.plan} onChange={(e) => setMsEditForm((f) => ({ ...f, plan: e.target.value }))} />
+        </div>
+        <div className="form-group">
+          <label>负责人</label>
+          <select value={msEditForm.owner_id} onChange={(e) => setMsEditForm((f) => ({ ...f, owner_id: e.target.value }))}>
+            <option value="">未指定</option>
+            {useWorkspaceStore.getState().members.map((m) => (
+              <option key={m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>
+            ))}
+          </select>
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>开始日期</label>
+            <input type="date" value={msEditForm.start_date} onChange={(e) => setMsEditForm((f) => ({ ...f, start_date: e.target.value }))} />
+          </div>
+          <div className="form-group">
+            <label>结束日期</label>
+            <input type="date" value={msEditForm.end_date} onChange={(e) => setMsEditForm((f) => ({ ...f, end_date: e.target.value }))} />
+          </div>
+        </div>
+        <div className="form-group">
+          <label>状态</label>
+          <select value={msEditForm.status} onChange={(e) => setMsEditForm((f) => ({ ...f, status: e.target.value }))}>
+            <option value="UPCOMING">即将开始</option>
+            <option value="ACTIVE">进行中</option>
+            <option value="DONE">已完成</option>
+          </select>
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-ghost" onClick={() => setMsEditOpen(false)}>取消</button>
+          <button className="btn btn-primary" onClick={submitMsEdit}>保存</button>
+        </div>
+        <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
+          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)', borderColor: 'var(--red-200)', width: '100%' }} onClick={deleteMs}>删除里程碑</button>
+        </div>
+      </SlidePanel>
     </div>
   );
 }

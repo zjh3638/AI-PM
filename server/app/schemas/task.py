@@ -14,6 +14,7 @@ class TaskCreate(BaseModel):
     parent_id: Optional[str] = None
     epic_id: Optional[str] = None
     iteration_id: Optional[str] = None
+    milestone_id: str
     assignee_id: Optional[str] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
@@ -30,6 +31,7 @@ class TaskUpdate(BaseModel):
     parent_id: Optional[str] = None
     epic_id: Optional[str] = None
     iteration_id: Optional[str] = None
+    milestone_id: Optional[str] = None
     assignee_id: Optional[str] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
@@ -43,6 +45,8 @@ class TaskResponse(BaseModel):
     parent_id: Optional[str] = None
     epic_id: Optional[str] = None
     iteration_id: Optional[str] = None
+    milestone_id: Optional[str] = None
+    milestone_name: Optional[str] = None
     task_type: str
     title: str
     description: Optional[str] = None
