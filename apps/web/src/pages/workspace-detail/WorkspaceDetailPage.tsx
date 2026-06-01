@@ -271,8 +271,9 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
     const fromKey = e.dataTransfer.getData('fromKey');
     if (!taskId || !wsId || fromKey === colKey) return;
     if (isFull) {
-      // Phase-based: update phase and reset status to TODO
       await update(wsId, taskId, { phase: colKey, status: 'TODO' } as any);
+      // Re-fetch with correct grouping — store's update auto-refresh uses default status grouping
+      await fetchKanban(wsId, 'phase');
     } else {
       await moveTask(wsId, taskId, colKey, 0);
     }
