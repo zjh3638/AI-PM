@@ -1,12 +1,15 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import api from '../../api/client';
 
 export default function PersonalCenterPage() {
   const user = useAuthStore((s) => s.user);
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('todos');
   const [myTasks, setMyTasks] = useState<any[]>([]);
   const [reviewQueue, setReviewQueue] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -14,10 +17,26 @@ export default function PersonalCenterPage() {
     Promise.all([
       api.get('/dashboard/my-tasks'),
       api.get('/dashboard/review-queue'),
+      // Fetch recent activity across workspaces
+      api.get('/workspaces').then(async (wsRes: any) => {
+        const wss = wsRes.data || [];
+        const allActivity: any[] = [];
+        for (const ws of wss.slice(0, 3)) {
+          try {
+            const res = await api.get(`/workspaces/${ws.id}/tasks?page_size=5&sort_by=updated_at&sort_dir=desc`);
+            const tasks = res.data || [];
+            for (const t of tasks) {
+              if (t.updated_at) allActivity.push({ ...t, _wsName: ws.name });
+            }
+          } catch { /* skip */ }
+        }
+        return allActivity.sort((a: any, b: any) => (b.updated_at || '').localeCompare(a.updated_at || '')).slice(0, 8);
+      }),
     ])
-      .then(([t, r]) => {
+      .then(([t, r, msg]) => {
         setMyTasks(t.data || []);
         setReviewQueue(r.data || []);
+        setMessages(msg || []);
       })
       .finally(() => setLoading(false));
   }, []);
@@ -25,16 +44,7 @@ export default function PersonalCenterPage() {
   const tabs = [
     { key: 'todos', label: '我的待办', count: myTasks.length },
     { key: 'reviews', label: '待 Review', count: reviewQueue.length },
-    { key: 'messages', label: '消息', count: 5 },
-  ];
-
-  // Mock messages
-  const messages = [
-    { unread: true, text: 'AI 开发工程师提交了 3 个 PR，等待 Review', time: '10 分钟前' },
-    { unread: true, text: '王芳提交了新需求「数据导出功能」等待评审', time: '2 小时前' },
-    { unread: true, text: 'Q3 改版前端重构任务已延期 3 天', time: '3 小时前' },
-    { unread: false, text: '李四完成了首页线框图 Review', time: '昨天 16:30' },
-    { unread: false, text: '周报已自动生成，请查收', time: '昨天 09:00' },
+    { key: 'messages', label: '动态', count: messages.length },
   ];
 
   return (
@@ -83,13 +93,14 @@ export default function PersonalCenterPage() {
             {myTasks.length === 0 ? (
               <div className="empty-state">暂无待办事项</div>
             ) : (
-              myTasks.map((t: any, i: number) => (
-                <div key={t.id || i} className="todo-item">
+              myTasks.map((t: any) => (
+                <div key={t.id} className="todo-item" onClick={() => navigate(`/workspaces/${t.workspace_id}`)} style={{ cursor: 'pointer' }}>
                   <div className="todo-checkbox" />
                   <span className="todo-text">{t.title}</span>
                   <span className="todo-meta">
-                    {t.priority && <span className="badge badge-blue">{t.priority}</span>}
-                    {t.due_date && <span style={{ marginLeft: 8 }}>{t.due_date}</span>}
+                    {t.status === 'TODO' ? <span className="badge" style={{ background: 'var(--bg-hover)' }}>待办</span> : <span className="badge" style={{ background: 'var(--blue-100)', color: 'var(--blue-600)' }}>进行中</span>}
+                    {t.phase && <span style={{ marginLeft: 6, fontSize: '0.65rem', color: 'var(--text-muted)' }}>{t.phase === 'REQUIREMENTS' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : t.phase === 'RELEASE' ? '发布' : ''}</span>}
+                    {t.due_date && <span style={{ marginLeft: 6, fontSize: '0.65rem', color: new Date(t.due_date) < new Date() ? 'var(--red-500)' : 'var(--text-muted)' }}>📅 {t.due_date}</span>}
                   </span>
                 </div>
               ))
@@ -101,37 +112,50 @@ export default function PersonalCenterPage() {
             {reviewQueue.length === 0 ? (
               <div className="empty-state">暂无待 Review 项</div>
             ) : (
-              reviewQueue.map((t: any, i: number) => (
-                <div key={t.id || i} className="review-item">
+              reviewQueue.map((t: any) => (
+                <div key={t.id} className="review-item" onClick={() => navigate(`/workspaces/${t.workspace_id}`)} style={{ cursor: 'pointer' }}>
                   <div className="review-icon">📋</div>
                   <div className="review-info">
                     <div className="ri-title">{t.title}</div>
                     <div className="ri-meta">
-                      {t.task_type && <span className="badge badge-blue" style={{ marginRight: 6 }}>{t.task_type}</span>}
+                      {t.phase && <span className="badge badge-blue" style={{ marginRight: 6, fontSize: '0.62rem' }}>{t.phase === 'REQUIREMENTS' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : '发布'}</span>}
+                      {t.milestone_name && <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginRight: 6 }}>{t.milestone_name}</span>}
                       {t.assignee_name || '未分配'}
                     </div>
                   </div>
-                  <span className="review-agent">AI Agent</span>
                   <div className="review-actions">
-                    <button className="btn btn-primary btn-xs">确认</button>
-                    <button className="btn btn-ghost btn-xs">打回</button>
+                    <button className="btn btn-primary btn-xs" onClick={async (e) => {
+                      e.stopPropagation();
+                      try { await api.patch(`/workspaces/${t.workspace_id}/tasks/${t.id}`, { status: 'DONE' }); setReviewQueue(prev => prev.filter(x => x.id !== t.id)); } catch { /* skip */ }
+                    }}>确认</button>
+                    <button className="btn btn-ghost btn-xs" onClick={(e) => {
+                      e.stopPropagation();
+                      try { api.patch(`/workspaces/${t.workspace_id}/tasks/${t.id}`, { status: 'IN_PROGRESS' }); setReviewQueue(prev => prev.filter(x => x.id !== t.id)); } catch { /* skip */ }
+                    }}>打回</button>
                   </div>
                 </div>
               ))
             )}
           </div>
 
-          {/* Messages Panel */}
+          {/* Messages Panel — recent activity */}
           <div className={`personal-panel${activeTab === 'messages' ? ' active' : ''}`}>
-            {messages.map((m, i) => (
-              <div key={i} className={`msg-item${m.unread ? ' unread' : ''}`}>
-                <span className={`msg-dot${m.unread ? ' new' : ''}`} />
-                <div className="msg-content">
-                  <div className="mc-text">{m.text}</div>
-                  <div className="mc-time">{m.time}</div>
-                </div>
-              </div>
-            ))}
+            {messages.length === 0 ? (
+              <div className="empty-state">暂无动态</div>
+            ) : (
+              messages.map((t: any) => {
+                const actionText = t.status === 'DONE' ? '完成了' : t.status === 'IN_REVIEW' ? '提交了 Review' : t.status === 'IN_PROGRESS' ? '开始处理' : '创建了';
+                return (
+                  <div key={t.id} className="msg-item" onClick={() => navigate(`/workspaces/${t.workspace_id}`)} style={{ cursor: 'pointer' }}>
+                    <span className="msg-dot" style={{ background: t.status === 'DONE' ? 'var(--green-400)' : t.status === 'IN_REVIEW' ? 'var(--amber-400)' : 'var(--blue-400)' }} />
+                    <div className="msg-content">
+                      <div className="mc-text">[{t._wsName}] {t.assignee_name || '未知'} {actionText} 「{t.title}」</div>
+                      <div className="mc-time">{t.updated_at?.slice(0, 10)}</div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </>
       )}
