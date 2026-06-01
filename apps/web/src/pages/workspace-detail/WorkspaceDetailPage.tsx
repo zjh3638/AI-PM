@@ -319,7 +319,7 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter }: { onCreateTas
               <span>{col.title}</span>
               <span className="badge" style={{ background: 'var(--bg-hover)' }}>{(kanban[col.key] || []).length}</span>
             </div>
-            {(kanban[col.key] || []).filter((t: Task) => t.milestone_id === milestoneFilter).map((task: Task) => (
+            {(kanban[col.key] || []).filter((t: Task) => !milestoneFilter || t.milestone_id === milestoneFilter).map((task: Task) => (
               <div
                 key={task.id}
                 className={`kanban-card${selected.has(task.id) ? ' selected' : ''}`}
@@ -1109,6 +1109,10 @@ export default function WorkspaceDetailPage() {
   const [selectedMilestone, setSelectedMilestone] = useState<string>('');
   const [msEditOpen, setMsEditOpen] = useState(false);
   const [msEditForm, setMsEditForm] = useState<{ id: string; name: string; description: string; plan: string; owner_id: string; status: string; start_date: string; end_date: string }>({ id: '', name: '', description: '', plan: '', owner_id: '', status: 'UPCOMING', start_date: '', end_date: '' });
+  const wsType = current?.type || 'PROJECT';
+  const isFull = wsType === 'PROJECT';
+  const isLight = wsType === 'OTHER';
+
   const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; iteration_id?: string; milestone_id: string; assignee_id?: string; parent_id?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', milestone_id: '' });
   const [stories, setStories] = useState<Task[]>([]);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
@@ -1157,7 +1161,7 @@ export default function WorkspaceDetailPage() {
       setEditingTask(null);
       setComments([]);
       setActivityLogs([]);
-      setTaskForm({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: status || 'TODO', iteration_id: undefined, milestone_id: selectedMilestone, assignee_id: undefined, parent_id: parentStoryId || undefined });
+      setTaskForm({ title: '', description: '', task_type: isLight ? 'TASK' : 'TASK', priority: 'MEDIUM', status: status || 'TODO', iteration_id: undefined, milestone_id: isLight ? '' : selectedMilestone, assignee_id: undefined, parent_id: parentStoryId || undefined });
     }
     setShowDelete(false);
     setTaskPanelOpen(true);
@@ -1182,7 +1186,8 @@ export default function WorkspaceDetailPage() {
   };
 
   const submitTask = async () => {
-    if (!id || !taskForm.title.trim() || !taskForm.milestone_id) return;
+    if (!id || !taskForm.title.trim()) return;
+    if (!isLight && !taskForm.milestone_id) return;
     setTaskSubmitting(true);
     try {
       if (editingTask) {
@@ -1213,14 +1218,25 @@ export default function WorkspaceDetailPage() {
     return <div style={{ textAlign: 'center', padding: 100, color: 'var(--text-muted)' }}>加载中...</div>;
   }
 
-  const tabs = [
-    { key: 'tasks', label: '任务看板' },
-    { key: 'epics', label: '需求' },
-    { key: 'kb', label: '知识库' },
-    { key: 'iterations', label: '迭代' },
-    { key: 'members', label: '成员' },
-    { key: 'reports', label: '报表' },
-  ];
+  const tabs = isFull
+    ? [
+        { key: 'tasks', label: '任务看板' },
+        { key: 'epics', label: '需求' },
+        { key: 'kb', label: '知识库' },
+        { key: 'iterations', label: '迭代' },
+        { key: 'members', label: '成员' },
+        { key: 'reports', label: '报表' },
+      ]
+    : isLight
+    ? [
+        { key: 'tasks', label: '任务看板' },
+        { key: 'members', label: '成员' },
+      ]
+    : [
+        { key: 'tasks', label: '任务看板' },
+        { key: 'kb', label: '知识库' },
+        { key: 'members', label: '成员' },
+      ];
 
   return (
     <div style={{ maxWidth: 'none', padding: '16px 20px 40px' }}>
@@ -1230,9 +1246,9 @@ export default function WorkspaceDetailPage() {
           <div className="back" onClick={() => navigate('/workspaces')}>← 返回工作空间</div>
           <div className="proj-name">{current.name}</div>
           <div className="proj-meta">
-            公司重点项目 · Sprint 5 · 创建于 {current.created_at?.slice(0, 10)}
+            {isFull ? '研发项目' : isLight ? '事务工作' : '专题项目'} · 创建于 {current.created_at?.slice(0, 10)}
             {' '}
-            <span className="ospec-badge">OpenSpec: 标准软件开发</span>
+            <span className="ospec-badge">{isFull ? 'OpenSpec: 标准研发流程' : isLight ? '轻量看板' : '简化管理'}</span>
           </div>
         </div>
         <div className="ph-actions">
@@ -1259,16 +1275,18 @@ export default function WorkspaceDetailPage() {
         </div>
       </div>
 
-      {/* KPI Row */}
-      <KpiRow />
+      {/* KPI Row — full and simple modes only */}
+      {!isLight && <KpiRow />}
 
       {/* 3-Column Layout */}
       <div className="pulse-layout">
-        <MilestoneSidebar
-          selectedId={selectedMilestone}
-          onSelect={(id) => setSelectedMilestone(id)}
-          onEdit={openMilestoneEdit}
-        />
+        {!isLight && (
+          <MilestoneSidebar
+            selectedId={selectedMilestone}
+            onSelect={(id) => setSelectedMilestone(id)}
+            onEdit={openMilestoneEdit}
+          />
+        )}
 
         {/* Main Content */}
         <div className="pulse-main">
@@ -1290,12 +1308,10 @@ export default function WorkspaceDetailPage() {
             {activeTab === 'tasks' && (
               <div className="ws-panel active" id="ws-panel-tasks">
                 <div className="view-switcher">
-                  {[
-                    { key: 'kanban', label: '看板' },
-                    { key: 'story', label: '需求' },
-                    { key: 'list', label: '列表' },
-                    { key: 'gantt', label: '甘特图' },
-                  ].map((v) => (
+                  {(isFull
+                    ? [{ key: 'kanban', label: '看板' }, { key: 'story', label: '需求' }, { key: 'list', label: '列表' }, { key: 'gantt', label: '甘特图' }]
+                    : [{ key: 'kanban', label: '看板' }, { key: 'list', label: '列表' }]
+                  ).map((v: any) => (
                     <button
                       key={v.key}
                       className={`view-switch${v.key === activeView ? ' active' : ''}`}
@@ -1377,11 +1393,11 @@ export default function WorkspaceDetailPage() {
           <div className="form-group">
             <label>类型</label>
             <select value={taskForm.task_type} onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value }))}>
-              <option value="STORY">需求 (Story)</option>
+              {isFull && <option value="STORY">需求 (Story)</option>}
               <option value="TASK">任务 (Task)</option>
-              <option value="SUB_TASK">子任务</option>
+              {isFull && <option value="SUB_TASK">子任务</option>}
               <option value="BUG">缺陷 (Bug)</option>
-              <option value="SPIKE">技术调研</option>
+              {isFull && <option value="SPIKE">技术调研</option>}
             </select>
           </div>
           <div className="form-group">
@@ -1402,6 +1418,7 @@ export default function WorkspaceDetailPage() {
               value={taskForm.milestone_id || ''}
               onChange={(e) => setTaskForm((f) => ({ ...f, milestone_id: e.target.value }))}
             >
+              {isLight && <option value="">无（事务不关联里程碑）</option>}
               {useMilestoneStore.getState().milestones.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
@@ -1422,7 +1439,7 @@ export default function WorkspaceDetailPage() {
           </div>
         </div>
         {/* Parent Story selector — show for TASK/BUG/SPIKE/SUB_TASK */}
-        {taskForm.task_type !== 'STORY' && (
+        {isFull && taskForm.task_type !== 'STORY' && (
           <div className="form-group">
             <label>所属需求 (Story)</label>
             <select
@@ -1457,7 +1474,7 @@ export default function WorkspaceDetailPage() {
           <button className="btn btn-ghost" onClick={() => setTaskPanelOpen(false)}>取消</button>
           <button
             className="btn btn-primary"
-            disabled={taskSubmitting || !taskForm.title.trim() || !taskForm.milestone_id}
+            disabled={taskSubmitting || !taskForm.title.trim() || (!isLight && !taskForm.milestone_id)}
             onClick={submitTask}
           >
             {taskSubmitting ? '保存中...' : editingTask ? '保存' : '创建任务'}

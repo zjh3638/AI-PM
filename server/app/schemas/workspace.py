@@ -15,6 +15,7 @@ class WorkspaceCreate(BaseModel):
 class WorkspaceUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
     description: Optional[str] = None
+    type: Optional[str] = None
     visibility: Optional[str] = None
 
 

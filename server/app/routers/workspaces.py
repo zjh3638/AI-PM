@@ -95,7 +95,7 @@ async def update_workspace(
     ws = await ws_service.get_workspace(db, workspace_id)
     if ws is None:
         raise AppException(404, "工作空间不存在", 404)
-    ws = await ws_service.update_workspace(db, ws, name=req.name, description=req.description, visibility=req.visibility)
+    ws = await ws_service.update_workspace(db, ws, name=req.name, description=req.description, type=req.type, visibility=req.visibility)
     mc = await _count_members(db, workspace_id)
     return {"code": 0, "message": "ok", "data": _ws_to_dict(ws, mc)}
 

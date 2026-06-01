@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Form, Input, Select, Row, Col, Modal, message } from 'antd';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 
-const tierMap: Record<string, { label: string; cls: string }> = {
-  COMPANY: { label: '公司重点', cls: 'company' },
-  DEPARTMENT: { label: '部门重点', cls: 'dept' },
-  NORMAL: { label: '普通', cls: 'normal' },
+const typeLabels: Record<string, { label: string; cls: string }> = {
+  PROJECT: { label: '研发项目', cls: 'company' },
+  OPERATION: { label: '专题项目', cls: 'dept' },
+  OTHER: { label: '事务工作', cls: 'normal' },
 };
 
 // Mock health data — will come from backend later
@@ -80,9 +80,9 @@ export default function WorkspaceListPage() {
           allowClear
           style={{ width: 120 }}
           options={[
-            { label: '项目', value: 'PROJECT' },
-            { label: '运维', value: 'OPERATION' },
-            { label: '其他', value: 'OTHER' },
+            { label: '研发项目', value: 'PROJECT' },
+            { label: '专题项目', value: 'OPERATION' },
+            { label: '事务工作', value: 'OTHER' },
           ]}
         />
       </div>
@@ -104,7 +104,7 @@ export default function WorkspaceListPage() {
       ) : (
         <div className="stream-grid">
           {workspaces.map((ws, idx) => {
-            const tier = tierMap[ws.type] || tierMap.NORMAL;
+            const tier = typeLabels[ws.type] || typeLabels.OTHER;
             const healthColor = getHealthColor(idx);
             return (
               <div
