@@ -1,11 +1,11 @@
 # AI-PM Plan 3 — AI 引擎 实施计划
 
-> **Prerequisite:** Plan 2 任务系统基本可用（Agent 需要任务来执行），Plan 2.5 AgentScope 技术验证通过，LLM 服务可访问（DeepSeek/Qwen）或可使用 Mock LLM 开发
-> **Goal:** 构建 AI 核心差异化。LLM 网关统一路由本地模型，AgentScope ReActAgent 运行 4 种 Agent 角色，Memory 系统（热/温/冷三层 + MySQL FULLTEXT）持久化跨项目知识，OpenSpec 项目宪法约束 AI 行为，AI 对话页完整可用。
+> **Prerequisite:** Plan 2 任务系统基本可用（Agent 需要任务来执行），Plan 2.5 Hermes 技术验证通过，LLM 服务可访问（DeepSeek/Qwen）或可使用 Mock LLM 开发
+> **Goal:** 构建 AI 核心差异化。LLM 网关统一路由本地模型，Hermes Agent 运行 4 种 Agent 角色，Memory 系统（热/温/冷三层 + MySQL FULLTEXT）持久化跨项目知识，OpenSpec 项目宪法约束 AI 行为，AI 对话页完整可用。
 
 **Duration:** 10-12 周（50-60 个工作日）
 
-**开发策略：** AI 模块为独立 `server/app/ai/` 包。架构采用 FastAPI + AgentScope 协作模式（设计规范 §6.2）：FastAPI 通过 SDK 调度 AgentScope 进程，同步调用处理简单查询，异步调用处理长任务，Webhook 回调通知产出就绪。Agent 执行期间可用 Mock LLM 屏蔽网络依赖。
+**开发策略：** AI 模块为独立 `server/app/ai/` 包。架构采用 FastAPI + Hermes Agent 协作模式（设计规范 §6.2）：FastAPI 通过 HTTP API 调度 Hermes 独立进程/容器，同步调用处理简单查询，异步调用处理长任务，Webhook 回调/轮询通知产出就绪。Agent 执行期间可用 Mock LLM 屏蔽网络依赖。
 
 ---
 
@@ -201,68 +201,90 @@ class PromptManager:
 
 ---
 
-## Week 3-4: AgentScope Agent 执行器
+## Week 3-4: Hermes Agent 执行器
 
-### Task 3.2.1: AgentScope 集成层（ReActAgent）
+### Task 3.2.1: Hermes 集成层（HTTP API 客户端）
 
-> **依托框架：** AgentScope 提供 ReActAgent 编排、工具系统（MCP 协议兼容）、沙箱执行和 A2A 通信能力。本层只负责 AgentScope 与 FastAPI 的集成，不重复造 Agent 编排逻辑。
+> **依托框架：** Hermes Agent 作为独立容器运行，提供 HTTP API 接收任务、执行 Agent 并回调结果。本层负责 FastAPI ↔ Hermes 的 HTTP 通信，不重复造 Agent 编排逻辑。
 
 **Files:**
-- Create: `server/app/ai/agentscope_bridge.py` — FastAPI ↔ AgentScope 桥接层
+- Create: `server/app/ai/hermes_client.py` — FastAPI ↔ Hermes HTTP 客户端
 - Create: `server/app/ai/agent_config.py` — Agent 角色定义 + 工具绑定
 
 ```python
-# server/app/ai/agentscope_bridge.py
+# server/app/ai/hermes_client.py
 """
-FastAPI ↔ AgentScope 桥接层。
+FastAPI ↔ Hermes Agent HTTP 客户端。
 
-AgentScope 作为独立 Python 进程运行 ReActAgent，本层负责：
-1. 创建 ReActAgent 实例并注入三层上下文（System Prompt + OpenSpec + 热记忆）
+Hermes 作为独立容器运行 Agent，本层负责：
+1. 通过 HTTP API 创建 Agent 任务并注入三层上下文（System Prompt + OpenSpec + 热记忆）
 2. 同步调用（简单查询/摘要）和异步调用（长任务）的路由
-3. AgentScope Webhook 回调的接收和处理
+3. Hermes Webhook 回调的接收和处理（或降级为轮询模式）
 """
+import httpx
 import asyncio
 import json
 from datetime import datetime
 from typing import AsyncIterator
-from agentscope.agent import ReActAgent
-from agentscope.memory import TemporaryMemory
-from agentscope.tool import ToolRegistry
+from uuid import uuid4
 
 from app.ai.agent_config import AGENT_ROLES
 from app.ai.gateway import LLMGateway
 from app.ai.memory import MemorySystem
-from app.models.agent_execution import AgentExecution
+from app.config import settings
 
-class AgentScopeBridge:
-    """管理 AgentScope Agent 实例生命周期和任务执行。"""
+class HermesClient:
+    """通过 HTTP API 与 Hermes Agent 容器通信。"""
 
     def __init__(self, llm_gateway: LLMGateway, memory_system: MemorySystem):
         self.llm = llm_gateway
         self.memory = memory_system
-        self._running_agents: dict[str, ReActAgent] = {}  # execution_id → agent
+        self._client = httpx.AsyncClient(
+            base_url=settings.hermes_api_url,  # e.g. http://hermes:8080
+            timeout=300.0,
+        )
 
-    async def create_agent(
+    async def create_agent_task(
         self, agent_role: str, workspace_id: str, task_id: str, db_session
     ) -> str:
-        """创建 ReActAgent 实例并注入三层上下文。返回 execution_id。"""
+        """通过 Hermes API 创建 Agent 任务并注入三层上下文。返回 execution_id。"""
         role_def = AGENT_ROLES[agent_role]
 
         # 构建三层上下文（设计规范 §6.4）
         context = await self._build_context(agent_role, workspace_id, task_id, db_session)
 
-        agent = ReActAgent(
-            name=role_def["name"],
-            sys_prompt=context["system_prompt"],
-            model=self.llm._build_model_config(),
-            memory=TemporaryMemory(context["hot_memory"]),
-            tools=role_def["tools"],
-            max_iters=role_def.get("max_iters", 15),
-        )
-
         execution_id = str(uuid4())
-        self._running_agents[execution_id] = agent
+        resp = await self._client.post("/api/tasks", json={
+            "execution_id": execution_id,
+            "agent_role": agent_role,
+            "name": role_def["name"],
+            "system_prompt": context["system_prompt"],
+            "memory_context": context["hot_memory"],
+            "tools": role_def["tools"],
+            "max_iterations": role_def.get("max_iters", 15),
+            "webhook_url": f"{settings.api_base_url}/api/ai/webhook/hermes",
+            "workspace_id": workspace_id,
+            "task_id": task_id,
+        })
+        resp.raise_for_status()
         return execution_id
+
+    async def get_task_status(self, execution_id: str) -> dict:
+        """查询 Hermes 任务执行状态（轮询模式）。"""
+        resp = await self._client.get(f"/api/tasks/{execution_id}")
+        return resp.json()
+
+    async def cancel_task(self, execution_id: str):
+        """取消 Hermes 任务。"""
+        await self._client.post(f"/api/tasks/{execution_id}/cancel")
+
+    async def health_check(self) -> bool:
+        """检查 Hermes 容器健康状态。"""
+        try:
+            resp = await self._client.get("/health")
+            return resp.status_code == 200
+        except Exception:
+            return False
 
     async def _build_context(self, agent_role: str, workspace_id: str, task_id: str, db_session):
         """构建 Agent 三层上下文（设计规范 §6.4 和 §7.4）。
@@ -279,6 +301,7 @@ class AgentScopeBridge:
         system_prompt = await self._load_role_prompt(agent_role)
 
         # Layer 2: OpenSpec — 项目行为规范（从 .openspec/ 目录加载）
+        # OpenSpec 内容写入 Hermes MEMORY.md 或作为 System Prompt 的一部分注入
         openspec = await self._load_openspec(workspace_id, db_session)
         system_prompt += f"\n\n## 项目行为规范 (OpenSpec)\n{openspec}"
 
@@ -319,10 +342,9 @@ Agent 角色定义 + 工具绑定。
 
 每个 Agent 角色绑定对应工具集（MCP 协议兼容），
 工具调用受双层权限约束（设计规范 §6.5）：
-  - AgentScope 层：工具白名单机制
+  - Hermes 层：工具白名单机制
   - FastAPI 层：实际操作权限校验
 """
-from agentscope.tool import Toolkit
 
 AGENT_ROLES = {
     "ANALYST": {
@@ -356,9 +378,9 @@ AGENT_ROLES = {
 }
 ```
 
-### Task 3.2.2: AgentScope 工具集配置（MCP 协议兼容）
+### Task 3.2.2: Hermes 工具集配置（MCP 协议兼容）
 
-> AgentScope 原生支持 MCP 协议工具集成。本任务定义工具 Schema + 实现执行逻辑，注册到 AgentScope 的 `ToolRegistry`。
+> Hermes 支持 MCP 协议工具集成。本任务定义工具 Schema + 实现执行逻辑，注册到 Hermes 的工具白名单。
 
 **Files:**
 - Create: `server/app/ai/tools/__init__.py`
@@ -369,11 +391,11 @@ AGENT_ROLES = {
 ```python
 # server/app/ai/tools/__init__.py
 """
-AgentScope MCP 兼容工具集。
+Hermes MCP 兼容工具集。
 
-每个工具实现 AgentScope 的 Tool 接口，通过 ToolRegistry 注册。
+每个工具实现 MCP Tool 接口，注册到 Hermes 工具白名单。
 工具调用受双层权限约束（设计规范 §6.5）：
-  1. AgentScope 层：工具白名单（AGENT_ROLES 中定义每个角色的 tools 列表）
+  1. Hermes 层：工具白名单（AGENT_ROLES 中定义每个角色的 tools 列表）
   2. FastAPI 层：实际操作时校验权限（如 task_update 需要 Manager+ 角色）
 """
 ```
@@ -405,9 +427,9 @@ AgentScope MCP 兼容工具集。
 | `get_iteration_progress` | 获取 Sprint 进度 | iteration_id |
 | `get_risk_signals` | 获取风险信号 | workspace_id |
 
-### Task 3.2.3: Agent 执行管理 API（FastAPI ↔ AgentScope 协作）
+### Task 3.2.3: Agent 执行管理 API（FastAPI ↔ Hermes 协作）
 
-> 实现设计规范 §6.2 的三种交互方式：同步调用、异步调用、Webhook 回调。
+> 实现设计规范 §6.2 的三种交互方式：同步调用、异步调用、Webhook 回调（降级为轮询模式）。
 
 **Files:**
 - Create: `server/app/routers/agents.py`
@@ -421,7 +443,7 @@ AgentScope MCP 兼容工具集。
 | GET | `/api/workspaces/{ws_id}/ai/status` | 查询 Agent 执行状态 | 同步（轮询） |
 | GET | `/api/workspaces/{ws_id}/ai/stream` | SSE 流式获取思考日志（Work-in-Public） | 同步（流式） |
 | POST | `/api/workspaces/{ws_id}/ai/review` | 提交 Review 结果（通过/打回） | 同步 |
-| POST | `/api/ai/webhook/agentscope` | AgentScope Webhook 回调（Agent 产出就绪） | Webhook 回调 |
+| POST | `/api/ai/webhook/hermes` | Hermes Agent Webhook 回调（Agent 产出就绪） | Webhook 回调 |
 | POST | `/api/agents/{id}/tasks/{task_id}/retry` | 重试失败的执行 | 同步 |
 | POST | `/api/agents/{id}/tasks/{task_id}/cancel` | 取消正在执行的 Agent 任务 | 同步 |
 
@@ -429,27 +451,25 @@ AgentScope MCP 兼容工具集。
 # server/app/routers/agents.py
 @router.post("/{workspace_id}/ai/run")
 async def delegate_to_agent(workspace_id: str, body: DelegateRequest, db=Depends(get_db)):
-    """创建 AgentScope ReActAgent 任务，异步执行。
+    """创建 Hermes Agent 任务，异步执行。
 
-    FastAPI → AgentScope: 创建 ReActAgent 实例 → 注入三层上下文 → 启动执行
+    FastAPI → Hermes API: 创建 Agent 任务 → 注入三层上下文 → 启动执行
     返回 execution_id 用于后续查询。
     """
-    bridge = get_agentscope_bridge()
-    execution_id = await bridge.create_agent(
+    client = get_hermes_client()
+    execution_id = await client.create_agent_task(
         agent_role=body.agent_role,
         workspace_id=workspace_id,
         task_id=body.task_id,
         db_session=db,
     )
-    # 启动异步执行（不阻塞）
-    asyncio.create_task(bridge.execute_agent(execution_id, db))
     return {"execution_id": execution_id, "status": "QUEUED"}
 
-@router.post("/ai/webhook/agentscope")
-async def agentscope_webhook(body: WebhookPayload, db=Depends(get_db)):
-    """AgentScope Webhook 回调：Agent 产出就绪时由 AgentScope 调用。
+@router.post("/ai/webhook/hermes")
+async def hermes_webhook(body: WebhookPayload, db=Depends(get_db)):
+    """Hermes Webhook 回调：Agent 产出就绪时由 Hermes 调用。
 
-    AgentScope → Webhook → FastAPI → 写入 Review 队列 → 推送通知（设计规范 §6.6）
+    Hermes → Webhook → FastAPI → 写入 Review 队列 → 推送通知（设计规范 §6.6）
     """
     execution = await db.get(AgentExecution, body.execution_id)
     execution.status = "COMPLETED"
@@ -457,6 +477,7 @@ async def agentscope_webhook(body: WebhookPayload, db=Depends(get_db)):
     execution.thinking_log = body.thinking_log
     execution.tokens_used = body.tokens_used
     execution.duration_ms = body.duration_ms
+    execution.skill_updated = body.skill_updated  # Hermes 特有的 Skill 更新信息
     # 产出物进入 Review 队列
     await create_review_item(execution.task_id, execution.id, body.output)
     # 推送通知给任务委托者
@@ -492,12 +513,12 @@ class AgentExecution(Base, TimestampMixin, UUIDMixin):
 - [ ] **委托界面：** 任务分配下拉框增加 AI Agent 选项（带角色图标和模型标签），对应设计规范 §6.3 的 4 个 Agent 角色和 3 个辅助档位（建议/草稿/轻量辅助）
 - [ ] **确认对话框：** 显示 Agent 将做什么、使用什么模型、受什么 OpenSpec 规范约束、预计耗时
 - [ ] **Work-in-Public 透明执行（设计规范 §6.8）：**
-  - Agent 当前执行状态（AgentScope 状态机：准备中 → 分析中 → 生成中）
-  - ReAct 推理日志流（Thought → Action → Observation 循环），SSE 实时展示
+  - Agent 当前执行状态（Hermes 状态机：准备中 → 分析中 → 生成中）
+  - 推理日志流（Thought → Action → Observation 循环），SSE 实时展示
   - Agent 引用的 wiki 条目和源文档
   - Agent 的中间产出物
 - [ ] **Review 操作：** 产出预览 +「接受」/「驳回（附原因）」按钮；接受后自动存入知识库
-- [ ] **打回处理（设计规范 §6.6）：** 驳回时填写原因 → AgentScope 重新生成，打回原因写入 AutoContextMemory
+- [ ] **打回处理（设计规范 §6.6）：** 驳回时填写原因 → Hermes 重新生成，打回原因写入 Hermes Session Archive + 自定义记忆系统
 
 ---
 
@@ -840,14 +861,14 @@ async def generate_daily_report(workspace_id: str, db, llm_gateway):
 
 - [ ] LLM 网关测试：Mock LLM 端点 → 验证请求格式正确 → 验证错误重试 3 次
 - [ ] Prompt 渲染：提供变量 → 验证模板插值结果正确（含 OpenSpec 注入）
-- [ ] AgentScope 集成：用 Mock LLM 驱动 ReActAgent 完整 Thought→Action→Observation 循环 → 验证 Webhook 回调
-- [ ] 工具调用：AgentScope ReActAgent 正确选择 MCP 工具 → 执行成功 → 结果反馈
-- [ ] 三层上下文注入：System Prompt + OpenSpec + 热记忆 正确注入 AgentScope ReActAgent
+- [ ] Hermes 集成：用 Mock LLM 驱动 Hermes Agent 完成完整 Thought→Action→Observation 循环 → 验证 Webhook 回调
+- [ ] 工具调用：Hermes Agent 正确选择 MCP 工具 → 执行成功 → 结果反馈
+- [ ] 三层上下文注入：System Prompt + OpenSpec + 热记忆 正确注入 Hermes Agent
 - [ ] 热记忆保存：人工触发"记住这个" → AI 辅助生成 2 级摘要 → 验证 MySQL FULLTEXT 可搜索
 - [ ] 温记忆搜索：「类似项目延期经验」关键词 → 返回相关记忆（MySQL ngram 分词）
 - [ ] AI 对话：发送消息 → SSE 流式返回 → Markdown 渲染 → 会话历史持久化
 - [ ] AI 日报：手动触发 → PM Agent 查询任务数据 → 生成结构化日报
 - [ ] Agent 委托→执行（ReAct 透明可见）→产出→Review（通过/打回）全流程走通
-- [ ] 打回学习：驳回 Agent 产出 → 打回原因写入 AutoContextMemory → 后续任务引用
+- [ ] 打回学习：驳回 Agent 产出 → 打回原因写入 Hermes Session Archive + 自定义记忆系统 → 后续任务引用
 
 **预计总工时：10-12 周（50-60 个工作日）**

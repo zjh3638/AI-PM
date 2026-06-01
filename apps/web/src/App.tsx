@@ -9,6 +9,7 @@ import WorkspaceDetailPage from './pages/workspace-detail/WorkspaceDetailPage';
 import PersonalCenterPage from './pages/personal/PersonalCenterPage';
 import PlaceholderPage from './pages/placeholder/PlaceholderPage';
 import { useAuthStore } from './stores/authStore';
+import theme from './theme';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const token = useAuthStore((s) => s.token);
@@ -18,7 +19,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <ConfigProvider locale={zhCN}>
+    <ConfigProvider locale={zhCN} theme={theme}>
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />

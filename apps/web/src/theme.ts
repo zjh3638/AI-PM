@@ -1,0 +1,108 @@
+import type { ThemeConfig } from 'antd';
+
+const theme: ThemeConfig = {
+  token: {
+    fontFamily: "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontSize: 15,
+    colorPrimary: '#2563eb',
+    colorInfo: '#2563eb',
+    colorSuccess: '#16a34a',
+    colorWarning: '#d97706',
+    colorError: '#dc2626',
+    colorTextBase: '#0f172a',
+    colorTextSecondary: '#475569',
+    colorTextTertiary: '#94a3b8',
+    colorBorder: '#e2e8f0',
+    colorBorderSecondary: '#f1f5f9',
+    colorBgContainer: '#ffffff',
+    colorBgLayout: '#f8fafc',
+    colorBgElevated: '#ffffff',
+    borderRadius: 8,
+    borderRadiusSM: 6,
+    borderRadiusLG: 12,
+    borderRadiusXL: 16,
+    controlHeight: 36,
+    controlHeightLG: 40,
+    lineHeight: 1.6,
+    paddingContentHorizontal: 20,
+    paddingContentVertical: 16,
+  },
+  components: {
+    Layout: {
+      headerHeight: 48,
+      headerBg: '#ffffff',
+      siderBg: '#ffffff',
+      bodyBg: '#f8fafc',
+    },
+    Menu: {
+      itemBg: 'transparent',
+      itemColor: '#475569',
+      itemHoverColor: '#0f172a',
+      itemHoverBg: '#f1f5f9',
+      itemSelectedColor: '#1d4ed8',
+      itemSelectedBg: '#eff6ff',
+      itemActiveBg: '#eff6ff',
+      itemHeight: 36,
+      fontSize: 13,
+      horizontalItemSelectedColor: '#1d4ed8',
+    },
+    Button: {
+      borderRadius: 8,
+      borderRadiusSM: 6,
+      borderRadiusLG: 10,
+      controlHeight: 36,
+      controlHeightLG: 40,
+      controlHeightSM: 30,
+      fontSize: 14,
+      fontWeight: 600,
+    },
+    Input: {
+      borderRadius: 8,
+      controlHeight: 36,
+      controlHeightLG: 40,
+      fontSize: 14,
+    },
+    Card: {
+      borderRadiusLG: 12,
+      paddingLG: 20,
+      colorBorderSecondary: '#e2e8f0',
+    },
+    Tag: {
+      borderRadiusSM: 8,
+      fontSize: 11,
+      lineHeight: '18px',
+    },
+    Table: {
+      borderColor: '#e2e8f0',
+      headerBg: '#f8fafc',
+      headerColor: '#475569',
+      cellPaddingBlock: 10,
+      cellPaddingInline: 16,
+    },
+    Tabs: {
+      inkBarColor: '#2563eb',
+      itemActiveColor: '#2563eb',
+      itemHoverColor: '#0f172a',
+      itemSelectedColor: '#1d4ed8',
+      titleFontSize: 14,
+      horizontalItemGutter: 32,
+    },
+    Select: {
+      borderRadius: 8,
+      controlHeight: 36,
+    },
+    Modal: {
+      borderRadiusLG: 12,
+      titleFontSize: 16,
+      fontWeightStrong: 700,
+    },
+    Spin: {
+      colorPrimary: '#2563eb',
+    },
+    Statistic: {
+      contentFontSize: 24,
+    },
+  },
+};
+
+export default theme;

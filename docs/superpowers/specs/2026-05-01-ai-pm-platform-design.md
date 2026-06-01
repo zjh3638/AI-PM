@@ -271,36 +271,38 @@ React 前端
 
 ---
 
-## 6. AI Agent 设计（基于 AgentScope）
+## 6. AI Agent 设计（基于 Hermes Agent）
 
 ### 6.1 定位：智能助手，不是自主执行体
 
 AI Agent 是人类的助手——**人分配任务给 Agent，Agent 生成草案，人确认结果**。Agent 不会主动认领任务，不会自主决策，不会绕过人类直接操作项目。
 
-**技术基座：** 基于 AgentScope 框架实现，复用其 ReActAgent 编排、工具系统、沙箱执行和 A2A 通信能力，避免从零构建 Agent 基础设施。
+**技术基座：** 基于 Hermes Agent（Nous Research）实现，复用其自学习 Skill 闭环、四层记忆系统、MCP 兼容工具系统和多模型网关能力，避免从零构建 Agent 基础设施。
 
-### 6.2 AgentScope 与 FastAPI 协作模式
+### 6.2 Hermes 与 FastAPI 协作模式
 
-AgentScope 作为独立 Python 进程运行，FastAPI 通过 SDK 调度：
+Hermes Agent 作为独立进程运行，FastAPI 通过 HTTP API 调度：
 
 | 交互方式 | 场景 | 说明 |
 |---------|------|------|
-| 同步调用 | 简单查询、摘要生成 | FastAPI 等待 AgentScope 返回 |
-| 异步调用 | 长任务（PRD 生成、代码起草） | AgentScope 执行，完成后 Webhook 回调 FastAPI |
-| Webhook 回调 | Agent 产出就绪 | AgentScope → FastAPI → 写入 Review 队列 → 推送通知 |
+| 同步调用 | 简单查询、摘要生成 | FastAPI 等待 Hermes 返回 |
+| 异步调用 | 长任务（PRD 生成、代码起草） | Hermes 执行，完成后 Webhook 回调 FastAPI |
+| Webhook 回调 | Agent 产出就绪 | Hermes → FastAPI → 写入 Review 队列 → 推送通知 |
 
 ```
-FastAPI                                AgentScope
-───────                                ──────────
+FastAPI                                Hermes Agent
+───────                                ────────────
 POST /api/workspaces/{id}/ai/run     → 创建 Agent 任务，返回 task_id
 GET  /api/workspaces/{id}/ai/status  → 查询 Agent 执行状态
 POST /api/workspaces/{id}/ai/review  → 提交 Review 结果（通过/打回）
                                       ← Webhook 回调通知（Agent 产出就绪）
 ```
 
-### 6.3 四个 Agent 角色 → AgentScope ReActAgent
+> **内网部署说明：** FastAPI 和 Hermes Agent 各自 Docker 容器化，通过 docker-compose 编排。Hermes 通过 Ollama / OpenAI 兼容接口连接内网本地 LLM（DeepSeek/Qwen）。若内网网络策略复杂，可降级为 FastAPI 定时轮询 Hermes 任务状态，替代 Webhook 回调。
 
-沿用原设计的 4 个 Agent 角色，AgentScope 的 ReActAgent 模式天然支持：
+### 6.3 四个 Agent 角色 → Hermes Agent
+
+沿用原设计的 4 个 Agent 角色，Hermes 通过 Skill 文件定义各角色的行为模式：
 
 | Agent 角色 | 擅长任务 | 绑定工具集 | 产出物 |
 |-----------|---------|-----------|--------|
@@ -317,11 +319,11 @@ POST /api/workspaces/{id}/ai/review  → 提交 Review 结果（通过/打回）
 |---------|------|------|--------|
 | System Prompt | 角色定义 + 通用行为约束 | 系统内置 | ~1,000 |
 | OpenSpec | `conventions.md` + `agents.md` + `signals.md` | `.openspec/` 目录 | ~800 |
-| 热记忆 | 当前项目状态摘要 + 关键决策 + 执行历史 | AgentScope AutoContextMemory | ~1,500 |
+| 热记忆 | 当前项目状态摘要 + 关键决策 + 执行历史 | Hermes MEMORY.md + Session Archive (SQLite+FTS5) | ~1,500 |
 
 ### 6.5 工具调用与命令执行
 
-基于 AgentScope 的工具系统（MCP 协议兼容），Agent 通过工具调用与外部系统交互：
+基于 Hermes 的工具系统（MCP 协议兼容），Agent 通过工具调用与外部系统交互：
 
 ```
 Agent 工具集
@@ -337,50 +339,50 @@ Agent 工具集
 │   └── git_diff(ver_a, ver_b)    → 版本对比
 ├── 通知工具
 │   └── send_signal(level, msg)   → 发出风险信号
-└── 沙箱工具（AgentScope 内置）
+└── 沙箱工具（Hermes 内置）
     └── sandbox_exec(code)        → 安全沙箱执行代码
 ```
 
 工具调用受双层权限约束：
-1. **AgentScope 层：** 工具白名单机制，Agent 只能调用注册的工具
+1. **Hermes 层：** 工具白名单机制，Agent 只能调用注册的工具
 2. **FastAPI 层：** 工具实际执行时校验操作权限（如 task_update 需要 Manager+ 角色）
 
-### 6.6 AI 辅助执行流程（AgentScope 版）
+### 6.6 AI 辅助执行流程（Hermes 版）
 
 ```
 人创建任务 → 人将任务指派给 AI Agent
                   ↓
-FastAPI → AgentScope: 创建 ReActAgent 实例，注入上下文
+FastAPI → Hermes: 创建 Agent 任务，注入上下文（OpenSpec + 记忆）
                   ↓
 Agent 状态：准备中 → 分析中（检索 wiki + 记忆）→ 生成中
                   ↓ （全过程 Work-in-Public 可见）
-Agent 提交产出物 → AgentScope Webhook 回调 FastAPI
+Agent 提交产出物 → Hermes Webhook 回调 FastAPI
                   ↓
 产出物进入人的 Review 队列 → 推送通知
                   ↓
-            确认通过 → 任务完成，写入执行记忆
-            需要修改 → 人说明原因 → AgentScope 重新生成（打回原因写入记忆）
+            确认通过 → 任务完成，写入执行记忆 + Hermes Skills
+            需要修改 → 人说明原因 → Hermes 重新生成（打回原因写入记忆）
 ```
 
 ### 6.7 三个辅助档位
 
-| 档位 | 描述 | AgentScope 配置 |
-|------|------|----------------|
+| 档位 | 描述 | Hermes 配置 |
+|------|------|-------------|
 | 建议模式 | AI 只提供建议和参考 | 限制工具集为只读（wiki_search、task_query） |
 | 草稿模式（默认） | AI 生成完整草案 | 完整工具集，产出物需 Review |
 | 轻量辅助 | AI 只做信息整理 | 限制输出类型（摘要/分类/格式化），不调用修改工具 |
 
 ### 6.8 Work-in-Public（执行全程透明）
 
-AgentScope 的执行过程全部可见：
-- Agent 当前执行状态（AgentScope 状态机）
-- Agent 的 ReAct 推理日志（Thought → Action → Observation 循环）
+Hermes Agent 的执行过程全部可见：
+- Agent 当前执行状态（Hermes 状态机）
+- Agent 的推理日志（Thought → Action → Observation 循环）
 - Agent 引用的 wiki 条目和源文档
 - Agent 的中间产出物
 
 ### 6.9 失败学习
 
-AgentScope 的执行记录（含打回原因和修正历史）自动写入 AutoContextMemory。后续接到同类任务时，系统检索相关失败记录注入上下文——避免重复犯同样的错误。打回记录同时进入 PM 适配层的执行记忆。
+Hermes 的执行记录（含打回原因和修正历史）自动写入 Session Archive（SQLite+FTS5）。Hermes 的 Self-Improving Learning Loop 从修正中自动生成/更新 Skill 文件，后续接到同类任务时复用修正后的流程——避免重复犯同样的错误。打回记录同时进入自定义记忆系统的执行记忆。
 
 ---
 
@@ -396,6 +398,8 @@ AgentScope 的执行记录（含打回原因和修正历史）自动写入 AutoC
 - **AI 的回答质量会随着项目推进持续下降**
 
 记忆系统不是"锦上添花"，而是决定 AI 能否在长周期项目中持续可用的基础能力。
+
+**与 Hermes 内置记忆的分工：** Hermes 自带四层记忆系统（MEMORY.md + Session Archive SQLite + Skills + Honcho），负责 Agent 执行级记忆。本章描述的自定义记忆系统负责**项目级记忆**——跨 Agent、跨工作空间的业务决策和项目状态，与 Hermes 内置记忆互补而非替代。
 
 ### 7.2 多层记忆架构
 
@@ -578,14 +582,14 @@ MVP 阶段精简——只保留核心配置，其他逐步引入。
 
 ### 13.1 为什么需要
 
-AI Agent 的调用链涉及 FastAPI → AgentScope → LLM → 工具调用 → Webhook 回调，链路长、失败模式多样。没有结构化日志和 tracing，问题排查几乎不可行。
+AI Agent 的调用链涉及 FastAPI → Hermes → LLM → 工具调用 → Webhook 回调，链路长、失败模式多样。没有结构化日志和 tracing，问题排查几乎不可行。
 
 ### 13.2 三层可观测性
 
 | 层 | 工具/方式 | 范围 |
 |----|---------|------|
 | **结构化日志** | Python `logging` → JSON Lines | 所有 API 请求/响应、Agent 执行步骤、LLM 调用耗时、错误堆栈 |
-| **Agent 执行追踪** | AgentScope 原生 logging + 自定义 span | 每个 Agent 任务从创建到完成的完整生命周期（状态变化、ReAct 循环、工具调用） |
+| **Agent 执行追踪** | Hermes 原生 logging + 自定义 span | 每个 Agent 任务从创建到完成的完整生命周期（状态变化、推理循环、工具调用） |
 | **关键指标** | 聚合统计（定时查询 DB + 日志） | AI 任务成功率、平均延迟、摘要质量用户评分分布、LLM token 消耗 |
 
 ### 13.3 Agent 执行日志格式
@@ -610,7 +614,7 @@ AI Agent 的调用链涉及 FastAPI → AgentScope → LLM → 工具调用 → 
 ### 13.4 MVP 阶段实施
 
 - [ ] FastAPI 全局请求日志（中间件，含 trace_id 生成和传播）
-- [ ] AgentScope 执行日志结构化输出（jsonl 文件）
+- [ ] Hermes 执行日志结构化输出（jsonl 文件）
 - [ ] 关键指标面板（基础版：任务成功率 / 平均延迟 / token 消耗，通过 FastAPI 端点查询）
 - [ ] 错误告警（Agent 任务失败时推送通知给对应 PM）
 
@@ -670,9 +674,9 @@ FastAPI API 层
 - 企微通知推送（使用 NotifyProvider 接口）
 - 基础报表
 
-### 15.2 Phase 2.5：AgentScope 技术验证（1-2 周，关卡）
+### 15.2 Phase 2.5：Hermes 技术验证（1-2 周，关卡）
 
-验证 ReActAgent 工具调用稳定性、Webhook 可靠性、Memory 摘要质量、本地 LLM 兼容性。详见实施路线图。
+验证 Hermes Agent 内网部署可行性、Skill 文件生成质量、记忆召回准确率、工具调用稳定性、本地 LLM 兼容性。详见实施路线图。
 
 ### 15.3 Phase 3-4：AI 增强层（10-12 周）
 

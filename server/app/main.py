@@ -3,9 +3,17 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.exceptions import AppException, app_exception_handler, global_exception_handler
 from app.middleware import request_logging_middleware
+from app.database import engine, Base
+from app.models import *  # noqa: F401,F403 — ensure all models are registered
 from app.routers import auth, users, workspaces, tasks, iterations, comments, requirements, documents, workflows, search, dashboard
 
 app = FastAPI(title="AI-PM API", version="0.0.1")
+
+
+@app.on_event("startup")
+async def startup():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 app.add_middleware(
     CORSMiddleware,
