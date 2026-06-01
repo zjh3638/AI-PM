@@ -223,35 +223,57 @@ function PulseChat() {
 /* ═══════════════════════════════════════════
    KANBAN VIEW
    ═══════════════════════════════════════════ */
-function KanbanView({ onCreateTask, onEditTask, milestoneFilter }: { onCreateTask: (status: string) => void; onEditTask: (task: Task) => void; milestoneFilter: string }) {
+function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onCreateTask: (status: string, phase?: string) => void; onEditTask: (task: Task) => void; milestoneFilter: string; isFull: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
   const { kanban, loading, fetchKanban, moveTask, update } = useTaskStore();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchAction, setBatchAction] = useState<string | null>(null);
 
-  useEffect(() => { if (wsId) fetchKanban(wsId); }, [wsId]);
+  const groupBy = isFull ? 'phase' : 'status';
+  useEffect(() => { if (wsId) fetchKanban(wsId, groupBy); }, [wsId]);
 
-  const colDefs = [
+  const statusColDefs: { key: string; title: string; icon?: string }[] = [
     { key: 'TODO', title: '待办' },
     { key: 'IN_PROGRESS', title: '进行中' },
     { key: 'IN_REVIEW', title: '待 Review' },
     { key: 'DONE', title: '已完成' },
   ];
+  const phaseColDefs: { key: string; title: string; icon?: string }[] = [
+    { key: 'REQUIREMENTS', title: '需求分析', icon: '📋' },
+    { key: 'DESIGN', title: '方案设计', icon: '🎨' },
+    { key: 'DEVELOPMENT', title: '开发实现', icon: '💻' },
+    { key: 'TESTING', title: '测试验证', icon: '🧪' },
+    { key: 'RELEASE', title: '发布上线', icon: '🚀' },
+    { key: 'ACCEPTANCE', title: '验收交付', icon: '✅' },
+  ];
+  const colDefs = isFull ? phaseColDefs : statusColDefs;
+
+  // Status colors for cards within a phase column
+  const statusBadge: Record<string, { bg: string; label: string }> = {
+    TODO: { bg: 'transparent', label: '待办' },
+    IN_PROGRESS: { bg: 'var(--blue-100)', label: '进行中' },
+    IN_REVIEW: { bg: 'var(--amber-100)', label: '审核中' },
+    DONE: { bg: 'var(--green-100)', label: '✓' },
+  };
 
   const toggleSelect = (id: string) => {
     setSelected((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   };
 
-  const handleDragStart = (e: React.DragEvent, taskId: string, status: string) => {
+  const handleDragStart = (e: React.DragEvent, taskId: string, colKey: string) => {
     e.dataTransfer.setData('taskId', taskId);
-    e.dataTransfer.setData('fromStatus', status);
+    e.dataTransfer.setData('fromKey', colKey);
   };
 
   const handleDrop = async (colKey: string, e: React.DragEvent) => {
     e.preventDefault();
     const taskId = e.dataTransfer.getData('taskId');
-    const fromStatus = e.dataTransfer.getData('fromStatus');
-    if (taskId && wsId && fromStatus !== colKey) {
+    const fromKey = e.dataTransfer.getData('fromKey');
+    if (!taskId || !wsId || fromKey === colKey) return;
+    if (isFull) {
+      // Phase-based: update phase and reset status to TODO
+      await update(wsId, taskId, { phase: colKey, status: 'TODO' } as any);
+    } else {
       await moveTask(wsId, taskId, colKey, 0);
     }
   };
@@ -316,7 +338,7 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter }: { onCreateTas
             onDragOver={(e) => e.preventDefault()}
           >
             <div className="col-head">
-              <span>{col.title}</span>
+              <span>{isFull && col.icon ? `${col.icon} ` : ''}{col.title}</span>
               <span className="badge" style={{ background: 'var(--bg-hover)' }}>{(kanban[col.key] || []).length}</span>
             </div>
             {(kanban[col.key] || []).filter((t: Task) => !milestoneFilter || t.milestone_id === milestoneFilter).map((task: Task) => (
@@ -325,17 +347,18 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter }: { onCreateTas
                 className={`kanban-card${selected.has(task.id) ? ' selected' : ''}`}
                 onClick={(e) => { if (e.shiftKey) toggleSelect(task.id); else onEditTask(task); }}
                 draggable
-                onDragStart={(e) => handleDragStart(e, task.id, task.status)}
+                onDragStart={(e) => handleDragStart(e, task.id, isFull ? task.phase : task.status)}
               >
                 <div className="card-title">{task.title}</div>
                 <div className="card-meta">
+                  {isFull && <span className="badge" style={{ fontSize: '0.58rem', background: statusBadge[task.status]?.bg || 'var(--bg-hover)', color: 'var(--text-secondary)' }}>{statusBadge[task.status]?.label || task.status}</span>}
                   <span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>{task.task_type}</span>
                   <span style={{ color: task.priority === 'CRITICAL' ? 'var(--red-600)' : 'var(--text-muted)' }}>{task.priority}</span>
                   {task.assignee_name && <span>{task.assignee_name}</span>}
                 </div>
               </div>
             ))}
-            <div className="col-add" onClick={() => onCreateTask(col.key)}>+ 新建任务</div>
+            <div className="col-add" onClick={() => onCreateTask(isFull ? 'TODO' : col.key, isFull ? col.key : undefined)}>+ 新建任务</div>
           </div>
         ))}
       </div>
@@ -1113,7 +1136,7 @@ export default function WorkspaceDetailPage() {
   const isFull = wsType === 'PROJECT';
   const isLight = wsType === 'OTHER';
 
-  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; iteration_id?: string; milestone_id: string; assignee_id?: string; parent_id?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', milestone_id: '' });
+  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; phase: string; iteration_id?: string; milestone_id: string; assignee_id?: string; parent_id?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', phase: 'REQUIREMENTS', milestone_id: '' });
   const [stories, setStories] = useState<Task[]>([]);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -1145,7 +1168,7 @@ export default function WorkspaceDetailPage() {
     }
   }, [milestones]);
 
-  const openTaskPanel = async (status?: string, task?: Task, parentStoryId?: string) => {
+  const openTaskPanel = async (status?: string, task?: Task, parentStoryId?: string, defaultPhase?: string) => {
     // Fetch available stories for parent selection
     if (id && selectedMilestone) {
       const result = await useTaskStore.getState().fetchList(id, { milestone_id: selectedMilestone, task_type: 'STORY', page_size: 100 });
@@ -1154,14 +1177,14 @@ export default function WorkspaceDetailPage() {
     }
     if (task) {
       setEditingTask(task);
-      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, parent_id: task.parent_id || undefined });
+      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'REQUIREMENTS', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, parent_id: task.parent_id || undefined });
       fetchComments(task.id);
       fetchActivity(task.id);
     } else {
       setEditingTask(null);
       setComments([]);
       setActivityLogs([]);
-      setTaskForm({ title: '', description: '', task_type: isLight ? 'TASK' : 'TASK', priority: 'MEDIUM', status: status || 'TODO', iteration_id: undefined, milestone_id: isLight ? '' : selectedMilestone, assignee_id: undefined, parent_id: parentStoryId || undefined });
+      setTaskForm({ title: '', description: '', task_type: isLight ? 'TASK' : 'TASK', priority: 'MEDIUM', status: status || 'TODO', phase: defaultPhase || 'REQUIREMENTS', iteration_id: undefined, milestone_id: isLight ? '' : selectedMilestone, assignee_id: undefined, parent_id: parentStoryId || undefined });
     }
     setShowDelete(false);
     setTaskPanelOpen(true);
@@ -1321,7 +1344,7 @@ export default function WorkspaceDetailPage() {
                     </button>
                   ))}
                 </div>
-                {activeView === 'kanban' && <KanbanView onCreateTask={(status) => openTaskPanel(status)} onEditTask={(task) => openTaskPanel(undefined, task)} milestoneFilter={selectedMilestone} />}
+                {activeView === 'kanban' && <KanbanView onCreateTask={(status, phase) => openTaskPanel(status, undefined, undefined, phase)} onEditTask={(task) => openTaskPanel(undefined, task)} milestoneFilter={selectedMilestone} isFull={isFull} />}
                 {activeView === 'story' && <StoryBoard milestoneFilter={selectedMilestone} onEditTask={(task) => openTaskPanel(undefined, task)} onCreateTask={(status, parentId) => openTaskPanel(status, undefined, parentId)} />}
                 {activeView === 'list' && <ListView onEditTask={(task) => openTaskPanel(undefined, task)} milestoneFilter={selectedMilestone} />}
                 {activeView === 'gantt' && <GanttView milestoneFilter={selectedMilestone} />}

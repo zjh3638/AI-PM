@@ -44,6 +44,7 @@ export interface Task {
   title: string;
   description: string | null;
   status: TaskStatus;
+  phase: string;
   priority: TaskPriority;
   severity: string | null;
   assignee_id: string | null;

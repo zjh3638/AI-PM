@@ -136,17 +136,21 @@ async def get_epics(db: AsyncSession, workspace_id: str) -> list[dict]:
     return data
 
 
-async def get_kanban(db: AsyncSession, workspace_id: str) -> dict:
+async def get_kanban(db: AsyncSession, workspace_id: str, group_by: str = "status") -> dict:
     result = await db.execute(
         select(Task).where(Task.workspace_id == workspace_id)
         .order_by(Task.sort_order).options(selectinload(Task.assignee), selectinload(Task.milestone))
     )
     all_tasks = result.scalars().all()
 
-    columns = {}
-    for state in ["TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"]:
-        columns[state] = [_task_to_dict(t) for t in all_tasks if t.status == state]
-    return columns
+    if group_by == "phase":
+        phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE", "ACCEPTANCE"]
+        return {p: [_task_to_dict(t) for t in all_tasks if t.phase == p] for p in phases}
+    else:
+        columns = {}
+        for state in ["TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"]:
+            columns[state] = [_task_to_dict(t) for t in all_tasks if t.status == state]
+        return columns
 
 
 async def move_task(db: AsyncSession, task: Task, new_status: str, sort_order: int) -> Task:
@@ -182,7 +186,7 @@ def _task_to_dict(task: Task) -> dict:
         "milestone_name": milestone_name,
         "task_type": task.task_type,
         "title": task.title, "description": task.description,
-        "status": task.status, "priority": task.priority,
+        "status": task.status, "phase": task.phase, "priority": task.priority,
         "severity": task.severity, "assignee_id": task.assignee_id,
         "assignee_name": task.assignee.display_name if task.assignee else None,
         "estimation": task.estimation, "estimation_unit": task.estimation_unit,

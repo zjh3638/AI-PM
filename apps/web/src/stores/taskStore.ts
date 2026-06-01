@@ -15,7 +15,7 @@ interface TaskState {
   fetchDetail: (wsId: string, taskId: string) => Promise<void>;
   fetchChildren: (wsId: string, taskId: string) => Promise<void>;
   fetchEpics: (wsId: string) => Promise<void>;
-  fetchKanban: (wsId: string) => Promise<void>;
+  fetchKanban: (wsId: string, groupBy?: string) => Promise<void>;
   create: (wsId: string, data: Partial<Task>) => Promise<Task>;
   update: (wsId: string, taskId: string, data: Partial<Task>) => Promise<void>;
   remove: (wsId: string, taskId: string) => Promise<void>;
@@ -52,8 +52,8 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ epics: result.data });
   },
 
-  fetchKanban: async (wsId) => {
-    const result = await api.get(`/workspaces/${wsId}/kanban`);
+  fetchKanban: async (wsId, groupBy = 'status') => {
+    const result = await api.get(`/workspaces/${wsId}/kanban`, { params: { group_by: groupBy } });
     set({ kanban: result.data });
   },
 

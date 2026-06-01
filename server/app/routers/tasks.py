@@ -29,7 +29,7 @@ def _task_to_dict(task) -> dict:
         "milestone_name": milestone_name,
         "task_type": task.task_type,
         "title": task.title, "description": task.description,
-        "status": task.status, "priority": task.priority,
+        "status": task.status, "phase": task.phase, "priority": task.priority,
         "severity": task.severity, "assignee_id": task.assignee_id,
         "assignee_name": task.assignee.display_name if task.assignee else None,
         "estimation": task.estimation, "estimation_unit": task.estimation_unit,
@@ -52,7 +52,7 @@ async def create_task(
     task = await task_service.create_task(
         db, workspace_id,
         task_type=req.task_type, title=req.title, description=req.description,
-        status=req.status, priority=req.priority, severity=req.severity,
+        status=req.status, phase=req.phase, priority=req.priority, severity=req.severity,
         parent_id=req.parent_id, epic_id=req.epic_id, iteration_id=req.iteration_id,
         milestone_id=req.milestone_id,
         assignee_id=req.assignee_id, estimation=req.estimation,
@@ -110,11 +110,12 @@ async def list_epics(
 @router.get("/kanban", response_model=APIResponse)
 async def get_kanban(
     workspace_id: str,
+    group_by: str = Query(default="status"),
     db: AsyncSession = Depends(get_db),
     pc: PermissionChecker = Depends(get_permission_checker),
 ):
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
-    columns = await task_service.get_kanban(db, workspace_id)
+    columns = await task_service.get_kanban(db, workspace_id, group_by)
     return {"code": 0, "message": "ok", "data": columns}
 
 
@@ -160,7 +161,7 @@ async def update_task(
 
     task = await task_service.update_task(
         db, task,
-        title=req.title, description=req.description, status=req.status,
+        title=req.title, description=req.description, status=req.status, phase=req.phase,
         priority=req.priority, severity=req.severity,
         parent_id=req.parent_id, epic_id=req.epic_id,
         iteration_id=req.iteration_id, milestone_id=req.milestone_id,
@@ -226,3 +227,27 @@ async def get_task_activity(
     from app.services import activity_svc
     logs = await activity_svc.get_activity(db, task_id)
     return {"code": 0, "message": "ok", "data": logs}
+
+@router.post("/tasks/{task_id}/advance-phase", response_model=APIResponse)
+async def advance_task_phase(
+    workspace_id: str,
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
+    task = await task_service.get_task(db, task_id)
+    if task is None or task.workspace_id != workspace_id:
+        raise AppException(404, "任务不存在", 404)
+
+    phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE", "ACCEPTANCE"]
+    idx = phases.index(task.phase) if task.phase in phases else -1
+    if idx < 0 or idx == len(phases) - 1:
+        raise AppException(400, "已是最后一个阶段", 400)
+
+    task = await task_service.update_task(db, task, phase=phases[idx + 1], status="TODO")
+    from app.services import activity_svc
+    await activity_svc.log_activity(db, task_id, current_user.id, "UPDATE",
+        field_name="阶段", old_value=phases[idx], new_value=phases[idx + 1])
+    return {"code": 0, "message": "ok", "data": _task_to_dict(task)}

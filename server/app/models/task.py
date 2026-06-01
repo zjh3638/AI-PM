@@ -21,6 +21,7 @@ class Task(Base, UUIDMixin, TimestampMixin):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="TODO")
+    phase: Mapped[str] = mapped_column(String(30), default="REQUIREMENTS")
     priority: Mapped[str] = mapped_column(String(20), default="MEDIUM")
     severity: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 

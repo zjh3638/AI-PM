@@ -9,6 +9,7 @@ class TaskCreate(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     description: Optional[str] = None
     status: str = "TODO"
+    phase: str = "REQUIREMENTS"
     priority: str = "MEDIUM"
     severity: Optional[str] = None
     parent_id: Optional[str] = None
@@ -26,6 +27,7 @@ class TaskUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=500)
     description: Optional[str] = None
     status: Optional[str] = None
+    phase: Optional[str] = None
     priority: Optional[str] = None
     severity: Optional[str] = None
     parent_id: Optional[str] = None
@@ -51,6 +53,7 @@ class TaskResponse(BaseModel):
     title: str
     description: Optional[str] = None
     status: str
+    phase: str = "REQUIREMENTS"
     priority: str
     severity: Optional[str] = None
     assignee_id: Optional[str] = None
