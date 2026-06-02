@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useTaskStore } from '../../stores/taskStore';
+import api from '../../api/client';
 
 function getGreeting(): string {
   const h = new Date().getHours();
@@ -16,19 +17,49 @@ function formatDate(): string {
   return new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
 }
 
+function timeAgo(iso: string): string {
+  const d = new Date(iso).getTime();
+  const now = Date.now();
+  const mins = Math.floor((now - d) / 60000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins} 分钟前`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} 小时前`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days} 天前`;
+  return new Date(iso).toLocaleDateString('zh-CN');
+}
+
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { workspaces, fetchList: fetchWss } = useWorkspaceStore();
-  const { tasks, kanban, fetchKanban, fetchList } = useTaskStore();
+  const { fetchKanban } = useTaskStore();
   const [briefingOpen, setBriefingOpen] = useState(true);
   const [wsTasks, setWsTasks] = useState<Record<string, any[]>>({});
+  const [activity, setActivity] = useState<any[]>([]);
+  const [upcoming, setUpcoming] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
 
+  useEffect(() => { fetchWss({}); }, []);
+
+  // Fetch stats, activity, and upcoming from dashboard API
   useEffect(() => {
-    fetchWss({});
+    (async () => {
+      try {
+        const [statsRes, activityRes, upcomingRes] = await Promise.all([
+          api.get('/dashboard/stats'),
+          api.get('/dashboard/activity'),
+          api.get('/dashboard/upcoming'),
+        ]);
+        setStats(statsRes.data);
+        setActivity(activityRes.data || []);
+        setUpcoming(upcomingRes.data || []);
+      } catch { /* skip */ }
+    })();
   }, []);
 
-  // Fetch kanban for each workspace
+  // Fetch kanban for each workspace for health display
   useEffect(() => {
     if (workspaces.length === 0) return;
     workspaces.forEach(async (ws) => {
@@ -57,7 +88,7 @@ export default function DashboardPage() {
       const result: { wsName: string; wsId: string; tasks: any[] }[] = [];
       for (const ws of workspaces) {
         try {
-          const res = await import('../../api/client').then(m => m.default.get(`/workspaces/${ws.id}/tasks`, { params: { assignee_id: user.id, page_size: 50 } }));
+          const res = await api.get(`/workspaces/${ws.id}/tasks`, { params: { assignee_id: user.id, page_size: 50 } });
           const myTs = (res.data || []).filter((t: any) => t.status !== 'DONE');
           if (myTs.length > 0) result.push({ wsName: ws.name, wsId: ws.id, tasks: myTs });
         } catch { /* skip */ }
@@ -66,7 +97,6 @@ export default function DashboardPage() {
     })();
   }, [workspaces.length, user?.id]);
 
-  // Compute per-workspace stats
   const wsStats = workspaces.map((ws) => {
     const tasks = wsTasks[ws.id] || [];
     const done = tasks.filter((t: any) => t.status === 'DONE').length;
@@ -75,12 +105,50 @@ export default function DashboardPage() {
     return { ws, pct, total: tasks.length, done, overdue };
   });
 
+  const priorityLabel: Record<string, string> = {
+    CRITICAL: '紧急', HIGH: '高', MEDIUM: '中', LOW: '低',
+  };
+
   return (
     <div>
       {/* Header */}
       <div className="focus-header">
         <div className="greeting">{getGreeting()}，{displayName}</div>
         <div className="date">{formatDate()}</div>
+      </div>
+
+      {/* Quick Actions */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button className="btn btn-primary btn-sm" onClick={() => navigate('/workspaces')}>
+          📁 我的项目 ({workspaces.length})
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/bigscreen')}>
+          📊 会议大屏
+        </button>
+        <button className="btn btn-ghost btn-sm" onClick={() => navigate('/personal')}>
+          👤 个人中心
+        </button>
+      </div>
+
+      {/* KPI Cards */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+        {[
+          { label: '我的任务', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '待处理' },
+          { label: '待审核', value: (inReviewTasks || stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
+          { label: '已逾期', value: (overdueTasks || stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
+          { label: '进行中项目', value: stats?.active_projects ?? workspaces.length, color: '#3b82f6', sub: '个' },
+        ].map((kpi) => (
+          <div key={kpi.label}
+            style={{
+              background: 'var(--bg-surface)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-lg)', padding: '14px 16px',
+            }}
+          >
+            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 4 }}>{kpi.label}</div>
+            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
+            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{kpi.sub}</div>
+          </div>
+        ))}
       </div>
 
       {/* Summary */}
@@ -100,8 +168,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Focus Grid */}
-      <div className="focus-grid">
+      {/* Main Grid: Need Attention + Project Health + Upcoming */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+        {/* Left — Need Focus */}
         <div>
           <div className="section-label">需要你关注</div>
 
@@ -121,36 +190,71 @@ export default function DashboardPage() {
             </div>
           )}
 
-          {totalTasks === 0 && (
+          {upcoming.length > 0 && upcoming.slice(0, 3).map((t: any) => {
+            const daysLeft = Math.ceil((new Date(t.due_date).getTime() - Date.now()) / 86400000);
+            return (
+              <div key={t.id} className="need-card" onClick={() => navigate(`/workspaces/${t.workspace_id}`)}>
+                <span className={`priority${daysLeft <= 1 ? ' urgent' : ' high'}`}>📅 {daysLeft <= 1 ? '今天' : `${daysLeft}天后`}</span>
+                <h4>{t.title}</h4>
+                <div className="meta"><span>{t.assignee_name ? `负责人: ${t.assignee_name}` : '未分配'}</span></div>
+              </div>
+            );
+          })}
+
+          {overdueTasks === 0 && inReviewTasks === 0 && upcoming.length === 0 && (
             <div className="need-card">
               <span className="priority high">开始</span>
-              <h4>还没有任务，创建一个项目开始吧</h4>
-              <div className="meta"><span>点击进入项目空间</span></div>
+              <h4>暂无需要关注的事项</h4>
+              <div className="meta"><span>一切都在轨道上 🎉</span></div>
             </div>
           )}
         </div>
 
-        {/* Right — Project Health */}
-        <div>
-          <div className="section-label">项目健康度</div>
-          <div className="health-list">
-            {wsStats.length > 0 ? (
-              wsStats.map(({ ws, pct, total, done, overdue }) => (
-                <div key={ws.id} className="health-row" onClick={() => navigate(`/workspaces/${ws.id}`)}>
-                  <span className="hname">{ws.name}</span>
-                  <span className="hstat">
-                    <span className={`badge${pct < 50 ? ' badge-amber' : ' badge-green'}`}>{pct}%</span>
-                    {overdue > 0 ? <span style={{ color: 'var(--red-500)', fontSize: '0.72rem' }}>⚠ {overdue}逾期</span> : '✓ 正常'}
-                    <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{done}/{total}</span>
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                暂无项目
-              </div>
-            )}
+        {/* Right — Project Health + Upcoming */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div>
+            <div className="section-label">项目健康度</div>
+            <div className="health-list">
+              {wsStats.length > 0 ? (
+                wsStats.map(({ ws, pct, total, done, overdue }) => (
+                  <div key={ws.id} className="health-row" onClick={() => navigate(`/workspaces/${ws.id}`)}>
+                    <span className="hname">{ws.name}</span>
+                    <span className="hstat">
+                      <span className={`badge${pct < 50 ? ' badge-amber' : ' badge-green'}`}>{pct}%</span>
+                      {overdue > 0 ? <span style={{ color: 'var(--red-500)', fontSize: '0.72rem' }}>⚠ {overdue}逾期</span> : '✓ 正常'}
+                      <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{done}/{total}</span>
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>暂无项目</div>
+              )}
+            </div>
           </div>
+
+          {/* Recent Activity */}
+          {activity.length > 0 && (
+            <div>
+              <div className="section-label">最近动态</div>
+              <div>
+                {activity.map((a: any) => (
+                  <div key={a.id}
+                    style={{
+                      padding: '8px 0', borderBottom: '1px solid var(--border-light)',
+                      display: 'flex', gap: 8, alignItems: 'flex-start',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--blue-600)', minWidth: 44, textAlign: 'right', paddingTop: 1 }}>
+                      {timeAgo(a.created_at)}
+                    </span>
+                    <span style={{ fontSize: '0.75rem' }}>
+                      <strong>{a.user_name}</strong> {a.action}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

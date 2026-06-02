@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, Epic } from '../types';
+import type { Task, Epic, TaskPermissions } from '../types';
 import api from '../api/client';
 
 interface TaskState {
@@ -7,6 +7,7 @@ interface TaskState {
   total: number;
   loading: boolean;
   current: Task | null;
+  currentPermissions: TaskPermissions | null;
   children: Task[];
   epics: Epic[];
   kanban: Record<string, Task[]>;
@@ -16,12 +17,14 @@ interface TaskState {
   fetchDetail: (wsId: string, taskId: string) => Promise<void>;
   fetchChildren: (wsId: string, taskId: string) => Promise<void>;
   fetchEpics: (wsId: string) => Promise<void>;
-  fetchKanban: (wsId: string, groupBy?: string) => Promise<void>;
+  fetchKanban: (wsId: string, groupBy?: string, taskType?: string) => Promise<void>;
+  fetchPermissions: (wsId: string, taskId: string) => Promise<TaskPermissions>;
   create: (wsId: string, data: Partial<Task>) => Promise<Task>;
   update: (wsId: string, taskId: string, data: Partial<Task>) => Promise<void>;
   remove: (wsId: string, taskId: string) => Promise<void>;
   moveTask: (wsId: string, taskId: string, newStatus: string, sortOrder: number) => Promise<void>;
   advancePhase: (wsId: string, taskId: string, content?: string) => Promise<Task>;
+  splitStory: (wsId: string, taskId: string, children: Partial<Task>[]) => Promise<Task[]>;
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -29,6 +32,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   total: 0,
   loading: false,
   current: null,
+  currentPermissions: null,
   children: [],
   epics: [],
   kanban: {},
@@ -42,7 +46,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   fetchDetail: async (wsId, taskId) => {
     const result = await api.get(`/workspaces/${wsId}/tasks/${taskId}`);
-    set({ current: result.data });
+    set({ current: result.data, currentPermissions: result.data.permissions || null });
   },
 
   fetchChildren: async (wsId, taskId) => {
@@ -55,9 +59,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     set({ epics: result.data });
   },
 
-  fetchKanban: async (wsId, groupBy = 'status') => {
-    const result = await api.get(`/workspaces/${wsId}/kanban`, { params: { group_by: groupBy } });
+  fetchKanban: async (wsId, groupBy = 'status', taskType = '') => {
+    const params: Record<string, string> = { group_by: groupBy };
+    if (taskType) params.task_type = taskType;
+    const result = await api.get(`/workspaces/${wsId}/kanban`, { params });
     set({ kanban: result.data, kanbanGroupBy: groupBy });
+  },
+
+  fetchPermissions: async (wsId, taskId) => {
+    const result = await api.get(`/workspaces/${wsId}/tasks/${taskId}/permissions`);
+    set({ currentPermissions: result.data });
+    return result.data;
   },
 
   create: async (wsId, payload) => {
@@ -87,6 +99,13 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   advancePhase: async (wsId, taskId, content = '') => {
     const result = await api.post(`/workspaces/${wsId}/tasks/${taskId}/advance-phase`, { content });
     await get().fetchKanban(wsId, 'phase');
+    return result.data;
+  },
+
+  splitStory: async (wsId, taskId, children) => {
+    const result = await api.post(`/workspaces/${wsId}/tasks/${taskId}/split`, { children });
+    await get().fetchKanban(wsId, get().kanbanGroupBy);
+    await get().fetchChildren(wsId, taskId);
     return result.data;
   },
 }));

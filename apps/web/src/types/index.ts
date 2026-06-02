@@ -32,6 +32,26 @@ export interface WorkspaceMember {
   role: 'OWNER' | 'MANAGER' | 'MEMBER' | 'VIEWER' | 'AI_AGENT';
 }
 
+export interface TaskPermissions {
+  can_view: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_move: boolean;
+  can_advance_phase: boolean;
+  can_change_assignee: boolean;
+  can_change_reviewer: boolean;
+  can_split: boolean;
+  can_create_test: boolean;
+  is_assignee: boolean;
+  is_reviewer: boolean;
+  is_proposer: boolean;
+  is_analyst: boolean;
+  is_qa_owner: boolean;
+  is_verifier: boolean;
+  available_transitions: Record<string, boolean>;
+  role: 'manager' | 'assignee' | 'reviewer' | 'member';
+}
+
 export interface Task {
   id: string;
   workspace_id: string;
@@ -51,11 +71,21 @@ export interface Task {
   assignee_name: string | null;
   reviewer_id: string | null;
   reviewer_name: string | null;
+  proposer_id: string | null;
+  proposer_name: string | null;
+  analyst_id: string | null;
+  analyst_name: string | null;
+  qa_owner_id: string | null;
+  qa_owner_name: string | null;
+  verifier_id: string | null;
+  verifier_name: string | null;
+  reviewer_ids: string[];
   estimation: number | null;
   estimation_unit: string | null;
   sort_order: number;
   due_date: string | null;
   children_count: number;
+  permissions: TaskPermissions | null;
   created_at: string;
   updated_at: string;
 }
@@ -112,3 +142,26 @@ export type WorkspaceRole = 'OWNER' | 'MANAGER' | 'MEMBER' | 'VIEWER' | 'AI_AGEN
 export type TaskType = 'EPIC' | 'STORY' | 'TASK' | 'SUB_TASK' | 'BUG' | 'SPIKE';
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'IN_REVIEW' | 'DONE';
 export type TaskPriority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
+
+export const PHASE_LABELS: Record<string, string> = {
+  REQUIREMENTS: '需求分析',
+  DESIGN: '方案设计',
+  DEVELOPMENT: '开发实现',
+  TESTING: '测试验证',
+  RELEASE: '发布上线',
+  ACCEPTANCE: '验收交付',
+};
+
+export const STATUS_LABELS: Record<string, string> = {
+  TODO: '待办',
+  IN_PROGRESS: '进行中',
+  IN_REVIEW: '审核中',
+  DONE: '已完成',
+};
+
+export const PRIORITY_LABELS: Record<string, string> = {
+  CRITICAL: '紧急',
+  HIGH: '高',
+  MEDIUM: '中',
+  LOW: '低',
+};

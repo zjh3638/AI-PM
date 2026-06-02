@@ -2,6 +2,11 @@
    PROJECT PULSE — Workspace Detail
    ═══════════════════════════════════════════ */
 
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
 /* Pulse header bar */
 .pulse-header {
   display: flex;
@@ -415,14 +420,21 @@
 .kanban-card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
   border-radius: var(--radius);
-  padding: 10px 12px;
+  padding: 8px 10px;
   margin-bottom: 6px;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   cursor: pointer;
   transition: all var(--fast);
   position: relative;
 }
+
+/* Type accent colors */
+.kanban-card.type-story { border-left-color: #818cf8; }
+.kanban-card.type-task { border-left-color: #38bdf8; }
+.kanban-card.type-bug { border-left-color: #fb923c; }
+.kanban-card.type-spike { border-left-color: #a78bfa; }
 
 .kanban-card:hover {
   border-color: var(--border-hover);
@@ -443,20 +455,54 @@
   border-color: var(--red-400);
 }
 
-.kanban-card.overdue .card-title::before {
-  content: '⚠️ ';
-  font-size: 0.65rem;
+.kanban-card.locked {
+  opacity: 0.65;
+  cursor: default;
 }
 
-.kanban-card .card-title { font-weight: 500; margin-bottom: 4px; }
+.kanban-card .card-status-btn:hover {
+  filter: brightness(0.9);
+  transform: scale(1.05);
+}
+
+.kanban-card .card-title {
+  font-weight: 500;
+  margin-bottom: 4px;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.kanban-card .card-type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.58rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  margin-bottom: 3px;
+}
+
+.kanban-card .card-type-badge.story { background: rgba(129,140,248,0.12); color: #6366f1; }
+.kanban-card .card-type-badge.task { background: rgba(56,189,248,0.12); color: #0ea5e9; }
+.kanban-card .card-type-badge.bug { background: rgba(251,146,60,0.12); color: #f97316; }
+.kanban-card .card-type-badge.spike { background: rgba(167,139,250,0.12); color: #8b5cf6; }
 
 .kanban-card .card-meta {
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   color: var(--text-muted);
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
   flex-wrap: wrap;
+  line-height: 1.4;
 }
 
 .kanban-card .dep-badge {

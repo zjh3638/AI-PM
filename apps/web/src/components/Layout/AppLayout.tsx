@@ -21,9 +21,14 @@ const SIGNALS = [
 export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, logout } = useAuthStore();
+  const { user, token, logout, fetchUser } = useAuthStore();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [signals, setSignals] = useState(SIGNALS);
+
+  // Restore user on page refresh
+  useEffect(() => {
+    if (token && !user) fetchUser();
+  }, []);
 
   const dismissSignal = (id: number) => setSignals((s) => s.filter((x) => x.id !== id));
 

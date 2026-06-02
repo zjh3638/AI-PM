@@ -11,7 +11,7 @@ export default defineConfig({
   expect: { timeout: 10000 },
 
   use: {
-    baseURL: 'http://localhost:3090',
+    baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
   },
 
@@ -35,8 +35,8 @@ export default defineConfig({
       reuseExistingServer: true,
     },
     {
-      command: 'npx vite --port 3090',
-      port: 3090,
+      command: 'npx vite --port 3000',
+      port: 3000,
       reuseExistingServer: true,
     },
   ],

@@ -1,7 +1,7 @@
 from typing import Optional
 from datetime import date, datetime
 
-from sqlalchemy import String, Text, Float, Date, ForeignKey
+from sqlalchemy import String, Text, Float, Date, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -27,6 +27,15 @@ class Task(Base, UUIDMixin, TimestampMixin):
 
     assignee_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     reviewer_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    # Story-specific roles
+    proposer_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    analyst_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    qa_owner_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    # Bug-specific roles
+    verifier_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    # Multi-reviewers for Story
+    reviewer_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+
     estimation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     estimation_unit: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0)
@@ -41,4 +50,8 @@ class Task(Base, UUIDMixin, TimestampMixin):
     iteration = relationship("Iteration", back_populates="tasks")
     assignee = relationship("User", backref="assigned_tasks", foreign_keys=[assignee_id])
     reviewer = relationship("User", backref="review_tasks", foreign_keys=[reviewer_id])
+    proposer = relationship("User", backref="proposed_tasks", foreign_keys=[proposer_id])
+    analyst = relationship("User", backref="analyzed_tasks", foreign_keys=[analyst_id])
+    qa_owner = relationship("User", backref="qa_tasks", foreign_keys=[qa_owner_id])
+    verifier = relationship("User", backref="verified_tasks", foreign_keys=[verifier_id])
     milestone = relationship("Milestone", back_populates="tasks")

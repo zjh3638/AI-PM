@@ -15,9 +15,14 @@ class TaskCreate(BaseModel):
     parent_id: Optional[str] = None
     epic_id: Optional[str] = None
     iteration_id: Optional[str] = None
-    milestone_id: str
+    milestone_id: Optional[str] = None
     assignee_id: Optional[str] = None
     reviewer_id: Optional[str] = None
+    proposer_id: Optional[str] = None
+    analyst_id: Optional[str] = None
+    qa_owner_id: Optional[str] = None
+    verifier_id: Optional[str] = None
+    reviewer_ids: Optional[list[str]] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
     sort_order: int = 0
@@ -37,6 +42,11 @@ class TaskUpdate(BaseModel):
     milestone_id: Optional[str] = None
     assignee_id: Optional[str] = None
     reviewer_id: Optional[str] = None
+    proposer_id: Optional[str] = None
+    analyst_id: Optional[str] = None
+    qa_owner_id: Optional[str] = None
+    verifier_id: Optional[str] = None
+    reviewer_ids: Optional[list[str]] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
     sort_order: Optional[int] = None
@@ -62,11 +72,21 @@ class TaskResponse(BaseModel):
     assignee_name: Optional[str] = None
     reviewer_id: Optional[str] = None
     reviewer_name: Optional[str] = None
+    proposer_id: Optional[str] = None
+    proposer_name: Optional[str] = None
+    analyst_id: Optional[str] = None
+    analyst_name: Optional[str] = None
+    qa_owner_id: Optional[str] = None
+    qa_owner_name: Optional[str] = None
+    verifier_id: Optional[str] = None
+    verifier_name: Optional[str] = None
+    reviewer_ids: Optional[list[str]] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
     sort_order: int = 0
     due_date: Optional[str] = None
     children_count: int = 0
+    permissions: Optional[dict] = None
     created_at: str
     updated_at: str
 
@@ -74,6 +94,11 @@ class TaskResponse(BaseModel):
 class TaskMoveRequest(BaseModel):
     new_status: str
     sort_order: int = 0
+
+
+class TaskSplitRequest(BaseModel):
+    """Split a Story into child tasks."""
+    children: list["TaskCreate"]
 
 
 class EpicResponse(BaseModel):

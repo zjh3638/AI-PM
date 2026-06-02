@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useTaskStore } from '../../stores/taskStore';
 import { useAuthStore } from '../../stores/authStore';
+import { PHASE_LABELS, STATUS_LABELS } from '../../types';
 import type { WorkspaceMember, Task, Iteration, Milestone } from '../../types';
 import { useIterationStore } from '../../stores/iterationStore';
 
@@ -62,6 +63,24 @@ function MilestoneSidebar({ selectedId, onSelect, onEdit }: { selectedId: string
         )}
 
         <div className="sidebar-ms-list" style={{ maxHeight: 'calc(100vh - 300px)', overflowY: 'auto' }}>
+          {/* "All" option */}
+          <div
+            className={`sidebar-ms${selectedId === '' ? ' active' : ''}`}
+            onClick={() => onSelect('')}
+            style={{ opacity: selectedId === '' ? 1 : 0.6 }}
+          >
+            <div className="sms-row1">
+              <span className="sms-name" style={{ color: 'var(--blue-600)' }}>📋 全部里程碑</span>
+              <span className="sms-badge" style={{ background: 'var(--blue-100)', color: 'var(--blue-600)' }}>
+                {totalTasks}
+              </span>
+            </div>
+            <div className="sms-bar">
+              <div className="sms-fill active" style={{ width: `${totalPct}%` }} />
+            </div>
+            <div className="sms-pct">{totalDone}/{totalTasks} · {totalPct}%</div>
+          </div>
+
           {loading ? (
             <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.76rem' }}>加载中...</div>
           ) : milestones.length === 0 ? (
@@ -227,11 +246,27 @@ function PulseChat() {
 function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onCreateTask: (status: string, phase?: string) => void; onEditTask: (task: Task) => void; milestoneFilter: string; isFull: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
   const { kanban, loading, fetchKanban, moveTask, update, advancePhase } = useTaskStore();
+  const { user } = useAuthStore();
+  const { members } = useWorkspaceStore();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchAction, setBatchAction] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState('STORY');
 
   const groupBy = isFull ? 'phase' : 'status';
-  useEffect(() => { if (wsId) fetchKanban(wsId, groupBy); }, [wsId]);
+  useEffect(() => { if (wsId) fetchKanban(wsId, groupBy, typeFilter); }, [wsId, typeFilter]);
+
+  // Check if current user is manager (OWNER or MANAGER role)
+  const isMgr = user ? members.some(m => m.user_id === user.id && (m.role === 'OWNER' || m.role === 'MANAGER')) || members.length === 0 : false;
+
+  // Check if current user can drag this specific task
+  const canDrag = (task: Task): boolean => {
+    if (!user) return false;
+    if (isMgr) return true;
+    if (task.assignee_id === user.id) return true;
+    if (task.reviewer_id === user.id) return true;
+    if (task.reviewer_ids && task.reviewer_ids.includes(user.id)) return true;
+    return false;
+  };
 
   const statusColDefs: { key: string; title: string; icon?: string }[] = [
     { key: 'TODO', title: '待办' },
@@ -239,7 +274,7 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
     { key: 'IN_REVIEW', title: '待 Review' },
     { key: 'DONE', title: '已完成' },
   ];
-  const phaseColDefs: { key: string; title: string; icon?: string; deliverables: string }[] = [
+  const allPhaseColDefs: { key: string; title: string; icon?: string; deliverables: string }[] = [
     { key: 'REQUIREMENTS', title: '需求分析', icon: '📋', deliverables: 'PRD文档、用户故事列表、需求评审结论' },
     { key: 'DESIGN', title: '方案设计', icon: '🎨', deliverables: '技术方案文档、UI设计稿、API接口定义' },
     { key: 'DEVELOPMENT', title: '开发实现', icon: '💻', deliverables: '代码、单元测试、Code Review通过' },
@@ -247,6 +282,14 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
     { key: 'RELEASE', title: '发布上线', icon: '🚀', deliverables: '发布说明、部署checklist、线上验证' },
     { key: 'ACCEPTANCE', title: '验收交付', icon: '✅', deliverables: '验收报告、用户反馈、干系人签字' },
   ];
+
+  // Filter phase columns based on task type
+  const typePhaseMap: Record<string, string[]> = {
+    'STORY': ['REQUIREMENTS', 'DESIGN', 'DEVELOPMENT', 'TESTING', 'RELEASE', 'ACCEPTANCE'],
+    'TASK': ['DEVELOPMENT', 'TESTING', 'RELEASE'],
+    'BUG': ['DEVELOPMENT', 'TESTING'],
+  };
+  const phaseColDefs = allPhaseColDefs.filter(c => (typePhaseMap[typeFilter] || typePhaseMap['']).includes(c.key));
   const colDefs = isFull ? phaseColDefs : statusColDefs;
 
   // Status colors for cards within a phase column
@@ -266,25 +309,74 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
     e.dataTransfer.setData('fromKey', colKey);
   };
 
-  const [gateOpen, setGateOpen] = useState<string | null>(null); // phase key
+  const [gateOpen, setGateOpen] = useState<string | null>(null);
   const [gateNote, setGateNote] = useState('');
+  const [dragError, setDragError] = useState('');
+
+  const statusCycle: Record<string, string> = { TODO: 'IN_PROGRESS', IN_PROGRESS: 'IN_REVIEW', IN_REVIEW: 'DONE', DONE: 'TODO' };
+  const statusQuickLabel: Record<string, string> = { TODO: '待办', IN_PROGRESS: '进行中', IN_REVIEW: '审核中', DONE: '已完成' };
+
+  const handleStatusQuick = async (e: React.MouseEvent, task: Task) => {
+    e.stopPropagation();
+    if (!wsId) return;
+    // Non-managers can't reopen DONE tasks
+    if (task.status === 'DONE' && !isMgr) {
+      setDragError('只有项目负责人可以重新打开已完成任务');
+      setTimeout(() => setDragError(''), 3000);
+      return;
+    }
+    const nextStatus = statusCycle[task.status] || 'TODO';
+    try {
+      await update(wsId, task.id, { status: nextStatus } as any);
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || '状态变更失败';
+      setDragError(msg);
+      setTimeout(() => setDragError(''), 3000);
+    }
+  };
 
   const handleDrop = async (colKey: string, e: React.DragEvent) => {
     e.preventDefault();
+    setDragError('');
     const taskId = e.dataTransfer.getData('taskId');
     const fromKey = e.dataTransfer.getData('fromKey');
-    if (!taskId || !wsId || fromKey === colKey) return;
-    if (isFull) {
-      // Strict: only allow dragging to the NEXT phase, and task must be DONE
-      const phaseIdx = phaseColDefs.findIndex(p => p.key === fromKey);
-      const targetIdx = phaseColDefs.findIndex(p => p.key === colKey);
-      if (targetIdx !== phaseIdx + 1) return; // Only allow next phase
-      // Advance via API with gate check
+    if (!taskId || !wsId) return;
+
+    // Same column: cycle status (in phase kanban) or reorder (in status kanban)
+    if (fromKey === colKey) {
+      if (!isFull) return; // status kanban: reorder only, no-op for now
+      // Phase kanban: drag within same column → cycle to next status
+      const task = Object.values(kanban).flat().find(t => t.id === taskId);
+      if (!task) return;
+      if (task.status === 'DONE' && !isMgr) {
+        setDragError('只有项目负责人可以重新打开已完成任务');
+        setTimeout(() => setDragError(''), 3000);
+        return;
+      }
+      const nextStatus = statusCycle[task.status] || 'TODO';
       try {
+        await update(wsId, taskId, { status: nextStatus } as any);
+      } catch (err: any) {
+        const msg = err?.response?.data?.message || '状态变更失败';
+        setDragError(msg);
+        setTimeout(() => setDragError(''), 3000);
+      }
+      return;
+    }
+
+    try {
+      if (isFull) {
+        const phaseIdx = phaseColDefs.findIndex(p => p.key === fromKey);
+        const targetIdx = phaseColDefs.findIndex(p => p.key === colKey);
+        if (targetIdx !== phaseIdx + 1) { setDragError('只能拖拽到下一阶段'); return; }
         await advancePhase(wsId, taskId, '通过拖拽推进阶段');
-      } catch { return; }
-    } else {
-      await moveTask(wsId, taskId, colKey, 0);
+      } else {
+        await moveTask(wsId, taskId, colKey, 0);
+      }
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || '操作失败：没有权限或状态不正确';
+      setDragError(msg);
+      setTimeout(() => setDragError(''), 4000);
     }
   };
 
@@ -317,6 +409,19 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
 
   return (
     <div>
+      {/* Drag error toast */}
+      {dragError && (
+        <div style={{
+          position: 'fixed', top: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 2000,
+          background: 'var(--red-500)', color: '#fff', padding: '8px 20px',
+          borderRadius: 'var(--radius-md)', fontSize: '0.78rem', fontWeight: 500,
+          boxShadow: '0 4px 16px rgba(239,68,68,0.3)',
+          animation: 'fadeInDown 0.25s ease',
+        }}>
+          ⚠ {dragError}
+        </div>
+      )}
+
       {/* Batch bar */}
       <div className={`batch-bar${selected.size > 0 ? ' visible' : ''}`}>
         <span className="batch-count">已选 {selected.size} 项</span>
@@ -350,6 +455,27 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
         )}
         <button onClick={() => { setSelected(new Set()); setBatchAction(null); }}>✕</button>
       </div>
+
+      {/* Type filter */}
+      {isFull && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center' }}>
+          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500 }}>类型:</span>
+          {[
+            { key: 'STORY', label: 'Story', icon: '📋' },
+            { key: 'TASK', label: 'Task', icon: '✅' },
+            { key: 'BUG', label: 'Bug', icon: '🐛' },
+          ].map(f => (
+            <button
+              key={f.key}
+              className={`btn btn-xs ${typeFilter === f.key ? 'btn-primary' : 'btn-ghost'}`}
+              style={{ fontSize: '0.66rem', padding: '2px 10px' }}
+              onClick={() => setTypeFilter(f.key)}
+            >
+              {f.icon} {f.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{
         display: 'grid',
@@ -402,24 +528,50 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
             </div>
             {(kanban[col.key] || []).filter((t: Task) => !milestoneFilter || t.milestone_id === milestoneFilter).map((task: Task) => {
                 const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'DONE';
+                const typeIcon = { EPIC: '🎯', STORY: '📋', TASK: '✅', BUG: '🐛', SUB_TASK: '📌', SPIKE: '🔬' }[task.task_type] || '📄';
+                const typeCls = task.task_type === 'STORY' ? 'story' : task.task_type === 'BUG' ? 'bug' : task.task_type === 'SPIKE' ? 'spike' : 'task';
                 return (
               <div
                 key={task.id}
-                className={`kanban-card${selected.has(task.id) ? ' selected' : ''}${isOverdue ? ' overdue' : ''}`}
+                className={`kanban-card type-${typeCls}${selected.has(task.id) ? ' selected' : ''}${isOverdue ? ' overdue' : ''}${!canDrag(task) ? ' locked' : ''}`}
+                title={task.title}
                 onClick={(e) => { if (e.shiftKey) toggleSelect(task.id); else onEditTask(task); }}
-                draggable
-                onDragStart={(e) => handleDragStart(e, task.id, isFull ? task.phase : task.status)}
-                style={isFull ? { padding: '6px 8px', fontSize: '0.72rem', marginBottom: 4 } : {}}
+                draggable={canDrag(task)}
+                onDragStart={(e) => { if (!canDrag(task)) { e.preventDefault(); return; } handleDragStart(e, task.id, isFull ? task.phase : task.status); }}
               >
-                <div className="card-title" style={isFull ? { fontSize: '0.72rem', marginBottom: 2 } : {}}>{task.title}</div>
-                <div className="card-meta" style={isFull ? { gap: 4, flexWrap: 'wrap' } : {}}>
-                  {isFull && <span className="badge" style={{ fontSize: '0.55rem', padding: '0 4px', background: statusBadge[task.status]?.bg || 'var(--bg-hover)', color: 'var(--text-secondary)' }}>{statusBadge[task.status]?.label || task.status}</span>}
-                  {!isFull && <span className="badge badge-blue" style={{ fontSize: '0.6rem' }}>{task.task_type}</span>}
-                  {task.priority === 'CRITICAL' && <span style={{ fontSize: '0.6rem', color: 'var(--red-600)' }}>紧急</span>}
-                  {isOverdue && <span style={{ fontSize: '0.6rem', color: 'var(--red-500)' }}>逾期</span>}
-                  {task.due_date && <span style={{ fontSize: '0.58rem', color: isOverdue ? 'var(--red-500)' : 'var(--text-muted)' }}>📅 {task.due_date}</span>}
-                  {task.assignee_name && <span style={isFull ? { fontSize: '0.6rem', maxWidth: 60, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}}>{task.assignee_name}</span>}
+                {isFull && (
+                  <span className={`card-type-badge ${typeCls}`}>{typeIcon} {task.task_type}</span>
+                )}
+                <div className="card-title">{task.title}</div>
+                <div className="card-meta">
+                  <button
+                    className="card-status-btn"
+                    title={`点击切换: ${statusBadge[task.status]?.label} → ${statusQuickLabel[statusCycle[task.status]]}`}
+                    onClick={(e) => handleStatusQuick(e, task)}
+                    style={{
+                      fontSize: '0.55rem', padding: '1px 5px', border: 'none', borderRadius: 3,
+                      cursor: 'pointer', fontWeight: 500,
+                      background: statusBadge[task.status]?.bg || 'var(--bg-hover)',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >{statusBadge[task.status]?.label || task.status}</button>
+                  {task.priority === 'CRITICAL' && <span style={{ color: 'var(--red-600)', fontWeight: 500 }}>紧急</span>}
+                  {task.priority === 'HIGH' && <span style={{ color: 'var(--amber-600)' }}>高</span>}
+                  {isOverdue && <span style={{ color: 'var(--red-500)' }}>⚠ 逾期</span>}
+                  {task.assignee_name && (
+                    <span style={{ maxWidth: 55, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={task.assignee_name}>
+                      {task.assignee_name}
+                    </span>
+                  )}
+                  {task.children_count > 0 && (
+                    <span style={{ color: 'var(--blue-500)', fontWeight: 500 }}>{task.children_count} 子</span>
+                  )}
                 </div>
+                {task.due_date && (
+                  <div style={{ fontSize: '0.58rem', color: isOverdue ? 'var(--red-500)' : 'var(--text-muted)', marginTop: 3 }}>
+                    📅 {task.due_date}
+                  </div>
+                )}
               </div>
                 );
             })}
@@ -1189,8 +1341,18 @@ export default function WorkspaceDetailPage() {
   const wsType = current?.type || 'PROJECT';
   const isFull = wsType === 'PROJECT';
   const isLight = wsType === 'OTHER';
+  const allMilestones = useMilestoneStore((s) => s.milestones);
+  const allIterations = useIterationStore((s) => s.iterations);
+  const membersRaw = useWorkspaceStore((s) => s.members);
+  const allMembers = membersRaw.filter((m) => m.role !== 'AI_AGENT');
+  const allReviewers = allMembers.filter((m) => m.role !== 'VIEWER');
 
-  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; phase: string; iteration_id?: string; milestone_id: string; assignee_id?: string; reviewer_id?: string; parent_id?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', phase: 'REQUIREMENTS', milestone_id: '' });
+  const getDefaultPhase = (ttype: string) => {
+    if (ttype === 'STORY') return 'REQUIREMENTS';
+    if (ttype === 'BUG') return 'DEVELOPMENT';
+    return 'DEVELOPMENT';
+  };
+  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; phase: string; iteration_id?: string; milestone_id: string; assignee_id?: string; reviewer_id?: string; proposer_id?: string; analyst_id?: string; qa_owner_id?: string; verifier_id?: string; parent_id?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', phase: 'DEVELOPMENT', milestone_id: '' });
   const [stories, setStories] = useState<Task[]>([]);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -1200,6 +1362,9 @@ export default function WorkspaceDetailPage() {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
+  const [detailTab, setDetailTab] = useState<'info' | 'related'>('info');
+  const [relatedTasks, setRelatedTasks] = useState<Task[]>([]);
+  const [parentStory, setParentStory] = useState<Task | null>(null);
 
   const fetchComments = async (taskId: string) => {
     const res: any = await api.get(`/tasks/${taskId}/comments`);
@@ -1213,14 +1378,8 @@ export default function WorkspaceDetailPage() {
     } catch { setActivityLogs([]); }
   };
 
-  // Auto-select first active milestone on load
+  // Default to showing all tasks (empty string = no filter)
   const milestones = useMilestoneStore((s) => s.milestones);
-  useEffect(() => {
-    if (!selectedMilestone && milestones.length > 0) {
-      const active = milestones.find((m) => m.status === 'ACTIVE') || milestones.find((m) => m.status === 'UPCOMING') || milestones[0];
-      setSelectedMilestone(active.id);
-    }
-  }, [milestones]);
 
   const openTaskPanel = async (status?: string, task?: Task, parentStoryId?: string, defaultPhase?: string) => {
     // Fetch available stories for parent selection
@@ -1231,17 +1390,39 @@ export default function WorkspaceDetailPage() {
     }
     if (task) {
       setEditingTask(task);
-      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'REQUIREMENTS', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, reviewer_id: task.reviewer_id || undefined, parent_id: task.parent_id || undefined });
+      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'REQUIREMENTS', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, reviewer_id: task.reviewer_id || undefined, proposer_id: task.proposer_id || undefined, analyst_id: task.analyst_id || undefined, qa_owner_id: task.qa_owner_id || undefined, verifier_id: task.verifier_id || undefined, parent_id: task.parent_id || undefined });
       fetchComments(task.id);
       fetchActivity(task.id);
+      fetchRelations(task);
+      setDetailTab('info');
     } else {
       setEditingTask(null);
       setComments([]);
       setActivityLogs([]);
-      setTaskForm({ title: '', description: '', task_type: isLight ? 'TASK' : 'TASK', priority: 'MEDIUM', status: status || 'TODO', phase: defaultPhase || 'REQUIREMENTS', iteration_id: undefined, milestone_id: isLight ? '' : selectedMilestone, assignee_id: undefined, reviewer_id: undefined, parent_id: parentStoryId || undefined });
+      setTaskForm({ title: '', description: '', task_type: isLight ? 'TASK' : 'TASK', priority: 'MEDIUM', status: status || 'TODO', phase: getDefaultPhase(isLight ? 'TASK' : 'TASK'), iteration_id: undefined, milestone_id: isLight ? '' : selectedMilestone, assignee_id: undefined, reviewer_id: undefined, proposer_id: undefined, analyst_id: undefined, qa_owner_id: undefined, verifier_id: undefined, parent_id: parentStoryId || undefined });
     }
     setShowDelete(false);
     setTaskPanelOpen(true);
+  };
+
+  const fetchRelations = async (task: Task) => {
+    if (!id) return;
+    setRelatedTasks([]);
+    setParentStory(null);
+    // Story: fetch children (tasks + bugs)
+    if (task.task_type === 'STORY') {
+      try {
+        const res: any = await api.get(`/workspaces/${id}/tasks`, { params: { parent_id: task.id, page_size: 100 } });
+        setRelatedTasks(res.data || []);
+      } catch { setRelatedTasks([]); }
+    }
+    // Task/Bug/SubTask: fetch parent story
+    if ((task.task_type === 'TASK' || task.task_type === 'BUG' || task.task_type === 'SUB_TASK') && task.parent_id) {
+      try {
+        const parentRes: any = await api.get(`/workspaces/${id}/tasks/${task.parent_id}`);
+        setParentStory(parentRes.data || null);
+      } catch { setParentStory(null); }
+    }
   };
 
   const openMilestoneEdit = (ms: any) => {
@@ -1264,7 +1445,6 @@ export default function WorkspaceDetailPage() {
 
   const submitTask = async () => {
     if (!id || !taskForm.title.trim()) return;
-    if (!isLight && !taskForm.milestone_id) return;
     setTaskSubmitting(true);
     try {
       if (editingTask) {
@@ -1298,7 +1478,6 @@ export default function WorkspaceDetailPage() {
   const tabs = isFull
     ? [
         { key: 'tasks', label: '任务看板' },
-        { key: 'epics', label: '需求' },
         { key: 'kb', label: '知识库' },
         { key: 'iterations', label: '迭代' },
         { key: 'members', label: '成员' },
@@ -1447,6 +1626,158 @@ export default function WorkspaceDetailPage() {
         onClose={() => setTaskPanelOpen(false)}
         title={editingTask ? '编辑任务' : '新建任务'}
       >
+        {/* Permission indicator — edit mode */}
+        {editingTask && editingTask.permissions && (
+          <div style={{ marginBottom: 12, padding: '6px 10px', background:
+            editingTask.permissions.role === 'manager' ? 'var(--blue-50)' :
+            editingTask.permissions.role === 'assignee' ? 'var(--green-50)' :
+            editingTask.permissions.role === 'reviewer' ? 'var(--amber-50)' :
+            'var(--bg-raised)',
+            borderRadius: 'var(--radius-sm)', fontSize: '0.68rem', border: '1px solid',
+            borderColor:
+            editingTask.permissions.role === 'manager' ? 'var(--blue-200)' :
+            editingTask.permissions.role === 'assignee' ? 'var(--green-200)' :
+            editingTask.permissions.role === 'reviewer' ? 'var(--amber-200)' :
+            'var(--border-light)',
+          }}>
+            {editingTask.permissions.role === 'manager' && '🔑 你是项目负责人，拥有全部编辑权限'}
+            {editingTask.permissions.role === 'assignee' && '✅ 你是此任务负责人，可以编辑内容和推进状态'}
+            {editingTask.permissions.role === 'reviewer' && '👀 你是此任务审核人，可以审核通过或打回'}
+            {editingTask.permissions.role === 'member' && 'ℹ️ 你只能查看此任务'}
+          </div>
+        )}
+
+        {/* Tabs: Info / Related */}
+        {editingTask && (
+          <div style={{ display: 'flex', gap: 0, marginBottom: 16, borderBottom: '1px solid var(--border)' }}>
+            <button
+              onClick={() => setDetailTab('info')}
+              style={{
+                padding: '6px 16px', fontSize: '0.76rem', fontWeight: detailTab === 'info' ? 600 : 400,
+                border: 'none', background: 'none', borderBottom: detailTab === 'info' ? '2px solid var(--blue-500)' : '2px solid transparent',
+                color: detailTab === 'info' ? 'var(--blue-600)' : 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >📋 基本信息</button>
+            {editingTask.task_type === 'STORY' && (
+              <button
+                onClick={() => setDetailTab('related')}
+                style={{
+                  padding: '6px 16px', fontSize: '0.76rem', fontWeight: detailTab === 'related' ? 600 : 400,
+                  border: 'none', background: 'none', borderBottom: detailTab === 'related' ? '2px solid var(--blue-500)' : '2px solid transparent',
+                  color: detailTab === 'related' ? 'var(--blue-600)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >🔗 关联任务 ({relatedTasks.length})</button>
+            )}
+            {(editingTask.task_type === 'TASK' || editingTask.task_type === 'BUG' || editingTask.task_type === 'SUB_TASK') && editingTask.parent_id && (
+              <button
+                onClick={() => setDetailTab('related')}
+                style={{
+                  padding: '6px 16px', fontSize: '0.76rem', fontWeight: detailTab === 'related' ? 600 : 400,
+                  border: 'none', background: 'none', borderBottom: detailTab === 'related' ? '2px solid var(--blue-500)' : '2px solid transparent',
+                  color: detailTab === 'related' ? 'var(--blue-600)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >🔗 关联需求</button>
+            )}
+          </div>
+        )}
+
+        {/* Related Tab Content */}
+        {editingTask && detailTab === 'related' && (
+          <div style={{ marginBottom: 16 }}>
+            {/* Story → children */}
+            {editingTask.task_type === 'STORY' && (
+              <div>
+                {relatedTasks.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem', padding: 20 }}>
+                    暂无关联任务。Story 负责人可以在此拆分子任务。
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {relatedTasks.map((child: Task) => {
+                      const stIcon: Record<string, string> = { EPIC: '🎯', STORY: '📋', TASK: '✅', BUG: '🐛', SUB_TASK: '📌', SPIKE: '🔬' };
+                      const iconEmoji = stIcon[child.task_type] || '📄';
+                      const stCls = child.task_type === 'BUG' ? 'bug' : 'task';
+                      const stLabel = STATUS_LABELS[child.status] || child.status;
+                      return (
+                        <div
+                          key={child.id}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                            background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)',
+                            border: '1px solid var(--border-light)', cursor: 'pointer', fontSize: '0.76rem',
+                          }}
+                          onClick={async () => {
+                            const detail = await useTaskStore.getState().fetchDetail(id!, child.id);
+                            const t = useTaskStore.getState().current;
+                            if (t) {
+                              setEditingTask(t);
+                              setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'REQUIREMENTS', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined });
+                              fetchComments(t.id);
+                              fetchActivity(t.id);
+                              fetchRelations(t);
+                            }
+                          }}
+                        >
+                          <span style={{ fontSize: '0.9rem' }}>{iconEmoji}</span>
+                          <span className={`card-type-badge ${stCls}`} style={{ marginBottom: 0 }}>{child.task_type}</span>
+                          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{child.title}</span>
+                          <span className="badge" style={{ fontSize: '0.6rem', background: 'var(--bg-surface)' }}>{stLabel}</span>
+                          {child.assignee_name && <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>{child.assignee_name}</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Task/Bug/SubTask → parent Story */}
+            {(editingTask.task_type === 'TASK' || editingTask.task_type === 'BUG' || editingTask.task_type === 'SUB_TASK') && (
+              <div>
+                {parentStory ? (
+                  <div
+                    style={{
+                      padding: '12px 14px', background: 'var(--bg-raised)', borderRadius: 'var(--radius-md)',
+                      border: '1px solid var(--border-light)', cursor: 'pointer',
+                    }}
+                    onClick={async () => {
+                      const detail = await useTaskStore.getState().fetchDetail(id!, parentStory.id);
+                      const t = useTaskStore.getState().current;
+                      if (t) {
+                        setEditingTask(t);
+                        setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'REQUIREMENTS', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined });
+                        fetchComments(t.id);
+                        fetchActivity(t.id);
+                        fetchRelations(t);
+                      }
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: '1rem' }}>📋</span>
+                      <span className="card-type-badge story">STORY</span>
+                      <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{parentStory.title}</span>
+                    </div>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', gap: 12 }}>
+                      <span>状态: {STATUS_LABELS[parentStory.status]}</span>
+                      <span>阶段: {PHASE_LABELS[parentStory.phase]}</span>
+                      {parentStory.assignee_name && <span>负责人: {parentStory.assignee_name}</span>}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem', padding: 20 }}>
+                    未关联到父需求
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {(!editingTask || detailTab === 'info') && (
+        <div>
         <div className="form-group">
           <label>任务名称</label>
           <input
@@ -1504,8 +1835,8 @@ export default function WorkspaceDetailPage() {
               value={taskForm.milestone_id || ''}
               onChange={(e) => setTaskForm((f) => ({ ...f, milestone_id: e.target.value }))}
             >
-              {isLight && <option value="">无（事务不关联里程碑）</option>}
-              {useMilestoneStore.getState().milestones.map((m) => (
+              <option value="">不关联里程碑</option>
+              {allMilestones.map((m: Milestone) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
             </select>
@@ -1518,7 +1849,7 @@ export default function WorkspaceDetailPage() {
               onChange={(e) => setTaskForm((f: any) => ({ ...f, iteration_id: e.target.value || undefined }))}
             >
               <option value="">无</option>
-              {useIterationStore.getState().iterations.map((it) => (
+              {allIterations.map((it) => (
                 <option key={it.id} value={it.id}>{it.name}</option>
               ))}
             </select>
@@ -1551,9 +1882,7 @@ export default function WorkspaceDetailPage() {
             onChange={(e) => setTaskForm((f) => ({ ...f, assignee_id: e.target.value || undefined }))}
           >
             <option value="">不指派</option>
-            {useWorkspaceStore.getState().members
-              .filter((m) => m.role !== 'AI_AGENT')
-              .map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+            {allMembers.map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
           </select>
         </div>
         {isFull && (
@@ -1565,17 +1894,82 @@ export default function WorkspaceDetailPage() {
               onChange={(e) => setTaskForm((f) => ({ ...f, reviewer_id: e.target.value || undefined }))}
             >
               <option value="">不限（由项目负责人审核）</option>
-              {useWorkspaceStore.getState().members
-                .filter((m) => m.role !== 'AI_AGENT' && m.role !== 'VIEWER')
-                .map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+              {allReviewers.map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
             </select>
           </div>
+        )}
+        {/* Story-specific roles */}
+        {isFull && taskForm.task_type === 'STORY' && (
+          <>
+            <div className="form-row">
+              <div className="form-group">
+                <label>提出人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（需求发起者）</span></label>
+                <select
+                  style={{ width: '100%' }}
+                  value={taskForm.proposer_id || ''}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, proposer_id: e.target.value || undefined }))}
+                >
+                  <option value="">未指定</option>
+                  {allMembers.map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>需求分析师 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（分析+PRD）</span></label>
+                <select
+                  style={{ width: '100%' }}
+                  value={taskForm.analyst_id || ''}
+                  onChange={(e) => setTaskForm((f) => ({ ...f, analyst_id: e.target.value || undefined }))}
+                >
+                  <option value="">未指定</option>
+                  {allMembers.map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-group">
+              <label>测试负责人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（测试验证阶段推进）</span></label>
+              <select
+                style={{ width: '100%' }}
+                value={taskForm.qa_owner_id || ''}
+                onChange={(e) => setTaskForm((f) => ({ ...f, qa_owner_id: e.target.value || undefined }))}
+              >
+                <option value="">未指定</option>
+                {allMembers.map((m: WorkspaceMember) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+              </select>
+            </div>
+          </>
+        )}
+        {/* Bug-specific roles */}
+        {taskForm.task_type === 'BUG' && (
+          <>
+            <div className="form-group">
+              <label>发现人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（Bug 提交者）</span></label>
+              <select
+                style={{ width: '100%' }}
+                value={taskForm.proposer_id || ''}
+                onChange={(e) => setTaskForm((f) => ({ ...f, proposer_id: e.target.value || undefined }))}
+              >
+                <option value="">未指定</option>
+                {allMembers.map((m: WorkspaceMember) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>验证人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（验证修复+关闭）</span></label>
+              <select
+                style={{ width: '100%' }}
+                value={taskForm.verifier_id || ''}
+                onChange={(e) => setTaskForm((f) => ({ ...f, verifier_id: e.target.value || undefined }))}
+              >
+                <option value="">未指定</option>
+                {allMembers.map((m: WorkspaceMember) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+              </select>
+            </div>
+          </>
         )}
         <div className="form-actions">
           <button className="btn btn-ghost" onClick={() => setTaskPanelOpen(false)}>取消</button>
           <button
             className="btn btn-primary"
-            disabled={taskSubmitting || !taskForm.title.trim() || (!isLight && !taskForm.milestone_id)}
+            disabled={taskSubmitting || !taskForm.title.trim()}
             onClick={submitTask}
           >
             {taskSubmitting ? '保存中...' : editingTask ? '保存' : '创建任务'}
@@ -1722,6 +2116,8 @@ export default function WorkspaceDetailPage() {
             </div>
           </div>
         )}
+        </div>
+        )}
       </SlidePanel>
 
       {/* Milestone Edit Panel */}
@@ -1742,7 +2138,7 @@ export default function WorkspaceDetailPage() {
           <label>负责人</label>
           <select value={msEditForm.owner_id} onChange={(e) => setMsEditForm((f) => ({ ...f, owner_id: e.target.value }))}>
             <option value="">未指定</option>
-            {useWorkspaceStore.getState().members.map((m) => (
+            {membersRaw.map((m: WorkspaceMember) => (
               <option key={m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>
             ))}
           </select>

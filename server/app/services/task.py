@@ -20,7 +20,13 @@ async def create_task(db: AsyncSession, workspace_id: str, **kwargs) -> Task:
 
 async def get_task(db: AsyncSession, task_id: str) -> Optional[Task]:
     result = await db.execute(
-        select(Task).where(Task.id == task_id).options(selectinload(Task.assignee), selectinload(Task.reviewer), selectinload(Task.milestone))
+        select(Task).where(Task.id == task_id).options(
+            selectinload(Task.assignee), selectinload(Task.reviewer),
+            selectinload(Task.milestone),
+            selectinload(Task.proposer), selectinload(Task.analyst),
+            selectinload(Task.qa_owner), selectinload(Task.verifier),
+            selectinload(Task.parent),
+        )
     )
     return result.scalar_one_or_none()
 
@@ -136,15 +142,39 @@ async def get_epics(db: AsyncSession, workspace_id: str) -> list[dict]:
     return data
 
 
-async def get_kanban(db: AsyncSession, workspace_id: str, group_by: str = "status") -> dict:
-    result = await db.execute(
-        select(Task).where(Task.workspace_id == workspace_id)
-        .order_by(Task.sort_order).options(selectinload(Task.assignee), selectinload(Task.milestone))
-    )
+# Phase definitions per task type
+STORY_PHASES = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE", "ACCEPTANCE"]
+TASK_PHASES = ["DEVELOPMENT", "TESTING", "RELEASE"]
+BUG_PHASES = ["DEVELOPMENT", "TESTING"]
+
+def get_phases_for_type(task_type: Optional[str] = None) -> list[str]:
+    """Return phase list based on task type, or merged list for all types."""
+    if task_type == "STORY":
+        return STORY_PHASES
+    elif task_type == "TASK" or task_type == "SUB_TASK":
+        return TASK_PHASES
+    elif task_type == "BUG":
+        return BUG_PHASES
+    # All types: merge and deduplicate in order
+    seen = set()
+    merged = []
+    for p in STORY_PHASES + TASK_PHASES + BUG_PHASES:
+        if p not in seen:
+            seen.add(p)
+            merged.append(p)
+    return merged
+
+
+async def get_kanban(db: AsyncSession, workspace_id: str, group_by: str = "status", task_type: Optional[str] = None) -> dict:
+    query = select(Task).where(Task.workspace_id == workspace_id)
+    if task_type:
+        query = query.where(Task.task_type == task_type)
+    query = query.order_by(Task.sort_order).options(selectinload(Task.assignee), selectinload(Task.milestone))
+    result = await db.execute(query)
     all_tasks = result.scalars().all()
 
     if group_by == "phase":
-        phases = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE", "ACCEPTANCE"]
+        phases = get_phases_for_type(task_type)
         return {p: [_task_to_dict(t) for t in all_tasks if t.phase == p] for p in phases}
     else:
         columns = {}
@@ -173,11 +203,35 @@ async def get_child_count(db: AsyncSession, task_id: str) -> int:
 
 
 def _task_to_dict(task: Task) -> dict:
-    from sqlalchemy import inspect
-    insp = inspect(task)
-    milestone_name = None
-    if 'milestone' not in insp.unloaded and task.milestone:
-        milestone_name = task.milestone.name
+    # Safely access relationships that may not be eagerly loaded
+    try:
+        milestone_name = task.milestone.name if task.milestone else None
+    except Exception:
+        milestone_name = None
+    try:
+        assignee_name = task.assignee.display_name if task.assignee else None
+    except Exception:
+        assignee_name = None
+    try:
+        reviewer_name = task.reviewer.display_name if task.reviewer else None
+    except Exception:
+        reviewer_name = None
+    try:
+        proposer_name = task.proposer.display_name if task.proposer else None
+    except Exception:
+        proposer_name = None
+    try:
+        analyst_name = task.analyst.display_name if task.analyst else None
+    except Exception:
+        analyst_name = None
+    try:
+        qa_owner_name = task.qa_owner.display_name if task.qa_owner else None
+    except Exception:
+        qa_owner_name = None
+    try:
+        verifier_name = task.verifier.display_name if task.verifier else None
+    except Exception:
+        verifier_name = None
 
     return {
         "id": task.id, "workspace_id": task.workspace_id,
@@ -188,9 +242,18 @@ def _task_to_dict(task: Task) -> dict:
         "title": task.title, "description": task.description,
         "status": task.status, "phase": task.phase, "priority": task.priority,
         "severity": task.severity, "assignee_id": task.assignee_id,
-        "assignee_name": task.assignee.display_name if task.assignee else None,
+        "assignee_name": assignee_name,
         "reviewer_id": task.reviewer_id,
-        "reviewer_name": task.reviewer.display_name if task.reviewer else None,
+        "reviewer_name": reviewer_name,
+        "proposer_id": task.proposer_id,
+        "proposer_name": proposer_name,
+        "analyst_id": task.analyst_id,
+        "analyst_name": analyst_name,
+        "qa_owner_id": task.qa_owner_id,
+        "qa_owner_name": qa_owner_name,
+        "verifier_id": task.verifier_id,
+        "verifier_name": verifier_name,
+        "reviewer_ids": task.reviewer_ids or [],
         "estimation": task.estimation, "estimation_unit": task.estimation_unit,
         "sort_order": task.sort_order,
         "due_date": task.due_date.isoformat() if task.due_date else None,
