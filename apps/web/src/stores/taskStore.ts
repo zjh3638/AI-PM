@@ -12,12 +12,16 @@ interface TaskState {
   epics: Epic[];
   kanban: Record<string, Task[]>;
   kanbanGroupBy: string;
+  backlog: Task[];
+  backlogLoading: boolean;
 
   fetchList: (wsId: string, params?: Record<string, any>) => Promise<void>;
   fetchDetail: (wsId: string, taskId: string) => Promise<void>;
   fetchChildren: (wsId: string, taskId: string) => Promise<void>;
   fetchEpics: (wsId: string) => Promise<void>;
   fetchKanban: (wsId: string, groupBy?: string, taskType?: string) => Promise<void>;
+  fetchBacklog: (wsId: string) => Promise<void>;
+  planStory: (wsId: string, storyId: string, iterationId: string) => Promise<void>;
   fetchPermissions: (wsId: string, taskId: string) => Promise<TaskPermissions>;
   create: (wsId: string, data: Partial<Task>) => Promise<Task>;
   update: (wsId: string, taskId: string, data: Partial<Task>) => Promise<void>;
@@ -37,6 +41,20 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   epics: [],
   kanban: {},
   kanbanGroupBy: 'status',
+  backlog: [],
+  backlogLoading: false,
+
+  fetchBacklog: async (wsId) => {
+    set({ backlogLoading: true });
+    const result = await api.get(`/workspaces/${wsId}/backlog`);
+    set({ backlog: result.data, backlogLoading: false });
+  },
+
+  planStory: async (wsId, storyId, iterationId) => {
+    await api.patch(`/workspaces/${wsId}/backlog/${storyId}/plan`, { iteration_id: iterationId });
+    await get().fetchBacklog(wsId);
+    await get().fetchKanban(wsId, get().kanbanGroupBy);
+  },
 
   fetchList: async (wsId, params = {}) => {
     set({ loading: true });
@@ -76,6 +94,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const result = await api.post(`/workspaces/${wsId}/tasks`, payload);
     await get().fetchKanban(wsId, get().kanbanGroupBy);
     await get().fetchList(wsId);
+    if (payload.task_type === 'STORY') await get().fetchBacklog(wsId);
     return result.data;
   },
 

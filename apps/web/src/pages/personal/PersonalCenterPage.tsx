@@ -119,7 +119,7 @@ export default function PersonalCenterPage() {
                     <div className="ri-title">{t.title}</div>
                     <div className="ri-meta">
                       {t.phase && <span className="badge badge-blue" style={{ marginRight: 6, fontSize: '0.62rem' }}>{t.phase === 'REQUIREMENTS' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : '发布'}</span>}
-                      {t.milestone_name && <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginRight: 6 }}>{t.milestone_name}</span>}
+                      {(t.milestone_name || t.iteration_name) && <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginRight: 6 }}>{t.milestone_name || t.iteration_name}</span>}
                       {t.assignee_name || '未分配'}
                     </div>
                   </div>

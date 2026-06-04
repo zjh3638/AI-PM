@@ -1,7 +1,9 @@
-"""Seed initial data: admin user, default department, roles, workspace with milestones."""
+"""Seed initial data: admin user, default department, roles, two workspace types."""
 import asyncio
 import sys
 sys.path.insert(0, ".")
+
+from datetime import date, timedelta
 
 from app.database import engine, async_session, Base
 from app.models.user import User
@@ -10,6 +12,7 @@ from app.models.role import Role
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.models.milestone import Milestone
+from app.models.iteration import Iteration
 from app.models.task import Task
 from app.security import hash_password
 
@@ -43,8 +46,8 @@ async def seed():
 
         await db.flush()
 
-        # Create a demo workspace
-        ws = Workspace(
+        # ═══ Workspace 1: R&D project (PROJECT type) — iterations only, no milestones ═══
+        ws_rd = Workspace(
             name="AI-PM 平台开发",
             key="AI-PM-PLATFORM",
             description="AI 驱动的项目管理平台研发",
@@ -52,63 +55,146 @@ async def seed():
             status="ACTIVE",
             visibility="PRIVATE",
         )
-        db.add(ws)
+        db.add(ws_rd)
         await db.flush()
 
-        # Add admin as owner
-        member = WorkspaceMember(workspace_id=ws.id, user_id=admin.id, role="OWNER")
+        member = WorkspaceMember(workspace_id=ws_rd.id, user_id=admin.id, role="OWNER")
         db.add(member)
 
-        # Create milestones
+        # Create iterations for R&D project
+        today = date.today()
+        iterations = []
+        iter_defs = [
+            ("Sprint 1", "核心框架搭建：用户认证、工作空间CRUD、RBAC权限", today + timedelta(days=-7), today + timedelta(days=7), 32),
+            ("Sprint 2", "任务看板、里程碑管理、6阶段SDLC门控", today + timedelta(days=8), today + timedelta(days=21), 40),
+            ("Sprint 3", "AI Agent 集成、知识库、附件上传", today + timedelta(days=22), today + timedelta(days=35), 36),
+        ]
+        for name, goal, start, end, cap in iter_defs:
+            it = Iteration(
+                workspace_id=ws_rd.id, name=name, goal=goal,
+                start_date=start, end_date=end, capacity_points=cap,
+                status="ACTIVE" if start <= today <= end else "PLANNING",
+            )
+            iterations.append(it)
+            db.add(it)
+        await db.flush()
+
+        # Backlog stories (unplanned, no iteration_id)
+        backlog_stories = [
+            ("AI Agent 需求分析自动生成", "利用 LLM 从自然语言描述自动生成 PRD 文档和用户故事", 5),
+            ("多语言国际化支持", "支持中英文双语界面切换，包括所有表单和错误提示", 8),
+        ]
+        backlog_s_ids = []
+        for title, desc, est in backlog_stories:
+            bs = Task(
+                workspace_id=ws_rd.id,
+                task_type="STORY", title=title, description=desc,
+                status="TODO", phase="REQUIREMENTS", priority="HIGH",
+                assignee_id=admin.id, proposer_id=admin.id, estimation=est,
+            )
+            backlog_s_ids.append(bs.id)
+            db.add(bs)
+        await db.flush()
+
+        # Create Story + Tasks under Sprint 1
+        story1 = Task(
+            workspace_id=ws_rd.id, iteration_id=iterations[0].id,
+            task_type="STORY", title="用户注册登录模块",
+            description="实现用户注册、登录、密码找回功能",
+            status="IN_PROGRESS", phase="DEVELOPMENT", priority="HIGH",
+            assignee_id=admin.id, proposer_id=admin.id,
+        )
+        db.add(story1)
+        await db.flush()
+
+        task_defs_rd = [
+            ("注册页面 UI", "设计注册表单页面并前端实现", 3, 2),
+            ("登录 API 接口", "实现JWT登录验证接口", 2, 3),
+            ("密码加密存储", "使用bcrypt加密存储用户密码", 2, 2),
+            ("Token 签发与验证", "实现JWT token签发和刷新逻辑", 3, 4),
+            ("找回密码邮件发送", "实现密码重置邮件发送功能", 2, 5),
+        ]
+        for i, (title, desc, est, days) in enumerate(task_defs_rd):
+            task = Task(
+                workspace_id=ws_rd.id, iteration_id=iterations[1].id,  # Sprint 2
+                parent_id=story1.id,
+                task_type="TASK", title=title, description=desc,
+                status="TODO", phase="DEVELOPMENT",
+                assignee_id=admin.id, sort_order=i,
+                estimation=est,
+                due_date=today + timedelta(days=days),
+            )
+            db.add(task)
+
+        bug1 = Task(
+            workspace_id=ws_rd.id, iteration_id=iterations[0].id,
+            task_type="BUG", title="登录页密码框明文显示",
+            description="密码输入时未做掩码处理",
+            status="TODO", phase="DEVELOPMENT", priority="CRITICAL",
+            proposer_id=admin.id, assignee_id=admin.id,
+            due_date=today + timedelta(days=1),
+        )
+        db.add(bug1)
+
+        await db.flush()
+
+        # ═══ Workspace 2: Topic project (TOPIC type) — milestones only, no iterations ═══
+        ws_topic = Workspace(
+            name="技术调研专项",
+            key="TECH-RESEARCH",
+            description="新技术预研、竞品分析、技术方案评审",
+            type="TOPIC",
+            status="ACTIVE",
+            visibility="PRIVATE",
+        )
+        db.add(ws_topic)
+        await db.flush()
+
+        member2 = WorkspaceMember(workspace_id=ws_topic.id, user_id=admin.id, role="OWNER")
+        db.add(member2)
+
         milestone_names = [
-            "需求分析阶段", "UI交互设计", "后端核心开发",
-            "API联调", "集成测试", "Beta发布", "正式上线",
+            ("竞品调研", "调研Jira/Linear/TAPD等竞品功能差异"),
+            ("技术选型", "确定前端框架、后端架构、AI模型方案"),
+            ("原型设计", "输出8个页面的高保真原型"),
+            ("可行性评审", "技术可行性评审与风险评估"),
         ]
         milestones = []
-        for name in milestone_names:
-            ms = Milestone(workspace_id=ws.id, name=name, status="UPCOMING", sort_order=len(milestones))
+        for i, (name, desc) in enumerate(milestone_names):
+            ms = Milestone(
+                workspace_id=ws_topic.id, name=name, description=desc,
+                status="ACTIVE" if i == 0 else ("DONE" if i < 1 else "UPCOMING"),
+                sort_order=i,
+                start_date=today + timedelta(days=i * 7 - 7 if i > 0 else -7),
+                end_date=today + timedelta(days=(i + 1) * 7 - 7),
+            )
             milestones.append(ms)
             db.add(ms)
         await db.flush()
 
-        # Create a sample Story with some tasks
-        story = Task(
-            workspace_id=ws.id, milestone_id=milestones[0].id,
-            task_type="STORY", title="用户注册登录模块",
-            description="实现用户注册、登录、密码找回功能",
-            status="TODO", phase="REQUIREMENTS", priority="HIGH",
-            assignee_id=admin.id, proposer_id=admin.id,
-        )
-        db.add(story)
-        await db.flush()
-
-        task_titles = [
-            "注册页面 UI", "登录 API 接口", "密码加密存储",
-            "Token 签发与验证", "找回密码邮件发送",
+        topic_task_defs = [
+            ("Jira功能对比", 5, 0),
+            ("Linear体验分析", 3, 0),
+            ("TAPD优劣势总结", 2, 1),
+            ("React vs Vue决策矩阵", 4, 1),
+            ("FastAPI vs Django对比", 3, 2),
+            ("LOGO设计方案", 1, 2),
         ]
-        for i, title in enumerate(task_titles):
+        for i, (title, est, ms_idx) in enumerate(topic_task_defs):
             task = Task(
-                workspace_id=ws.id, milestone_id=milestones[0].id,
-                parent_id=story.id,
+                workspace_id=ws_topic.id, milestone_id=milestones[ms_idx].id,
                 task_type="TASK", title=title,
-                status="TODO", phase="REQUIREMENTS",
+                status="TODO", phase="DEVELOPMENT",
                 assignee_id=admin.id, sort_order=i,
+                estimation=est,
+                due_date=today + timedelta(days=(ms_idx + 1) * 7),
             )
             db.add(task)
 
-        # Sample Bug
-        bug = Task(
-            workspace_id=ws.id, milestone_id=milestones[0].id,
-            task_type="BUG", title="登录页密码框明文显示",
-            description="密码输入时未做掩码处理",
-            status="TODO", priority="CRITICAL",
-            proposer_id=admin.id, assignee_id=admin.id,
-        )
-        db.add(bug)
-
         await db.commit()
-        print(f"Seed data created: admin/admin123 | workspace={ws.id}")
-        print(f"  Milestones: {len(milestones)} | Tasks: 1 Story + {len(task_titles)} Tasks + 1 Bug")
+        print(f"Seed data created: admin/admin123")
+        print(f"  [PROJECT] R&D workspace={ws_rd.id} | Iterations: {len(iterations)} | Backlog: {len(backlog_stories)} Stories | Planned: 1 Story + {len(task_defs_rd)} Tasks + 1 Bug")
+        print(f"  [TOPIC]  Topic workspace={ws_topic.id} | Milestones: {len(milestones)} | Tasks: {len(topic_task_defs)} Tasks")
 
     await engine.dispose()
 

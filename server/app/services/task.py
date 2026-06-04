@@ -22,7 +22,7 @@ async def get_task(db: AsyncSession, task_id: str) -> Optional[Task]:
     result = await db.execute(
         select(Task).where(Task.id == task_id).options(
             selectinload(Task.assignee), selectinload(Task.reviewer),
-            selectinload(Task.milestone),
+            selectinload(Task.milestone), selectinload(Task.iteration),
             selectinload(Task.proposer), selectinload(Task.analyst),
             selectinload(Task.qa_owner), selectinload(Task.verifier),
             selectinload(Task.parent),
@@ -48,7 +48,7 @@ async def list_tasks(
     sort_by: str = "created_at",
     sort_dir: str = "desc",
 ) -> tuple[list[Task], int]:
-    query = select(Task).where(Task.workspace_id == workspace_id).options(selectinload(Task.milestone), selectinload(Task.assignee), selectinload(Task.reviewer))
+    query = select(Task).where(Task.workspace_id == workspace_id).options(selectinload(Task.milestone), selectinload(Task.iteration), selectinload(Task.assignee), selectinload(Task.reviewer))
     count_query = select(func.count(Task.id)).where(Task.workspace_id == workspace_id)
 
     if task_type:
@@ -169,7 +169,7 @@ async def get_kanban(db: AsyncSession, workspace_id: str, group_by: str = "statu
     query = select(Task).where(Task.workspace_id == workspace_id)
     if task_type:
         query = query.where(Task.task_type == task_type)
-    query = query.order_by(Task.sort_order).options(selectinload(Task.assignee), selectinload(Task.milestone))
+    query = query.order_by(Task.sort_order).options(selectinload(Task.assignee), selectinload(Task.milestone), selectinload(Task.iteration))
     result = await db.execute(query)
     all_tasks = result.scalars().all()
 
@@ -209,6 +209,10 @@ def _task_to_dict(task: Task) -> dict:
     except Exception:
         milestone_name = None
     try:
+        iteration_name = task.iteration.name if task.iteration else None
+    except Exception:
+        iteration_name = None
+    try:
         assignee_name = task.assignee.display_name if task.assignee else None
     except Exception:
         assignee_name = None
@@ -238,6 +242,7 @@ def _task_to_dict(task: Task) -> dict:
         "parent_id": task.parent_id, "epic_id": task.epic_id,
         "iteration_id": task.iteration_id, "milestone_id": task.milestone_id,
         "milestone_name": milestone_name,
+        "iteration_name": iteration_name,
         "task_type": task.task_type,
         "title": task.title, "description": task.description,
         "status": task.status, "phase": task.phase, "priority": task.priority,
@@ -261,3 +266,41 @@ def _task_to_dict(task: Task) -> dict:
         "created_at": task.created_at.isoformat() if task.created_at else "",
         "updated_at": task.updated_at.isoformat() if task.updated_at else "",
     }
+
+
+async def list_backlog(db: AsyncSession, workspace_id: str) -> list[dict]:
+    """Return all STORY-type tasks without iteration_id (unplanned backlog)."""
+    result = await db.execute(
+        select(Task)
+        .where(Task.workspace_id == workspace_id, Task.task_type == "STORY", Task.iteration_id == None)
+        .options(selectinload(Task.assignee), selectinload(Task.milestone), selectinload(Task.iteration),
+                 selectinload(Task.proposer))
+        .order_by(Task.priority.asc(), Task.created_at.desc())
+    )
+    stories = result.scalars().all()
+    data = []
+    for story in stories:
+        # Count children
+        child_result = await db.execute(
+            select(func.count(Task.id)).where(Task.parent_id == story.id)
+        )
+        child_count = child_result.scalar() or 0
+        d = _task_to_dict(story)
+        d["children_count"] = child_count
+        data.append(d)
+    return data
+
+
+async def plan_backlog_story(db: AsyncSession, story_id: str, iteration_id: str) -> Task:
+    """Assign a backlog story to an iteration."""
+    story = await db.get(Task, story_id)
+    if story is None:
+        raise AppException(404, "需求不存在", 404)
+    if story.task_type != "STORY":
+        raise AppException(400, "只能规划需求类型的任务", 400)
+    story.iteration_id = iteration_id
+    story.status = "TODO"
+    story.phase = "REQUIREMENTS"
+    await db.commit()
+    await db.refresh(story)
+    return story

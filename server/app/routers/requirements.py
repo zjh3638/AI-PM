@@ -25,7 +25,7 @@ class RequirementCreate(BaseModel):
 class TriageRequest(BaseModel):
     status: str  # ACCEPTED / REJECTED / CONVERTED
     triage_note: Optional[str] = None
-    target_type: str = "TASK"  # TASK / EPIC
+    target_type: str = "STORY"  # STORY / TASK
 
 
 @router.post("", response_model=APIResponse)

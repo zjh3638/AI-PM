@@ -12,6 +12,17 @@ import SlidePanel from '../../components/common/SlidePanel';
 import KnowledgeBasePanel from '../../components/KnowledgeBase/KnowledgeBasePanel';
 import api from '../../api/client';
 
+function getFileIcon(mimeType: string): string {
+  if (!mimeType) return '📎';
+  if (mimeType.startsWith('image/')) return '🖼️';
+  if (mimeType === 'application/pdf') return '📕';
+  if (mimeType.startsWith('text/')) return '📝';
+  if (mimeType.includes('zip') || mimeType.includes('rar') || mimeType.includes('compress') || mimeType.includes('tar') || mimeType.includes('gzip')) return '📦';
+  if (mimeType.startsWith('video/')) return '🎬';
+  if (mimeType.startsWith('audio/')) return '🎵';
+  return '📎';
+}
+
 /* ═══════════════════════════════════════════
    PULSE SIDEBAR
    ═══════════════════════════════════════════ */
@@ -134,21 +145,121 @@ function MilestoneSidebar({ selectedId, onSelect, onEdit }: { selectedId: string
   );
 }
 
+function IterationSidebar({ selectedId, onSelect }: { selectedId: string; onSelect: (id: string) => void }) {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { iterations, loading, fetchList } = useIterationStore();
+
+  useEffect(() => { if (wsId) fetchList(wsId); }, [wsId]);
+
+  const totalTasks = iterations.reduce((s, i) => s + i.task_count, 0);
+  const activeCount = iterations.filter((i) => i.status === 'ACTIVE').length;
+
+  const handleSelect = (id: string) => onSelect(selectedId === id ? '' : id);
+
+  const statusIcon = (status: string) => status === 'ACTIVE' ? '◎' : status === 'CLOSED' ? '●' : '○';
+  const statusColor = (status: string) => status === 'ACTIVE' ? 'var(--green-500)' : status === 'CLOSED' ? 'var(--text-muted)' : 'var(--blue-400)';
+
+  return (
+    <div className="pulse-sidebar">
+      <div className="pulse-sidebar-header">
+        <span style={{ fontSize: '0.78rem', fontWeight: 600 }}>迭代</span>
+      </div>
+
+      {loading ? <div style={{ textAlign: 'center', padding: 16, color: 'var(--text-muted)', fontSize: '0.72rem' }}>加载中...</div> : (
+        <>
+          <div
+            onClick={() => onSelect('')}
+            style={{
+              cursor: 'pointer', padding: '10px 14px', marginBottom: 4,
+              borderRadius: 'var(--radius-md)',
+              background: !selectedId ? 'var(--blue-50)' : 'transparent',
+              borderLeft: !selectedId ? '3px solid var(--blue-500)' : '3px solid transparent',
+              fontSize: '0.74rem', fontWeight: !selectedId ? 600 : 400,
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            }}
+          >
+            <span>全部迭代</span>
+            <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>{totalTasks} 个任务</span>
+          </div>
+
+          {iterations.map((it) => (
+            <div
+              key={it.id}
+              onClick={() => handleSelect(it.id)}
+              title={it.goal || undefined}
+              style={{
+                cursor: 'pointer', padding: '8px 14px', marginBottom: 2,
+                borderRadius: 'var(--radius-md)',
+                background: selectedId === it.id ? 'var(--blue-50)' : 'transparent',
+                borderLeft: selectedId === it.id ? '3px solid var(--blue-500)' : '3px solid transparent',
+                fontSize: '0.73rem', fontWeight: selectedId === it.id ? 500 : 400,
+                transition: 'all 0.15s',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ color: statusColor(it.status), fontSize: '0.64rem' }}>{statusIcon(it.status)}</span>
+                <span>{it.name}</span>
+              </div>
+              <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)', marginTop: 2, marginLeft: 18 }}>
+                {it.start_date} → {it.end_date}
+              </div>
+              {it.capacity_points > 0 && (
+                <div style={{ marginTop: 4, marginLeft: 18 }}>
+                  <div style={{ height: 4, background: 'var(--bg)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', width: `${Math.min(100, Math.round((it.committed_points / it.capacity_points) * 100))}%`,
+                      background: 'var(--blue-400)', borderRadius: 2, transition: 'width 0.3s',
+                    }} />
+                  </div>
+                  <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                    {it.committed_points}/{it.capacity_points} pts · {it.task_count} 任务
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+
+          <div className="sidebar-ai expanded" style={{ borderTop: '1px solid var(--border-light)', paddingTop: 8, marginTop: 8 }}>
+            <div className="sai-head">
+              <span><span className="badge badge-blue" style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: 4 }}>AI</span> 摘要</span>
+            </div>
+            <div className="sai-body" style={{ display: 'block' }}>
+              共 <strong>{iterations.length} 个迭代</strong>，{activeCount} 个活跃，已提交 <strong>{
+                iterations.reduce((s, i) => s + i.committed_points, 0)
+              } pts</strong>。
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function KpiRow() {
   const { id: wsId } = useParams<{ id: string }>();
+  const { current } = useWorkspaceStore();
+  const isFull = current?.type === 'PROJECT';
   const { milestones, fetchList } = useMilestoneStore();
+  const { iterations, fetchList: fetchIterations } = useIterationStore();
   const { members, fetchMembers } = useWorkspaceStore();
   const { kanban, fetchKanban } = useTaskStore();
 
   useEffect(() => {
-    if (wsId) { fetchList(wsId); fetchMembers(wsId); fetchKanban(wsId); }
-  }, [wsId]);
+    if (wsId) {
+      fetchMembers(wsId); fetchKanban(wsId);
+      if (isFull) fetchIterations(wsId);
+      else fetchList(wsId);
+    }
+  }, [wsId, isFull]);
 
   const totalTasks = Object.values(kanban).flat().length;
   const doneTasks = (kanban['DONE'] || []).length;
   const pct = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0;
-  const activeMilestones = milestones.filter((m) => m.status === 'ACTIVE').length;
   const humanMembers = members.filter((m) => m.role !== 'AI_AGENT').length;
+
+  const trackLabel = isFull ? '迭代' : '里程碑';
+  const trackItems = isFull ? iterations : milestones;
+  const activeItems = trackItems.filter((m: any) => m.status === 'ACTIVE').length;
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 14 }}>
@@ -158,9 +269,9 @@ function KpiRow() {
         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{pct}% 完成</div>
       </div>
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>里程碑</div>
-        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--blue-600)' }}>{activeMilestones}</div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{milestones.length} 个里程碑 · {activeMilestones} 活跃</div>
+        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{trackLabel}</div>
+        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--blue-600)' }}>{activeItems}</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{trackItems.length} 个{trackLabel} · {activeItems} 活跃</div>
       </div>
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
         <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>团队成员</div>
@@ -243,17 +354,32 @@ function PulseChat() {
 /* ═══════════════════════════════════════════
    KANBAN VIEW
    ═══════════════════════════════════════════ */
-function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onCreateTask: (status: string, phase?: string) => void; onEditTask: (task: Task) => void; milestoneFilter: string; isFull: boolean }) {
+function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreateTask: (status: string, phase?: string) => void; onEditTask: (task: Task) => void; scopeFilter: string; isFull: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
-  const { kanban, loading, fetchKanban, moveTask, update, advancePhase } = useTaskStore();
+  const { moveTask, update, advancePhase } = useTaskStore();
   const { user } = useAuthStore();
   const { members } = useWorkspaceStore();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchAction, setBatchAction] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState('STORY');
 
+  // Local kanban state to avoid race condition with KpiRow/ReportsPanel
+  const [kanban, setKanban] = useState<Record<string, Task[]>>({});
+  const [loading, setLoading] = useState(false);
   const groupBy = isFull ? 'phase' : 'status';
-  useEffect(() => { if (wsId) fetchKanban(wsId, groupBy, typeFilter); }, [wsId, typeFilter]);
+
+  const fetchKanbanData = useCallback(async (wsId: string, groupBy: string, taskType: string) => {
+    setLoading(true);
+    try {
+      const params: Record<string, string> = { group_by: groupBy };
+      if (taskType) params.task_type = taskType;
+      const result = await api.get(`/workspaces/${wsId}/kanban`, { params });
+      setKanban(result.data || {});
+    } catch { /* ignore */ }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { if (wsId) fetchKanbanData(wsId, groupBy, typeFilter); }, [wsId, typeFilter]);
 
   // Check if current user is manager (OWNER or MANAGER role)
   const isMgr = user ? members.some(m => m.user_id === user.id && (m.role === 'OWNER' || m.role === 'MANAGER')) || members.length === 0 : false;
@@ -400,7 +526,7 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
       else if (batchAction === 'priority') promises.push(update(wsId, taskId, { priority: value } as any));
     });
     await Promise.all(promises);
-    await fetchKanban(wsId);
+    await fetchKanbanData(wsId, groupBy, typeFilter);
     setSelected(new Set());
     setBatchAction(null);
   };
@@ -526,7 +652,7 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
                 );
               })()}
             </div>
-            {(kanban[col.key] || []).filter((t: Task) => !milestoneFilter || t.milestone_id === milestoneFilter).map((task: Task) => {
+            {(kanban[col.key] || []).filter((t: Task) => !scopeFilter || (isFull ? t.iteration_id === scopeFilter : t.milestone_id === scopeFilter)).map((task: Task) => {
                 const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'DONE';
                 const typeIcon = { EPIC: '🎯', STORY: '📋', TASK: '✅', BUG: '🐛', SUB_TASK: '📌', SPIKE: '🔬' }[task.task_type] || '📄';
                 const typeCls = task.task_type === 'STORY' ? 'story' : task.task_type === 'BUG' ? 'bug' : task.task_type === 'SPIKE' ? 'spike' : 'task';
@@ -624,11 +750,11 @@ function KanbanView({ onCreateTask, onEditTask, milestoneFilter, isFull }: { onC
 /* ═══════════════════════════════════════════
    LIST VIEW
    ═══════════════════════════════════════════ */
-function ListView({ onEditTask, milestoneFilter }: { onEditTask: (task: Task) => void; milestoneFilter: string }) {
+function ListView({ onEditTask, scopeFilter, isFull }: { onEditTask: (task: Task) => void; scopeFilter: string; isFull: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
   const { tasks, fetchList } = useTaskStore();
 
-  useEffect(() => { if (wsId) fetchList(wsId, { milestone_id: milestoneFilter || undefined }); }, [wsId, milestoneFilter]);
+  useEffect(() => { if (wsId) fetchList(wsId, { [isFull ? 'iteration_id' : 'milestone_id']: scopeFilter || undefined }); }, [wsId, scopeFilter]);
 
   const statusLabels: Record<string, string> = {
     TODO: '待办', IN_PROGRESS: '进行中', IN_REVIEW: '待 Review', DONE: '已完成',
@@ -661,17 +787,19 @@ function ListView({ onEditTask, milestoneFilter }: { onEditTask: (task: Task) =>
 /* ═══════════════════════════════════════════
    GANTT VIEW
    ═══════════════════════════════════════════ */
-function GanttView({ milestoneFilter }: { milestoneFilter: string }) {
+function GanttView({ scopeFilter, isFull }: { scopeFilter: string; isFull: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
-  const ms = useMilestoneStore((s) => s.milestones.find((m) => m.id === milestoneFilter));
+  const ms = useMilestoneStore((s) => s.milestones.find((m) => m.id === scopeFilter));
+  const it = useIterationStore((s) => s.iterations.find((i) => i.id === scopeFilter));
+  const scope = isFull ? it : ms;
   const { tasks, fetchList } = useTaskStore();
 
-  useEffect(() => { if (wsId) fetchList(wsId, { milestone_id: milestoneFilter, page_size: 100 }); }, [wsId, milestoneFilter]);
+  useEffect(() => { if (wsId) fetchList(wsId, { [isFull ? 'iteration_id' : 'milestone_id']: scopeFilter, page_size: 100 }); }, [wsId, scopeFilter]);
 
-  // Build date range from milestone dates or task dates
+  // Build date range from milestone/iteration dates or task dates
   const now = new Date();
-  const startDate = ms?.start_date ? new Date(ms.start_date) : new Date(now.getTime() - 14 * 86400000);
-  const endDate = ms?.end_date ? new Date(ms.end_date) : new Date(now.getTime() + 14 * 86400000);
+  const startDate = scope?.start_date ? new Date(ms.start_date) : new Date(now.getTime() - 14 * 86400000);
+  const endDate = scope?.end_date ? new Date(ms.end_date) : new Date(now.getTime() + 14 * 86400000);
   const totalDays = Math.max((endDate.getTime() - startDate.getTime()) / 86400000, 1);
 
   // Generate day labels (max ~20)
@@ -698,7 +826,7 @@ function GanttView({ milestoneFilter }: { milestoneFilter: string }) {
   return (
     <div className="gantt-wrap">
       <div className="gantt-head">
-        <div className="gantt-label">任务 / {ms?.name || '里程碑'}</div>
+        <div className="gantt-label">任务 / {scope?.name || (isFull ? '迭代' : '里程碑')}</div>
         <div className="gantt-timeline">
           {days.map((d) => <div key={d} className="gantt-day">{d}</div>)}
         </div>
@@ -734,7 +862,7 @@ function GanttView({ milestoneFilter }: { milestoneFilter: string }) {
   /* ═══════════════════════════════════════════
      STORY BOARD — Stories + child tasks grouped by status
      ═══════════════════════════════════════════ */
-  function StoryBoard({ milestoneFilter, onEditTask, onCreateTask }: { milestoneFilter: string; onEditTask: (task: Task) => void; onCreateTask: (status: string, parentId?: string) => void }) {
+  function StoryBoard({ scopeFilter, onEditTask, onCreateTask, isFull }: { scopeFilter: string; onEditTask: (task: Task) => void; onCreateTask: (status: string, parentId?: string) => void; isFull: boolean }) {
     const { id: wsId } = useParams<{ id: string }>();
     const [storyList, setStoryList] = useState<Task[]>([]);
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
@@ -742,7 +870,7 @@ function GanttView({ milestoneFilter }: { milestoneFilter: string }) {
 
     const fetchStories = async () => {
       if (!wsId) return;
-      await useTaskStore.getState().fetchList(wsId, { milestone_id: milestoneFilter, task_type: 'STORY', page_size: 100 });
+      await useTaskStore.getState().fetchList(wsId, { [isFull ? 'iteration_id' : 'milestone_id']: scopeFilter, task_type: 'STORY', page_size: 100 });
       const stories = useTaskStore.getState().tasks;
       setStoryList(stories);
       for (const s of stories) {
@@ -753,7 +881,7 @@ function GanttView({ milestoneFilter }: { milestoneFilter: string }) {
       }
     };
 
-    useEffect(() => { fetchStories(); }, [wsId, milestoneFilter]);
+    useEffect(() => { fetchStories(); }, [wsId, scopeFilter]);
 
     const toggle = (id: string) => {
       setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
@@ -841,6 +969,103 @@ function GanttView({ milestoneFilter }: { milestoneFilter: string }) {
 
 function KnowledgePanel() {
   return <KnowledgeBasePanel />;
+}
+
+/* ═══════════════════════════════════════════
+   BACKLOG PANEL — requirement pool for R&D projects
+   ═══════════════════════════════════════════ */
+function BacklogPanel({ onEditStory, onCreateStory, selectedIteration }: { onEditStory: (story: Task) => void; onCreateStory: () => void; selectedIteration: string }) {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { backlog, backlogLoading, fetchBacklog } = useTaskStore();
+  const { iterations, fetchList: fetchIterations } = useIterationStore();
+
+  useEffect(() => {
+    if (wsId) { fetchBacklog(wsId); fetchIterations(wsId); }
+  }, [wsId]);
+
+  const activeIterations = iterations.filter(it => it.status === 'PLANNING' || it.status === 'ACTIVE');
+  const currentIterName = iterations.find(it => it.id === selectedIteration)?.name;
+
+  const priorityLabel: Record<string, string> = { CRITICAL: '紧急', HIGH: '高', MEDIUM: '中', LOW: '低' };
+  const priorityColor: Record<string, string> = { CRITICAL: 'var(--red-500)', HIGH: 'var(--amber-500)', MEDIUM: 'var(--blue-400)', LOW: 'var(--text-muted)' };
+
+  const handlePlan = async (storyId: string, iterationId: string) => {
+    if (!wsId || !iterationId) return;
+    await useTaskStore.getState().planStory(wsId, storyId, iterationId);
+  };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>未规划需求 · 共 {backlog.length} 个</span>
+        <button className="btn btn-primary btn-sm" onClick={onCreateStory}>+ 新建需求</button>
+      </div>
+
+      {currentIterName && (
+        <div style={{ marginBottom: 12, padding: '6px 12px', background: 'var(--blue-50)', borderRadius: 'var(--radius-sm)', fontSize: '0.72rem', color: 'var(--blue-600)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          📌 当前迭代：<strong>{currentIterName}</strong> — 需求将从池中规划到此迭代
+        </div>
+      )}
+
+      {backlogLoading ? (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: '0.78rem' }}>加载中...</div>
+      ) : backlog.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+          <div style={{ fontSize: '2rem', marginBottom: 8 }}>📋</div>
+          <div>需求池为空</div>
+          <div style={{ fontSize: '0.68rem', marginTop: 4 }}>点击「新建需求」添加第一个需求</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {backlog.map((story: Task) => (
+            <div key={story.id} style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+              background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
+              borderRadius: 'var(--radius-md)', cursor: 'pointer',
+            }} onClick={() => onEditStory(story)}>
+              {/* Priority indicator */}
+              <span style={{
+                width: 4, height: 36, borderRadius: 2,
+                background: priorityColor[story.priority] || 'var(--text-muted)',
+                flexShrink: 0,
+              }} />
+              {/* Content */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {story.title}
+                </div>
+                <div style={{ display: 'flex', gap: 10, fontSize: '0.66rem', color: 'var(--text-muted)', alignItems: 'center' }}>
+                  <span style={{ color: priorityColor[story.priority], fontWeight: 500 }}>{priorityLabel[story.priority] || story.priority}</span>
+                  <span>{story.children_count ?? 0} 个子任务</span>
+                  {story.proposer_name && <span>👤 {story.proposer_name}</span>}
+                  <span>{story.created_at?.slice(0, 10)}</span>
+                </div>
+              </div>
+              {/* Plan to iteration */}
+              <select
+                style={{
+                  fontSize: '0.7rem', padding: '4px 8px', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)', background: 'var(--bg-raised)',
+                  cursor: 'pointer', flexShrink: 0,
+                }}
+                value={selectedIteration}
+                onClick={(e) => e.stopPropagation()}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  if (e.target.value) handlePlan(story.id, e.target.value);
+                }}
+              >
+                <option value="">规划到迭代 ▾</option>
+                {activeIterations.map(it => (
+                  <option key={it.id} value={it.id}>{it.name}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ═══════════════════════════════════════════
@@ -1336,11 +1561,11 @@ export default function WorkspaceDetailPage() {
   const [taskPanelOpen, setTaskPanelOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [selectedMilestone, setSelectedMilestone] = useState<string>('');
+  const [selectedIteration, setSelectedIteration] = useState<string>('');
   const [msEditOpen, setMsEditOpen] = useState(false);
   const [msEditForm, setMsEditForm] = useState<{ id: string; name: string; description: string; plan: string; owner_id: string; status: string; start_date: string; end_date: string }>({ id: '', name: '', description: '', plan: '', owner_id: '', status: 'UPCOMING', start_date: '', end_date: '' });
   const wsType = current?.type || 'PROJECT';
   const isFull = wsType === 'PROJECT';
-  const isLight = wsType === 'OTHER';
   const allMilestones = useMilestoneStore((s) => s.milestones);
   const allIterations = useIterationStore((s) => s.iterations);
   const membersRaw = useWorkspaceStore((s) => s.members);
@@ -1362,9 +1587,11 @@ export default function WorkspaceDetailPage() {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
-  const [detailTab, setDetailTab] = useState<'info' | 'related'>('info');
+  const [detailTab, setDetailTab] = useState<'info' | 'related' | 'attachments'>('info');
   const [relatedTasks, setRelatedTasks] = useState<Task[]>([]);
   const [parentStory, setParentStory] = useState<Task | null>(null);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [uploading, setUploading] = useState(false);
 
   const fetchComments = async (taskId: string) => {
     const res: any = await api.get(`/tasks/${taskId}/comments`);
@@ -1381,10 +1608,11 @@ export default function WorkspaceDetailPage() {
   // Default to showing all tasks (empty string = no filter)
   const milestones = useMilestoneStore((s) => s.milestones);
 
-  const openTaskPanel = async (status?: string, task?: Task, parentStoryId?: string, defaultPhase?: string) => {
+  const openTaskPanel = async (status?: string, task?: Task, parentStoryId?: string, defaultPhase?: string, defaultType?: string) => {
+    const scopeId = isFull ? selectedIteration : selectedMilestone;
     // Fetch available stories for parent selection
-    if (id && selectedMilestone) {
-      const result = await useTaskStore.getState().fetchList(id, { milestone_id: selectedMilestone, task_type: 'STORY', page_size: 100 });
+    if (id && scopeId) {
+      await useTaskStore.getState().fetchList(id, { [isFull ? 'iteration_id' : 'milestone_id']: scopeId, task_type: 'STORY', page_size: 100 });
       const allTasks = useTaskStore.getState().tasks;
       setStories(allTasks);
     }
@@ -1394,12 +1622,17 @@ export default function WorkspaceDetailPage() {
       fetchComments(task.id);
       fetchActivity(task.id);
       fetchRelations(task);
+      fetchAttachments(task.id);
       setDetailTab('info');
     } else {
       setEditingTask(null);
       setComments([]);
       setActivityLogs([]);
-      setTaskForm({ title: '', description: '', task_type: isLight ? 'TASK' : 'TASK', priority: 'MEDIUM', status: status || 'TODO', phase: getDefaultPhase(isLight ? 'TASK' : 'TASK'), iteration_id: undefined, milestone_id: isLight ? '' : selectedMilestone, assignee_id: undefined, reviewer_id: undefined, proposer_id: undefined, analyst_id: undefined, qa_owner_id: undefined, verifier_id: undefined, parent_id: parentStoryId || undefined });
+      setAttachments([]);
+      const newType = defaultType || 'TASK';
+      // Backlog stories don't auto-assign to an iteration
+      const autoIterationId = (defaultType === 'STORY') ? undefined : (isFull ? selectedIteration || undefined : undefined);
+      setTaskForm({ title: '', description: '', task_type: newType, priority: 'MEDIUM', status: status || 'TODO', phase: getDefaultPhase(newType), iteration_id: autoIterationId, milestone_id: isFull ? '' : selectedMilestone, assignee_id: undefined, reviewer_id: undefined, proposer_id: undefined, analyst_id: undefined, qa_owner_id: undefined, verifier_id: undefined, parent_id: parentStoryId || undefined });
     }
     setShowDelete(false);
     setTaskPanelOpen(true);
@@ -1423,6 +1656,26 @@ export default function WorkspaceDetailPage() {
         setParentStory(parentRes.data || null);
       } catch { setParentStory(null); }
     }
+  };
+
+  const fetchAttachments = async (taskId: string) => {
+    if (!id) return;
+    try {
+      const res: any = await api.get(`/workspaces/${id}/tasks/${taskId}/attachments`);
+      setAttachments(res.data || []);
+    } catch { setAttachments([]); }
+  };
+
+  const handleUpload = async (taskId: string, file: File) => {
+    if (!id) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      await api.post(`/workspaces/${id}/tasks/${taskId}/attachments`, form);
+      await fetchAttachments(taskId);
+    } catch { alert('上传附件失败'); }
+    setUploading(false);
   };
 
   const openMilestoneEdit = (ms: any) => {
@@ -1477,16 +1730,12 @@ export default function WorkspaceDetailPage() {
 
   const tabs = isFull
     ? [
+        { key: 'backlog', label: '需求池' },
         { key: 'tasks', label: '任务看板' },
         { key: 'kb', label: '知识库' },
         { key: 'iterations', label: '迭代' },
         { key: 'members', label: '成员' },
         { key: 'reports', label: '报表' },
-      ]
-    : isLight
-    ? [
-        { key: 'tasks', label: '任务看板' },
-        { key: 'members', label: '成员' },
       ]
     : [
         { key: 'tasks', label: '任务看板' },
@@ -1502,9 +1751,9 @@ export default function WorkspaceDetailPage() {
           <div className="back" onClick={() => navigate('/workspaces')}>← 返回工作空间</div>
           <div className="proj-name">{current.name}</div>
           <div className="proj-meta">
-            {isFull ? '研发项目' : isLight ? '事务工作' : '专题项目'} · 创建于 {current.created_at?.slice(0, 10)}
+            {isFull ? '研发项目' : '专题项目'} · 创建于 {current.created_at?.slice(0, 10)}
             {' '}
-            <span className="ospec-badge">{isFull ? 'OpenSpec: 标准研发流程' : isLight ? '轻量看板' : '简化管理'}</span>
+            <span className="ospec-badge">{isFull ? '迭代驱动研发流程' : '里程碑驱动专题管理'}</span>
           </div>
         </div>
         <div className="ph-actions">
@@ -1532,11 +1781,16 @@ export default function WorkspaceDetailPage() {
       </div>
 
       {/* KPI Row — full and simple modes only */}
-      {!isLight && <KpiRow />}
+      {<KpiRow />}
 
       {/* 3-Column Layout */}
       <div className="pulse-layout">
-        {!isLight && (
+        {isFull ? (
+          <IterationSidebar
+            selectedId={selectedIteration}
+            onSelect={(id) => setSelectedIteration(id)}
+          />
+        ) : (
           <MilestoneSidebar
             selectedId={selectedMilestone}
             onSelect={(id) => setSelectedMilestone(id)}
@@ -1561,6 +1815,16 @@ export default function WorkspaceDetailPage() {
 
           {/* Tab Panels */}
           <div>
+            {activeTab === 'backlog' && (
+              <div className="ws-panel active" id="ws-panel-backlog" style={{ padding: '16px 20px' }}>
+                <BacklogPanel
+                  onEditStory={(story) => openTaskPanel(undefined, story)}
+                  onCreateStory={() => openTaskPanel('TODO', undefined, undefined, 'REQUIREMENTS', 'STORY')}
+                  selectedIteration={selectedIteration}
+                />
+              </div>
+            )}
+
             {activeTab === 'tasks' && (
               <div className="ws-panel active" id="ws-panel-tasks">
                 <div className="view-switcher">
@@ -1577,10 +1841,10 @@ export default function WorkspaceDetailPage() {
                     </button>
                   ))}
                 </div>
-                {activeView === 'kanban' && <KanbanView onCreateTask={(status, phase) => openTaskPanel(status, undefined, undefined, phase)} onEditTask={(task) => openTaskPanel(undefined, task)} milestoneFilter={selectedMilestone} isFull={isFull} />}
-                {activeView === 'story' && <StoryBoard milestoneFilter={selectedMilestone} onEditTask={(task) => openTaskPanel(undefined, task)} onCreateTask={(status, parentId) => openTaskPanel(status, undefined, parentId)} />}
-                {activeView === 'list' && <ListView onEditTask={(task) => openTaskPanel(undefined, task)} milestoneFilter={selectedMilestone} />}
-                {activeView === 'gantt' && <GanttView milestoneFilter={selectedMilestone} />}
+                {activeView === 'kanban' && <KanbanView onCreateTask={(status, phase) => openTaskPanel(status, undefined, undefined, phase)} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
+                {activeView === 'story' && <StoryBoard scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} onEditTask={(task) => openTaskPanel(undefined, task)} onCreateTask={(status, parentId) => openTaskPanel(status, undefined, parentId)} />}
+                {activeView === 'list' && <ListView onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
+                {activeView === 'gantt' && <GanttView scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
               </div>
             )}
 
@@ -1624,7 +1888,7 @@ export default function WorkspaceDetailPage() {
       <SlidePanel
         open={taskPanelOpen}
         onClose={() => setTaskPanelOpen(false)}
-        title={editingTask ? '编辑任务' : '新建任务'}
+        title={editingTask ? (taskForm.task_type === 'STORY' ? '编辑需求' : '编辑任务') : (taskForm.task_type === 'STORY' ? '新建需求' : '新建任务')}
       >
         {/* Permission indicator — edit mode */}
         {editingTask && editingTask.permissions && (
@@ -1680,6 +1944,74 @@ export default function WorkspaceDetailPage() {
                   cursor: 'pointer',
                 }}
               >🔗 关联需求</button>
+            )}
+            <button
+              onClick={() => setDetailTab('attachments')}
+              style={{
+                padding: '6px 16px', fontSize: '0.76rem', fontWeight: detailTab === 'attachments' ? 600 : 400,
+                border: 'none', background: 'none', borderBottom: detailTab === 'attachments' ? '2px solid var(--blue-500)' : '2px solid transparent',
+                color: detailTab === 'attachments' ? 'var(--blue-600)' : 'var(--text-muted)',
+                cursor: 'pointer',
+              }}
+            >📎 附件 ({attachments.length})</button>
+          </div>
+        )}
+
+        {/* Attachments Tab Content */}
+        {editingTask && detailTab === 'attachments' && (
+          <div style={{ marginBottom: 16 }}>
+            {/* Upload */}
+            <label style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px',
+              fontSize: '0.76rem', cursor: 'pointer', borderRadius: 'var(--radius-sm)',
+              border: '1px dashed var(--border)', background: 'var(--bg-surface)',
+              marginBottom: 12,
+            }}>
+              {uploading ? '⏳ 上传中...' : '📤 上传文件'}
+              <input
+                type="file"
+                style={{ display: 'none' }}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (file && editingTask) await handleUpload(editingTask.id, file);
+                  e.target.value = '';
+                }}
+              />
+            </label>
+
+            {/* File list */}
+            {attachments.length === 0 ? (
+              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.74rem', padding: 12 }}>暂无附件</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 240, overflowY: 'auto' }}>
+                {attachments.map((att: any) => (
+                  <div key={att.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                    background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)',
+                    fontSize: '0.74rem',
+                  }}>
+                    <span>{getFileIcon(att.mime_type)}</span>
+                    <a
+                      href={`/api/workspaces/${id}/tasks/${editingTask!.id}/attachments/${att.id}/download`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--blue-600)', textDecoration: 'none' }}
+                    >{att.filename}</a>
+                    <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>{att.file_size > 1024 ? `${(att.file_size / 1024).toFixed(1)}KB` : `${att.file_size}B`}</span>
+                    <button
+                      className="btn btn-ghost btn-xs"
+                      style={{ fontSize: '0.6rem', color: 'var(--red-500)', padding: '1px 6px' }}
+                      onClick={async () => {
+                        if (!id) return;
+                        try {
+                          await api.delete(`/workspaces/${id}/tasks/${editingTask!.id}/attachments/${att.id}`);
+                          fetchAttachments(editingTask!.id);
+                        } catch { alert('删除附件失败'); }
+                      }}
+                    >删除</button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -1779,10 +2111,10 @@ export default function WorkspaceDetailPage() {
         {(!editingTask || detailTab === 'info') && (
         <div>
         <div className="form-group">
-          <label>任务名称</label>
+          <label>{taskForm.task_type === 'STORY' ? '需求名称' : '任务名称'}</label>
           <input
             type="text"
-            placeholder="输入任务名称"
+            placeholder={taskForm.task_type === 'STORY' ? '输入需求名称' : '输入任务名称'}
             value={taskForm.title}
             onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
           />
@@ -1798,16 +2130,23 @@ export default function WorkspaceDetailPage() {
           />
         </div>
         <div className="form-row">
-          <div className="form-group">
-            <label>类型</label>
-            <select value={taskForm.task_type} onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value }))}>
-              {isFull && <option value="STORY">需求 (Story)</option>}
-              <option value="TASK">任务 (Task)</option>
-              {isFull && <option value="SUB_TASK">子任务</option>}
-              <option value="BUG">缺陷 (Bug)</option>
-              {isFull && <option value="SPIKE">技术调研</option>}
-            </select>
-          </div>
+          {taskForm.task_type === 'STORY' ? (
+            <div className="form-group">
+              <label>类型</label>
+              <div style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', background: 'var(--bg-surface)', color: 'var(--blue-600)', fontWeight: 500 }}>📋 需求 (Story)</div>
+            </div>
+          ) : (
+            <div className="form-group">
+              <label>类型</label>
+              <select value={taskForm.task_type} onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value }))}>
+                <option value="TASK">任务 (Task)</option>
+                <option value="BUG">缺陷 (Bug)</option>
+                {isFull && <option value="STORY">需求 (Story)</option>}
+                {isFull && <option value="SUB_TASK">子任务</option>}
+                {isFull && <option value="SPIKE">技术调研</option>}
+              </select>
+            </div>
+          )}
           <div className="form-group">
             <label>状态</label>
             <select value={taskForm.status} onChange={(e) => setTaskForm((f) => ({ ...f, status: e.target.value }))}>
@@ -1828,32 +2167,35 @@ export default function WorkspaceDetailPage() {
           </div>
         </div>
         <div className="form-row">
-          <div className="form-group">
-            <label>所属里程碑</label>
-            <select
-              style={{ width: '100%' }}
-              value={taskForm.milestone_id || ''}
-              onChange={(e) => setTaskForm((f) => ({ ...f, milestone_id: e.target.value }))}
-            >
-              <option value="">不关联里程碑</option>
-              {allMilestones.map((m: Milestone) => (
-                <option key={m.id} value={m.id}>{m.name}</option>
-              ))}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>所属迭代</label>
-            <select
-              style={{ width: '100%' }}
-              value={taskForm.iteration_id || ''}
-              onChange={(e) => setTaskForm((f: any) => ({ ...f, iteration_id: e.target.value || undefined }))}
-            >
-              <option value="">无</option>
-              {allIterations.map((it) => (
-                <option key={it.id} value={it.id}>{it.name}</option>
-              ))}
-            </select>
-          </div>
+          {isFull ? (
+            <div className="form-group">
+              <label>所属迭代</label>
+              <select
+                style={{ width: '100%' }}
+                value={taskForm.iteration_id || ''}
+                onChange={(e) => setTaskForm((f: any) => ({ ...f, iteration_id: e.target.value || undefined }))}
+              >
+                <option value="">不关联迭代</option>
+                {allIterations.map((it) => (
+                  <option key={it.id} value={it.id}>{it.name}</option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="form-group">
+              <label>所属里程碑</label>
+              <select
+                style={{ width: '100%' }}
+                value={taskForm.milestone_id || ''}
+                onChange={(e) => setTaskForm((f) => ({ ...f, milestone_id: e.target.value }))}
+              >
+                <option value="">不关联里程碑</option>
+                {allMilestones.map((m: Milestone) => (
+                  <option key={m.id} value={m.id}>{m.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         {/* Parent Story selector — show for TASK/BUG/SPIKE/SUB_TASK */}
         {isFull && taskForm.task_type !== 'STORY' && (
@@ -1972,7 +2314,7 @@ export default function WorkspaceDetailPage() {
             disabled={taskSubmitting || !taskForm.title.trim()}
             onClick={submitTask}
           >
-            {taskSubmitting ? '保存中...' : editingTask ? '保存' : '创建任务'}
+            {taskSubmitting ? '保存中...' : editingTask ? '保存' : taskForm.task_type === 'STORY' ? '创建需求' : '创建任务'}
           </button>
         </div>
 

@@ -365,3 +365,35 @@ async def split_story_tasks(
         field_name="子任务", old_value="", new_value=f"拆分为 {len(created)} 个开发任务")
 
     return {"code": 0, "message": "ok", "data": created}
+
+
+# ── Backlog ──
+
+class PlanRequest(BaseModel):
+    iteration_id: str
+
+
+@router.get("/backlog", response_model=APIResponse)
+async def list_backlog(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
+    data = await task_service.list_backlog(db, workspace_id)
+    return {"code": 0, "message": "ok", "data": data}
+
+
+@router.patch("/backlog/{story_id}/plan", response_model=APIResponse)
+async def plan_backlog_story(
+    workspace_id: str,
+    story_id: str,
+    req: PlanRequest,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    story = await task_service.plan_backlog_story(db, story_id, req.iteration_id)
+    if story.workspace_id != workspace_id:
+        raise AppException(404, "需求不存在", 404)
+    return {"code": 0, "message": "ok", "data": task_service._task_to_dict(story)}

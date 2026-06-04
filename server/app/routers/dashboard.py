@@ -83,7 +83,7 @@ async def my_tasks(
     )
     tasks = result.scalars().all()
     data = [{"id": t.id, "title": t.title, "workspace_id": t.workspace_id,
-             "status": t.status, "priority": t.priority, "task_type": t.task_type,
+             "status": t.status, "phase": t.phase, "priority": t.priority, "task_type": t.task_type,
              "due_date": t.due_date.isoformat() if t.due_date else None} for t in tasks]
     return {"code": 0, "message": "ok", "data": data}
 
@@ -108,7 +108,7 @@ async def review_queue(
     )
     tasks = result.scalars().all()
     data = [{"id": t.id, "title": t.title, "workspace_id": t.workspace_id,
-             "task_type": t.task_type, "priority": t.priority,
+             "task_type": t.task_type, "phase": t.phase, "priority": t.priority,
              "assignee_name": t.assignee.display_name if t.assignee else None} for t in tasks]
     return {"code": 0, "message": "ok", "data": data}
 
@@ -184,7 +184,8 @@ async def upcoming_deadlines(
     tasks = result.scalars().all()
     data = [{
         "id": t.id, "title": t.title, "workspace_id": t.workspace_id,
-        "status": t.status, "priority": t.priority,
+        "status": t.status, "phase": t.phase, "priority": t.priority,
+        "task_type": t.task_type,
         "due_date": t.due_date.isoformat() if t.due_date else None,
         "assignee_name": t.assignee.display_name if t.assignee else None,
     } for t in tasks]

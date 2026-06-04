@@ -7,7 +7,7 @@ type Mode = 'standup' | 'weekly';
 
 interface WsStat {
   id: string; name: string; type: string;
-  milestone_name: string | null;
+  track_name: string | null;
   total: number; done: number; pct: number;
   overdue: number; inReview: number;
   owner_name: string | null;
@@ -45,21 +45,22 @@ export default function BigScreenPage() {
 
         for (const ws of wss) {
           try {
-            const [kbRes, msRes] = await Promise.all([
+            const isProject = ws.type === 'PROJECT';
+            const [kbRes, trackRes] = await Promise.all([
               api.get(`/workspaces/${ws.id}/kanban`),
-              api.get(`/workspaces/${ws.id}/milestones`),
+              api.get(`/workspaces/${ws.id}/${isProject ? 'iterations' : 'milestones'}`),
             ]);
             const tasks = Object.values(kbRes.data || {}).flat() as any[];
             const total = tasks.length;
             const done = tasks.filter((t: any) => t.status === 'DONE').length;
             const overdue = tasks.filter((t: any) => t.due_date && new Date(t.due_date) < new Date() && t.status !== 'DONE').length;
             const inReview = tasks.filter((t: any) => t.status === 'IN_REVIEW').length;
-            const milestones = msRes.data || [];
-            const activeMs = milestones.find((m: any) => m.status === 'ACTIVE') || milestones[0];
+            const trackItems = trackRes.data || [];
+            const activeTrack = trackItems.find((m: any) => m.status === 'ACTIVE') || trackItems[0];
 
             stats.push({
               id: ws.id, name: ws.name, type: ws.type,
-              milestone_name: activeMs?.name || null,
+              track_name: activeTrack?.name || null,
               total, done, pct: total > 0 ? Math.round((done / total) * 100) : 0,
               overdue, inReview,
               owner_name: ws.owner_name || null,
@@ -213,7 +214,7 @@ export default function BigScreenPage() {
                 <table className="bs-table">
                   <thead>
                     <tr>
-                      <th>项目</th><th>里程碑</th><th>进度</th><th>健康度</th><th>负责人</th>
+                      <th>项目</th><th>里程碑/迭代</th><th>进度</th><th>健康度</th><th>负责人</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -223,7 +224,7 @@ export default function BigScreenPage() {
                     {activeWss.map((w) => (
                       <tr key={w.id} style={{ cursor: 'pointer' }} onClick={() => { setTier('project'); setSelectedWs(w); }}>
                         <td><span className={`bs-status ${w.health}`} />{w.name}</td>
-                        <td>{w.milestone_name || '-'}</td>
+                        <td>{w.track_name || '-'}</td>
                         <td>{w.pct}%</td>
                         <td>
                           <span style={{ color: w.health === 'on-track' ? '#34d399' : w.health === 'at-risk' ? '#fbbf24' : '#ef4444' }}>

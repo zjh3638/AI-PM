@@ -13,7 +13,7 @@ export interface Workspace {
   name: string;
   key: string;
   description: string;
-  type: 'PROJECT' | 'OPERATION' | 'OTHER';
+  type: 'PROJECT' | 'TOPIC';
   status: 'ACTIVE' | 'ARCHIVED';
   visibility: 'PRIVATE' | 'DEPARTMENT' | 'PUBLIC';
   member_count: number;
@@ -60,6 +60,7 @@ export interface Task {
   iteration_id: string | null;
   milestone_id: string | null;
   milestone_name: string | null;
+  iteration_name: string | null;
   task_type: TaskType;
   title: string;
   description: string | null;

@@ -141,14 +141,14 @@ class PermissionChecker:
 
     @staticmethod
     def can_transition_status(task: Task, new_status: str, user_id: str, is_manager: bool) -> bool:
-        """Check if a status transition is allowed."""
-        if is_manager:
-            return True
+        """Check if a status transition is allowed. Managers can trigger any valid transition but cannot skip states."""
         current = task.status
         if current not in STATUS_TRANSITIONS:
             return False
         if new_status not in STATUS_TRANSITIONS[current]:
             return False
+        if is_manager:
+            return True
         allowed_roles = STATUS_TRANSITIONS[current][new_status]
         if "assignee" in allowed_roles and task.assignee_id == user_id:
             return True

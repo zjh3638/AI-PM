@@ -12,3 +12,5 @@ __pycache__/
 e2e/.auth/
 test-results/
 playwright-report/
+.turbo/
+uploads/

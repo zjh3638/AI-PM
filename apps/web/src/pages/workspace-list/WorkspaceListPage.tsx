@@ -5,8 +5,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 
 const typeLabels: Record<string, { label: string; cls: string }> = {
   PROJECT: { label: '研发项目', cls: 'company' },
-  OPERATION: { label: '专题项目', cls: 'dept' },
-  OTHER: { label: '事务工作', cls: 'normal' },
+  TOPIC: { label: '专题项目', cls: 'dept' },
 };
 
 // Mock health data — will come from backend later
@@ -81,8 +80,7 @@ export default function WorkspaceListPage() {
           style={{ width: 120 }}
           options={[
             { label: '研发项目', value: 'PROJECT' },
-            { label: '专题项目', value: 'OPERATION' },
-            { label: '事务工作', value: 'OTHER' },
+            { label: '专题项目', value: 'TOPIC' },
           ]}
         />
       </div>
@@ -104,7 +102,7 @@ export default function WorkspaceListPage() {
       ) : (
         <div className="stream-grid">
           {workspaces.map((ws, idx) => {
-            const tier = typeLabels[ws.type] || typeLabels.OTHER;
+            const tier = typeLabels[ws.type] || typeLabels.TOPIC;
             const healthColor = getHealthColor(idx);
             return (
               <div
@@ -181,9 +179,8 @@ export default function WorkspaceListPage() {
               <Form.Item name="type" label="类型" initialValue="PROJECT">
                 <Select
                   options={[
-                    { label: '项目', value: 'PROJECT' },
-                    { label: '运维', value: 'OPERATION' },
-                    { label: '其他', value: 'OTHER' },
+                    { label: '研发项目', value: 'PROJECT' },
+                    { label: '专题项目', value: 'TOPIC' },
                   ]}
                 />
               </Form.Item>
