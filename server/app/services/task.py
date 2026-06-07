@@ -12,6 +12,16 @@ from app.exceptions import AppException
 
 async def create_task(db: AsyncSession, workspace_id: str, **kwargs) -> Task:
     task = Task(workspace_id=workspace_id, **kwargs)
+    if task.task_type == "STORY":
+        # Backlog entries are already reviewed — skip requirement review gate
+        if task.requirement_review_status is None:
+            task.requirement_review_status = "APPROVED"
+        # 需求提出人默认兼任测试负责人
+        if task.proposer_id and not task.qa_owner_id:
+            task.qa_owner_id = task.proposer_id
+        # Story 本身即是需求阶段的产出物，创建即视为可推进
+        if task.phase == "REQUIREMENTS" and task.status == "TODO":
+            task.status = "DONE"
     db.add(task)
     await db.commit()
     await db.refresh(task)
@@ -165,6 +175,70 @@ def get_phases_for_type(task_type: Optional[str] = None) -> list[str]:
     return merged
 
 
+async def check_phase_advance_gate(task: Task, db: AsyncSession) -> tuple[bool, str]:
+    """Validate that a STORY task meets all conditions to advance to the next phase."""
+    if task.task_type != "STORY":
+        return True, ""
+
+    phases = STORY_PHASES
+    idx = phases.index(task.phase) if task.phase in phases else -1
+    if idx < 0 or idx >= len(phases) - 1:
+        return False, "已是最后一个阶段"
+
+    current_phase = task.phase
+
+    # Gate 1: DESIGN → DEVELOPMENT: design review must be APPROVED
+    if current_phase == "DESIGN":
+        if task.design_review_status != "APPROVED":
+            return False, "方案设计评审未通过，不能进入「开发实现」阶段。请先在需求详情中完成方案评审。"
+        return True, ""
+
+    # Gate 2: DEVELOPMENT → TESTING: ALL child tasks must be DONE
+    if current_phase == "DEVELOPMENT":
+        child_result = await db.execute(
+            select(Task).where(Task.parent_id == task.id)
+        )
+        children = child_result.scalars().all()
+        if not children:
+            return False, "Story 尚未拆分子任务。请先完成方案设计并拆分开发任务。"
+        not_done = [c for c in children if c.status != "DONE"]
+        if not_done:
+            titles = "、".join(c.title[:20] for c in not_done[:3])
+            suffix = "..." if len(not_done) > 3 else ""
+            return False, f"尚有 {len(not_done)} 个子任务未完成：{titles}{suffix}"
+        return True, ""
+
+    return True, ""
+
+
+async def review_requirement(db: AsyncSession, task: Task, reviewer_id: str,
+                              status: str, note: str = "") -> Task:
+    """Approve or reject a Story's requirement review."""
+    task.requirement_review_status = status
+    task.requirement_reviewer_id = reviewer_id
+    task.requirement_review_note = note or None
+    if status == "APPROVED":
+        task.analyst_id = reviewer_id
+    await db.commit()
+    await db.refresh(task)
+    return task
+
+
+async def review_design(db: AsyncSession, task: Task, reviewer_id: str,
+                         status: str, note: str = "") -> Task:
+    """Approve or reject a Story's design review."""
+    task.design_review_status = status
+    task.design_reviewer_id = reviewer_id
+    task.design_review_note = note or None
+    if status == "APPROVED":
+        # 方案设计评审人默认兼任需求负责人
+        if not task.analyst_id:
+            task.analyst_id = reviewer_id
+    await db.commit()
+    await db.refresh(task)
+    return task
+
+
 async def get_kanban(db: AsyncSession, workspace_id: str, group_by: str = "status", task_type: Optional[str] = None) -> dict:
     query = select(Task).where(Task.workspace_id == workspace_id)
     if task_type:
@@ -236,6 +310,14 @@ def _task_to_dict(task: Task) -> dict:
         verifier_name = task.verifier.display_name if task.verifier else None
     except Exception:
         verifier_name = None
+    try:
+        requirement_reviewer_name = task.requirement_reviewer.display_name if task.requirement_reviewer else None
+    except Exception:
+        requirement_reviewer_name = None
+    try:
+        design_reviewer_name = task.design_reviewer.display_name if task.design_reviewer else None
+    except Exception:
+        design_reviewer_name = None
 
     return {
         "id": task.id, "workspace_id": task.workspace_id,
@@ -258,6 +340,15 @@ def _task_to_dict(task: Task) -> dict:
         "qa_owner_name": qa_owner_name,
         "verifier_id": task.verifier_id,
         "verifier_name": verifier_name,
+        "requirement_review_status": task.requirement_review_status,
+        "requirement_reviewer_id": task.requirement_reviewer_id,
+        "requirement_reviewer_name": requirement_reviewer_name,
+        "requirement_review_note": task.requirement_review_note,
+        "design_review_status": task.design_review_status,
+        "design_reviewer_id": task.design_reviewer_id,
+        "design_reviewer_name": design_reviewer_name,
+        "design_review_note": task.design_review_note,
+        "design_doc": task.design_doc,
         "reviewer_ids": task.reviewer_ids or [],
         "estimation": task.estimation, "estimation_unit": task.estimation_unit,
         "sort_order": task.sort_order,
@@ -299,8 +390,9 @@ async def plan_backlog_story(db: AsyncSession, story_id: str, iteration_id: str)
     if story.task_type != "STORY":
         raise AppException(400, "只能规划需求类型的任务", 400)
     story.iteration_id = iteration_id
-    story.status = "TODO"
+    story.status = "DONE"  # 需求即产出物，规划后直接可推进到设计
     story.phase = "REQUIREMENTS"
+    story.requirement_review_status = "APPROVED"
     await db.commit()
     await db.refresh(story)
     return story

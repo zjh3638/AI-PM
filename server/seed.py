@@ -20,6 +20,21 @@ from app.security import hash_password
 async def seed():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Ensure new review columns exist for SQLite (safe DDL, ignored if already present)
+        from sqlalchemy import text
+        for col in [
+            "requirement_review_status VARCHAR(20)",
+            "requirement_reviewer_id VARCHAR(36) REFERENCES users(id)",
+            "requirement_review_note TEXT",
+            "design_review_status VARCHAR(20)",
+            "design_reviewer_id VARCHAR(36) REFERENCES users(id)",
+            "design_review_note TEXT",
+            "design_doc TEXT",
+        ]:
+            try:
+                await conn.execute(text(f"ALTER TABLE tasks ADD COLUMN {col}"))
+            except Exception:
+                pass
 
     async with async_session() as db:
         dept = Department(id="dept-001", name="默认部门", path="/默认部门")
@@ -89,8 +104,9 @@ async def seed():
             bs = Task(
                 workspace_id=ws_rd.id,
                 task_type="STORY", title=title, description=desc,
-                status="TODO", phase="REQUIREMENTS", priority="HIGH",
-                assignee_id=admin.id, proposer_id=admin.id, estimation=est,
+                status="DONE", phase="REQUIREMENTS", priority="HIGH",
+                assignee_id=admin.id, proposer_id=admin.id, qa_owner_id=admin.id, estimation=est,
+                requirement_review_status="APPROVED",
             )
             backlog_s_ids.append(bs.id)
             db.add(bs)
@@ -102,7 +118,12 @@ async def seed():
             task_type="STORY", title="用户注册登录模块",
             description="实现用户注册、登录、密码找回功能",
             status="IN_PROGRESS", phase="DEVELOPMENT", priority="HIGH",
-            assignee_id=admin.id, proposer_id=admin.id,
+            assignee_id=admin.id, proposer_id=admin.id, qa_owner_id=admin.id,
+            analyst_id=admin.id,
+            requirement_review_status="APPROVED", requirement_reviewer_id=admin.id,
+            requirement_review_note="已评审通过",
+            design_review_status="APPROVED", design_reviewer_id=admin.id,
+            design_review_note="技术方案评审通过，可以拆分开发任务",
         )
         db.add(story1)
         await db.flush()

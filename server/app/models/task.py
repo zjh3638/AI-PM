@@ -36,6 +36,15 @@ class Task(Base, UUIDMixin, TimestampMixin):
     # Multi-reviewers for Story
     reviewer_ids: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
+    # Review gate fields (Story phase-gate control)
+    requirement_review_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    requirement_reviewer_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    requirement_review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    design_review_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    design_reviewer_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    design_review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    design_doc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 方案设计文档
+
     estimation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     estimation_unit: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0)
@@ -54,4 +63,6 @@ class Task(Base, UUIDMixin, TimestampMixin):
     analyst = relationship("User", backref="analyzed_tasks", foreign_keys=[analyst_id])
     qa_owner = relationship("User", backref="qa_tasks", foreign_keys=[qa_owner_id])
     verifier = relationship("User", backref="verified_tasks", foreign_keys=[verifier_id])
+    requirement_reviewer = relationship("User", backref="req_reviewed_tasks", foreign_keys=[requirement_reviewer_id])
+    design_reviewer = relationship("User", backref="design_reviewed_tasks", foreign_keys=[design_reviewer_id])
     milestone = relationship("Milestone", back_populates="tasks")

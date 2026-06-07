@@ -42,6 +42,8 @@ export interface TaskPermissions {
   can_change_reviewer: boolean;
   can_split: boolean;
   can_create_test: boolean;
+  can_review_requirement: boolean;
+  can_review_design: boolean;
   is_assignee: boolean;
   is_reviewer: boolean;
   is_proposer: boolean;
@@ -80,6 +82,15 @@ export interface Task {
   qa_owner_name: string | null;
   verifier_id: string | null;
   verifier_name: string | null;
+  requirement_review_status: string | null;
+  requirement_reviewer_id: string | null;
+  requirement_reviewer_name: string | null;
+  requirement_review_note: string | null;
+  design_review_status: string | null;
+  design_reviewer_id: string | null;
+  design_reviewer_name: string | null;
+  design_review_note: string | null;
+  design_doc: string | null;
   reviewer_ids: string[];
   estimation: number | null;
   estimation_unit: string | null;

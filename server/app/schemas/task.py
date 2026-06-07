@@ -23,6 +23,7 @@ class TaskCreate(BaseModel):
     qa_owner_id: Optional[str] = None
     verifier_id: Optional[str] = None
     reviewer_ids: Optional[list[str]] = None
+    design_doc: Optional[str] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
     sort_order: int = 0
@@ -47,6 +48,7 @@ class TaskUpdate(BaseModel):
     qa_owner_id: Optional[str] = None
     verifier_id: Optional[str] = None
     reviewer_ids: Optional[list[str]] = None
+    design_doc: Optional[str] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
     sort_order: Optional[int] = None
@@ -80,7 +82,17 @@ class TaskResponse(BaseModel):
     qa_owner_name: Optional[str] = None
     verifier_id: Optional[str] = None
     verifier_name: Optional[str] = None
+    requirement_review_status: Optional[str] = None
+    requirement_reviewer_id: Optional[str] = None
+    requirement_reviewer_name: Optional[str] = None
+    requirement_review_note: Optional[str] = None
+    design_review_status: Optional[str] = None
+    design_reviewer_id: Optional[str] = None
+    design_reviewer_name: Optional[str] = None
+    design_review_note: Optional[str] = None
+    design_doc: Optional[str] = None
     reviewer_ids: Optional[list[str]] = None
+    design_doc: Optional[str] = None
     estimation: Optional[float] = None
     estimation_unit: Optional[str] = None
     sort_order: int = 0

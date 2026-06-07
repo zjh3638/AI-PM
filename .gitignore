@@ -14,3 +14,11 @@ test-results/
 playwright-report/
 .turbo/
 uploads/
+
+# Temporary planning files
+findings.md
+progress.md
+task_plan.md
+apps/web/e2e/.auth/
+*.bak
+*.bak2

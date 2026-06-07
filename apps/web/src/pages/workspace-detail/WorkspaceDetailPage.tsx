@@ -361,38 +361,46 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
   const { members } = useWorkspaceStore();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchAction, setBatchAction] = useState<string | null>(null);
-  const [typeFilter, setTypeFilter] = useState('STORY');
+
+  // Story-centric: expand stories to see child tasks
+  const [expandedStories, setExpandedStories] = useState<Set<string>>(new Set());
+  const [childMap, setChildMap] = useState<Record<string, any[]>>({});
 
   // Local kanban state to avoid race condition with KpiRow/ReportsPanel
   const [kanban, setKanban] = useState<Record<string, Task[]>>({});
   const [loading, setLoading] = useState(false);
   const groupBy = isFull ? 'phase' : 'status';
 
-  const fetchKanbanData = useCallback(async (wsId: string, groupBy: string, taskType: string) => {
+  const fetchKanbanData = useCallback(async (wsId: string, groupBy: string) => {
     setLoading(true);
     try {
       const params: Record<string, string> = { group_by: groupBy };
-      if (taskType) params.task_type = taskType;
+      if (isFull) params.task_type = 'STORY';
       const result = await api.get(`/workspaces/${wsId}/kanban`, { params });
       setKanban(result.data || {});
     } catch { /* ignore */ }
     setLoading(false);
-  }, []);
+  }, [isFull]);
 
-  useEffect(() => { if (wsId) fetchKanbanData(wsId, groupBy, typeFilter); }, [wsId, typeFilter]);
+  useEffect(() => { if (wsId) fetchKanbanData(wsId, groupBy); }, [wsId]);
+
+  const toggleExpand = async (storyId: string) => {
+    const next = new Set(expandedStories);
+    if (next.has(storyId)) { next.delete(storyId); setExpandedStories(next); return; }
+    next.add(storyId); setExpandedStories(next);
+    if (!childMap[storyId] && wsId) {
+      try {
+        const res: any = await api.get(`/workspaces/${wsId}/tasks`, { params: { parent_id: storyId, page_size: 100 } });
+        setChildMap(prev => ({ ...prev, [storyId]: res.data || [] }));
+      } catch { /* ignore */ }
+    }
+  };
 
   // Check if current user is manager (OWNER or MANAGER role)
   const isMgr = user ? members.some(m => m.user_id === user.id && (m.role === 'OWNER' || m.role === 'MANAGER')) || members.length === 0 : false;
 
-  // Check if current user can drag this specific task
-  const canDrag = (task: Task): boolean => {
-    if (!user) return false;
-    if (isMgr) return true;
-    if (task.assignee_id === user.id) return true;
-    if (task.reviewer_id === user.id) return true;
-    if (task.reviewer_ids && task.reviewer_ids.includes(user.id)) return true;
-    return false;
-  };
+  // All workspace members can attempt to drag — backend enforces permissions
+  const canDrag = (_task: Task): boolean => true;
 
   const statusColDefs: { key: string; title: string; icon?: string }[] = [
     { key: 'TODO', title: '待办' },
@@ -409,13 +417,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
     { key: 'ACCEPTANCE', title: '验收交付', icon: '✅', deliverables: '验收报告、用户反馈、干系人签字' },
   ];
 
-  // Filter phase columns based on task type
-  const typePhaseMap: Record<string, string[]> = {
-    'STORY': ['REQUIREMENTS', 'DESIGN', 'DEVELOPMENT', 'TESTING', 'RELEASE', 'ACCEPTANCE'],
-    'TASK': ['DEVELOPMENT', 'TESTING', 'RELEASE'],
-    'BUG': ['DEVELOPMENT', 'TESTING'],
-  };
-  const phaseColDefs = allPhaseColDefs.filter(c => (typePhaseMap[typeFilter] || typePhaseMap['']).includes(c.key));
+  const phaseColDefs = allPhaseColDefs; // Always show all 6 SDLC phases for Story kanban
   const colDefs = isFull ? phaseColDefs : statusColDefs;
 
   // Status colors for cards within a phase column
@@ -496,6 +498,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
         const targetIdx = phaseColDefs.findIndex(p => p.key === colKey);
         if (targetIdx !== phaseIdx + 1) { setDragError('只能拖拽到下一阶段'); return; }
         await advancePhase(wsId, taskId, '通过拖拽推进阶段');
+        await fetchKanbanData(wsId, groupBy);  // refresh local kanban immediately
       } else {
         await moveTask(wsId, taskId, colKey, 0);
       }
@@ -514,6 +517,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
         await advancePhase(wsId, t.id, gateNote);
       } catch { /* skip */ }
     }
+    await fetchKanbanData(wsId, groupBy);
     setGateOpen(null);
     setGateNote('');
   };
@@ -526,7 +530,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
       else if (batchAction === 'priority') promises.push(update(wsId, taskId, { priority: value } as any));
     });
     await Promise.all(promises);
-    await fetchKanbanData(wsId, groupBy, typeFilter);
+    await fetchKanbanData(wsId, groupBy);
     setSelected(new Set());
     setBatchAction(null);
   };
@@ -582,34 +586,20 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
         <button onClick={() => { setSelected(new Set()); setBatchAction(null); }}>✕</button>
       </div>
 
-      {/* Type filter */}
-      {isFull && (
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12, alignItems: 'center' }}>
-          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', fontWeight: 500 }}>类型:</span>
-          {[
-            { key: 'STORY', label: 'Story', icon: '📋' },
-            { key: 'TASK', label: 'Task', icon: '✅' },
-            { key: 'BUG', label: 'Bug', icon: '🐛' },
-          ].map(f => (
-            <button
-              key={f.key}
-              className={`btn btn-xs ${typeFilter === f.key ? 'btn-primary' : 'btn-ghost'}`}
-              style={{ fontSize: '0.66rem', padding: '2px 10px' }}
-              onClick={() => setTypeFilter(f.key)}
-            >
-              {f.icon} {f.label}
-            </button>
-          ))}
-        </div>
-      )}
-
       <div style={{
         display: 'grid',
         gridTemplateColumns: `repeat(${colDefs.length}, minmax(180px, 1fr))`,
         gap: 10,
         overflowX: 'auto',
       }}>
-        {colDefs.map((col) => (
+        {colDefs.map((col) => {
+          const colTasks = (kanban[col.key] || []);
+          const doneCount = colTasks.filter((t: Task) => t.status === 'DONE').length;
+          const total = colTasks.length;
+          const allDone = total > 0 && doneCount === total;
+          const phaseIdx = phaseColDefs.findIndex(p => p.key === col.key);
+          const isLast = phaseIdx === phaseColDefs.length - 1;
+          return (
           <div
             key={col.key}
             className="kanban-col"
@@ -620,90 +610,156 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
             <div className="col-head" style={isFull ? { flexDirection: 'column', gap: 4, marginBottom: 12 } : {}}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                 <span>{isFull && col.icon ? `${col.icon} ` : ''}{col.title}</span>
-                <span className="badge" style={{ background: 'var(--bg-hover)' }}>{(kanban[col.key] || []).length}</span>
+                <span className="badge" style={{ background: 'var(--bg-hover)' }}>{total}</span>
               </div>
-              {isFull && (() => {
-                const colTasks = (kanban[col.key] || []);
-                const doneCount = colTasks.filter((t: Task) => t.status === 'DONE').length;
-                const total = colTasks.length;
-                const allDone = total > 0 && doneCount === total;
-                const phaseIdx = phaseColDefs.findIndex(p => p.key === col.key);
-                const isLast = phaseIdx === phaseColDefs.length - 1;
-                return (
-                  <>
-                    {total > 0 && (
-                      <div style={{ width: '100%', height: 4, background: 'var(--border-light)', borderRadius: 2 }}>
-                        <div style={{ height: '100%', width: `${Math.round((doneCount/total)*100)}%`, background: allDone ? 'var(--green-400)' : 'var(--blue-400)', borderRadius: 2, transition: 'width 0.3s' }} />
-                      </div>
-                    )}
-                    {allDone && !isLast && (
-                      <button
-                        className="btn btn-primary btn-xs"
-                        style={{ width: '100%', fontSize: '0.68rem', marginTop: 2 }}
-                        onClick={() => setGateOpen(col.key)}
-                      >
-                        推进到「{phaseColDefs[phaseIdx + 1]?.title}」
-                      </button>
-                    )}
-                    {total > 0 && !allDone && (
-                      <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>{doneCount}/{total} 完成</div>
-                    )}
-                  </>
-                );
-              })()}
+              {isFull && (
+                <>
+                  {total > 0 && (
+                    <div style={{ width: '100%', height: 4, background: 'var(--border-light)', borderRadius: 2 }}>
+                      <div style={{ height: '100%', width: `${Math.round((doneCount/total)*100)}%`, background: allDone ? 'var(--green-400)' : 'var(--blue-400)', borderRadius: 2, transition: 'width 0.3s' }} />
+                    </div>
+                  )}
+                  {/* Gate button: show when any story is DONE, not all */}
+                  {doneCount > 0 && !isLast && (
+                    <button
+                      className="btn btn-primary btn-xs"
+                      style={{ width: '100%', fontSize: '0.68rem', marginTop: 2 }}
+                      onClick={() => setGateOpen(col.key)}
+                    >
+                      推进 {doneCount} 个到「{phaseColDefs[phaseIdx + 1]?.title}」
+                    </button>
+                  )}
+                  {total > 0 && !allDone && (
+                    <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)' }}>{doneCount}/{total} 完成</div>
+                  )}
+                </>
+              )}
             </div>
-            {(kanban[col.key] || []).filter((t: Task) => !scopeFilter || (isFull ? t.iteration_id === scopeFilter : t.milestone_id === scopeFilter)).map((task: Task) => {
-                const isOverdue = task.due_date && new Date(task.due_date) < new Date() && task.status !== 'DONE';
-                const typeIcon = { EPIC: '🎯', STORY: '📋', TASK: '✅', BUG: '🐛', SUB_TASK: '📌', SPIKE: '🔬' }[task.task_type] || '📄';
-                const typeCls = task.task_type === 'STORY' ? 'story' : task.task_type === 'BUG' ? 'bug' : task.task_type === 'SPIKE' ? 'spike' : 'task';
+            {colTasks.filter((t: Task) => !scopeFilter || (isFull ? t.iteration_id === scopeFilter : t.milestone_id === scopeFilter)).map((story: Task) => {
+                const isOverdue = story.due_date && new Date(story.due_date) < new Date() && story.status !== 'DONE';
+                const children = childMap[story.id] || [];
+                const childDone = children.filter((c: any) => c.status === 'DONE').length;
+                const isExpanded = expandedStories.has(story.id);
                 return (
-              <div
-                key={task.id}
-                className={`kanban-card type-${typeCls}${selected.has(task.id) ? ' selected' : ''}${isOverdue ? ' overdue' : ''}${!canDrag(task) ? ' locked' : ''}`}
-                title={task.title}
-                onClick={(e) => { if (e.shiftKey) toggleSelect(task.id); else onEditTask(task); }}
-                draggable={canDrag(task)}
-                onDragStart={(e) => { if (!canDrag(task)) { e.preventDefault(); return; } handleDragStart(e, task.id, isFull ? task.phase : task.status); }}
-              >
-                {isFull && (
-                  <span className={`card-type-badge ${typeCls}`}>{typeIcon} {task.task_type}</span>
-                )}
-                <div className="card-title">{task.title}</div>
-                <div className="card-meta">
-                  <button
-                    className="card-status-btn"
-                    title={`点击切换: ${statusBadge[task.status]?.label} → ${statusQuickLabel[statusCycle[task.status]]}`}
-                    onClick={(e) => handleStatusQuick(e, task)}
-                    style={{
-                      fontSize: '0.55rem', padding: '1px 5px', border: 'none', borderRadius: 3,
-                      cursor: 'pointer', fontWeight: 500,
-                      background: statusBadge[task.status]?.bg || 'var(--bg-hover)',
-                      color: 'var(--text-secondary)',
-                    }}
-                  >{statusBadge[task.status]?.label || task.status}</button>
-                  {task.priority === 'CRITICAL' && <span style={{ color: 'var(--red-600)', fontWeight: 500 }}>紧急</span>}
-                  {task.priority === 'HIGH' && <span style={{ color: 'var(--amber-600)' }}>高</span>}
-                  {isOverdue && <span style={{ color: 'var(--red-500)' }}>⚠ 逾期</span>}
-                  {task.assignee_name && (
-                    <span style={{ maxWidth: 55, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={task.assignee_name}>
-                      {task.assignee_name}
-                    </span>
+              <div key={story.id}>
+                <div
+                  className={`kanban-card type-story${selected.has(story.id) ? ' selected' : ''}${isOverdue ? ' overdue' : ''}${!canDrag(story) ? ' locked' : ''}`}
+                  title={story.title}
+                  onClick={(e) => { if (e.shiftKey) toggleSelect(story.id); else toggleExpand(story.id); }}
+                  draggable={canDrag(story)}
+                  onDragStart={(e) => { if (!canDrag(story)) { e.preventDefault(); return; } handleDragStart(e, story.id, isFull ? story.phase : story.status); }}
+                  style={{ cursor: 'pointer', borderLeft: `3px solid ${({CRITICAL:'var(--red-400)',HIGH:'var(--amber-400)',MEDIUM:'var(--blue-400)',LOW:'var(--text-muted)'})[story.priority] || 'var(--border)'}` }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+                    <div className="card-title" style={{ flex: 1 }}>{story.title}</div>
+                    <span style={{ fontSize: '0.55rem', transform: isExpanded ? 'rotate(90deg)' : '', transition: '0.15s', flexShrink: 0, marginLeft: 4 }}>▶</span>
+                  </div>
+                  <div className="card-meta" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      className="card-status-btn"
+                      onClick={(e) => { e.stopPropagation(); handleStatusQuick(e, story); }}
+                      style={{ fontSize: '0.55rem', padding: '1px 5px', border: 'none', borderRadius: 3, cursor: 'pointer', fontWeight: 500, background: statusBadge[story.status]?.bg || 'var(--bg-hover)', color: 'var(--text-secondary)' }}
+                    >{statusBadge[story.status]?.label || story.status}</button>
+                    {/* Quick complete: set DONE directly */}
+                    {story.status !== 'DONE' && (
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!wsId) return;
+                          try {
+                            await update(wsId, story.id, { status: 'DONE' } as any);
+                            await fetchKanbanData(wsId, groupBy);
+                          } catch (err: any) {
+                            setDragError(err?.response?.data?.message || '完成失败');
+                            setTimeout(() => setDragError(''), 3000);
+                          }
+                        }}
+                        style={{ fontSize: '0.55rem', padding: '1px 4px', border: '1px solid var(--green-300)', borderRadius: 3, cursor: 'pointer', background: 'var(--green-50)', color: 'var(--green-600)', fontWeight: 600 }}
+                        title="快速完成"
+                      >✓</button>
+                    )}
+                    {story.priority === 'CRITICAL' && <span style={{ color: 'var(--red-600)', fontWeight: 500, fontSize: '0.6rem' }}>紧急</span>}
+                    {story.priority === 'HIGH' && <span style={{ color: 'var(--amber-600)', fontSize: '0.6rem' }}>高</span>}
+                    {isOverdue && <span style={{ color: 'var(--red-500)', fontSize: '0.6rem' }}>⚠ 逾期</span>}
+                    {story.assignee_name && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }} title={story.assignee_name}>{story.assignee_name}</span>}
+                  </div>
+                  {/* Mini phase progress bar */}
+                  {isFull && story.task_type === 'STORY' && (
+                    <div style={{ display: 'flex', gap: 2, marginTop: 4, alignItems: 'center' }}>
+                      {['REQUIREMENTS', 'DESIGN', 'DEVELOPMENT', 'TESTING', 'RELEASE', 'ACCEPTANCE'].map((ph, i) => {
+                        const phaseIdx2 = ['REQUIREMENTS', 'DESIGN', 'DEVELOPMENT', 'TESTING', 'RELEASE', 'ACCEPTANCE'].indexOf(story.phase);
+                        const isPhase = ph === story.phase;
+                        const isPast = i <= phaseIdx2;
+                        return (
+                          <div key={ph} style={{
+                            flex: 1, height: 3, borderRadius: 2,
+                            background: isPhase ? 'var(--blue-500)' : isPast ? 'var(--green-300)' : 'var(--border-light)',
+                            transition: 'background 0.3s',
+                          }} title={({REQUIREMENTS:'需求分析',DESIGN:'方案设计',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线',ACCEPTANCE:'验收交付'})[ph]} />
+                        );
+                      })}
+                    </div>
                   )}
-                  {task.children_count > 0 && (
-                    <span style={{ color: 'var(--blue-500)', fontWeight: 500 }}>{task.children_count} 子</span>
+                  {/* Child task progress */}
+                  {children.length > 0 && (
+                    <div style={{ marginTop: 6 }}>
+                      <div style={{ height: 3, background: 'var(--border-light)', borderRadius: 2, marginBottom: 2 }}>
+                        <div style={{ height: '100%', width: `${Math.round((childDone/children.length)*100)}%`, background: 'var(--green-400)', borderRadius: 2 }} />
+                      </div>
+                      <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)' }}>子任务 {childDone}/{children.length}</div>
+                    </div>
                   )}
+                  {!children.length && story.children_count > 0 && (
+                    <div style={{ marginTop: 4, fontSize: '0.55rem', color: 'var(--text-muted)' }}>{story.children_count} 个子任务（点击展开加载）</div>
+                  )}
+                  {/* Design review status badge */}
+                  {isFull && story.task_type === 'STORY' && story.phase === 'DESIGN' && story.design_review_status && (
+                    <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.55rem', padding: '1px 5px', borderRadius: 3,
+                        background: story.design_review_status === 'APPROVED' ? '#d4edda' :
+                                     story.design_review_status === 'REJECTED' ? '#f8d7da' : '#fff3cd',
+                        color: story.design_review_status === 'APPROVED' ? '#155724' :
+                               story.design_review_status === 'REJECTED' ? '#721c24' : '#856404' }}>
+                        {story.design_review_status === 'APPROVED' ? '方案评审 ✓' :
+                         story.design_review_status === 'REJECTED' ? '方案评审 ✗' : '方案待评审'}
+                      </span>
+                    </div>
+                  )}
+                  {/* Edit button */}
+                  <div style={{ marginTop: 6, textAlign: 'right' }}>
+                    <button className="btn btn-ghost btn-xs" style={{ fontSize: '0.58rem' }}
+                      onClick={(e) => { e.stopPropagation(); onEditTask(story); }}>编辑</button>
+                  </div>
                 </div>
-                {task.due_date && (
-                  <div style={{ fontSize: '0.58rem', color: isOverdue ? 'var(--red-500)' : 'var(--text-muted)', marginTop: 3 }}>
-                    📅 {task.due_date}
+                {/* Expanded children */}
+                {isExpanded && (
+                  <div style={{ marginLeft: 8, marginTop: 2, marginBottom: 6, padding: '4px 8px', background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)', borderLeft: '2px solid var(--border-light)' }}>
+                    {children.map((child: any) => {
+                      const childTypeIcon: Record<string, string> = { TASK: '✅', BUG: '🐛', SUB_TASK: '📌', SPIKE: '🔬' };
+                      return (
+                      <div key={child.id}
+                        onClick={(e) => { e.stopPropagation(); onEditTask(child); }}
+                        style={{ padding: '3px 6px', marginBottom: 2, borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.68rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)' }}>
+                        <span>{childTypeIcon[child.task_type] || '📄'} {child.title}</span>
+                        <span style={{ fontSize: '0.56rem', color: ({TODO:'var(--text-muted)',IN_PROGRESS:'var(--blue-500)',IN_REVIEW:'var(--amber-500)',DONE:'var(--green-500)'})[child.status] || 'var(--text-muted)', fontWeight: 500 }}>
+                          {({TODO:'待办',IN_PROGRESS:'进行中',IN_REVIEW:'审核中',DONE:'✓'})[child.status] || child.status}
+                        </span>
+                      </div>
+                      );
+                    })}
+                    <div onClick={(e) => { e.stopPropagation(); onEditTask({ ...story, task_type: 'TASK' } as Task); onEditTask(story); onCreateTask('TODO', story.id); }}
+                      style={{ padding: '3px 6px', marginTop: 4, borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.64rem', color: 'var(--text-muted)', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent' }}>
+                      + 添加子任务
+                    </div>
                   </div>
                 )}
               </div>
                 );
             })}
-            <div className="col-add" onClick={() => onCreateTask(isFull ? 'TODO' : col.key, isFull ? col.key : undefined)}>+ 新建任务</div>
+            <div className="col-add" onClick={() => onCreateTask(isFull ? 'TODO' : col.key, isFull ? col.key : undefined)}>+ 新建需求</div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Gate dialog */}
@@ -726,6 +782,17 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
               <strong>要求产出物：</strong>
               <span style={{ marginLeft: 4 }}>{phaseColDefs.find(p => p.key === gateOpen)?.deliverables}</span>
             </div>
+            {/* Gate-specific warnings */}
+            {gateOpen === 'DESIGN' && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
+                ⚠️ 请先在需求详情中完成<strong>方案评审</strong>，并拆分开发子任务
+              </div>
+            )}
+            {gateOpen === 'DEVELOPMENT' && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
+                ⚠️ 所有子任务需标记为<strong>已完成</strong>后，才能推进到测试验证
+              </div>
+            )}
             <textarea
               placeholder="填写产出物说明（必填）..."
               value={gateNote}
@@ -784,189 +851,10 @@ function ListView({ onEditTask, scopeFilter, isFull }: { onEditTask: (task: Task
   );
 }
 
-/* ═══════════════════════════════════════════
-   GANTT VIEW
-   ═══════════════════════════════════════════ */
-function GanttView({ scopeFilter, isFull }: { scopeFilter: string; isFull: boolean }) {
-  const { id: wsId } = useParams<{ id: string }>();
-  const ms = useMilestoneStore((s) => s.milestones.find((m) => m.id === scopeFilter));
-  const it = useIterationStore((s) => s.iterations.find((i) => i.id === scopeFilter));
-  const scope = isFull ? it : ms;
-  const { tasks, fetchList } = useTaskStore();
-
-  useEffect(() => { if (wsId) fetchList(wsId, { [isFull ? 'iteration_id' : 'milestone_id']: scopeFilter, page_size: 100 }); }, [wsId, scopeFilter]);
-
-  // Build date range from milestone/iteration dates or task dates
-  const now = new Date();
-  const startDate = scope?.start_date ? new Date(ms.start_date) : new Date(now.getTime() - 14 * 86400000);
-  const endDate = scope?.end_date ? new Date(ms.end_date) : new Date(now.getTime() + 14 * 86400000);
-  const totalDays = Math.max((endDate.getTime() - startDate.getTime()) / 86400000, 1);
-
-  // Generate day labels (max ~20)
-  const dayCount = Math.min(Math.ceil(totalDays) + 1, 20);
-  const days: string[] = [];
-  for (let i = 0; i < dayCount; i++) {
-    const d = new Date(startDate.getTime() + i * 86400000);
-    days.push(`${d.getMonth() + 1}/${d.getDate()}`);
-  }
-
-  const statusColors: Record<string, string> = {
-    TODO: 'var(--text-muted)', IN_PROGRESS: 'var(--blue-400)', IN_REVIEW: 'var(--amber-400)', DONE: 'var(--green-400)',
-  };
-
-  // Compute bar position from task dates or default to a spread
-  const getBarStyle = (task: Task, idx: number) => {
-    const tStart = task.created_at ? new Date(task.created_at) : new Date(startDate.getTime() + idx * 2 * 86400000);
-    const tEnd = task.due_date ? new Date(task.due_date) : new Date(tStart.getTime() + 3 * 86400000);
-    const leftPct = Math.max(0, ((tStart.getTime() - startDate.getTime()) / 86400000) / totalDays * 100);
-    const widthPct = Math.max(3, ((tEnd.getTime() - tStart.getTime()) / 86400000) / totalDays * 100);
-    return { left: `${leftPct}%`, width: `${widthPct}%` };
-  };
-
-  return (
-    <div className="gantt-wrap">
-      <div className="gantt-head">
-        <div className="gantt-label">任务 / {scope?.name || (isFull ? '迭代' : '里程碑')}</div>
-        <div className="gantt-timeline">
-          {days.map((d) => <div key={d} className="gantt-day">{d}</div>)}
-        </div>
-      </div>
-      {tasks.length === 0 && (
-        <div style={{ padding: 30, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.82rem' }}>暂无任务数据</div>
-      )}
-      {tasks.map((task, idx) => (
-        <div key={task.id} className="gantt-row">
-          <div className="gantt-label" style={{ fontSize: '0.74rem' }}>
-            <span style={{ color: 'var(--text-muted)', marginRight: 4 }}>{task.task_type === 'STORY' ? '📋' : '├'}</span>
-            {task.title}
-          </div>
-          <div className="gantt-timeline">
-            <div
-              className="gantt-bar"
-              style={{
-                ...getBarStyle(task, idx),
-                background: statusColors[task.status] || 'var(--text-muted)',
-              }}
-              title={`${task.title}: ${task.status}`}
-            />
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-}
 
 /* ═══════════════════════════════════════════
    KNOWLEDGE BASE
    ═══════════════════════════════════════════ */
-  /* ═══════════════════════════════════════════
-     STORY BOARD — Stories + child tasks grouped by status
-     ═══════════════════════════════════════════ */
-  function StoryBoard({ scopeFilter, onEditTask, onCreateTask, isFull }: { scopeFilter: string; onEditTask: (task: Task) => void; onCreateTask: (status: string, parentId?: string) => void; isFull: boolean }) {
-    const { id: wsId } = useParams<{ id: string }>();
-    const [storyList, setStoryList] = useState<Task[]>([]);
-    const [expanded, setExpanded] = useState<Set<string>>(new Set());
-    const [childMap, setChildMap] = useState<Record<string, Task[]>>({});
-
-    const fetchStories = async () => {
-      if (!wsId) return;
-      await useTaskStore.getState().fetchList(wsId, { [isFull ? 'iteration_id' : 'milestone_id']: scopeFilter, task_type: 'STORY', page_size: 100 });
-      const stories = useTaskStore.getState().tasks;
-      setStoryList(stories);
-      for (const s of stories) {
-        try {
-          const res: any = await api.get(`/workspaces/${wsId}/tasks`, { params: { parent_id: s.id, page_size: 100 } });
-          setChildMap(prev => ({ ...prev, [s.id]: res.data || [] }));
-        } catch { /* ignore */ }
-      }
-    };
-
-    useEffect(() => { fetchStories(); }, [wsId, scopeFilter]);
-
-    const toggle = (id: string) => {
-      setExpanded(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next; });
-    };
-
-    const statusLabels: Record<string, { label: string; color: string }> = {
-      TODO: { label: '待办', color: 'var(--text-muted)' },
-      IN_PROGRESS: { label: '进行中', color: 'var(--blue-500)' },
-      IN_REVIEW: { label: '待 Review', color: 'var(--amber-500)' },
-      DONE: { label: '已完成', color: 'var(--green-500)' },
-    };
-
-    const columns = ['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'DONE'] as const;
-    const colLabels = { TODO: '待办', IN_PROGRESS: '进行中', IN_REVIEW: '待 Review', DONE: '已完成' };
-
-    return (
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
-        {columns.map(col => {
-          const colStories = storyList.filter(s => s.status === col);
-          return (
-            <div key={col} style={{
-              background: 'var(--bg-raised)', borderRadius: 'var(--radius-md)',
-              border: '1px solid var(--border-light)', padding: '10px 12px'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingBottom: 8, borderBottom: '1px solid var(--border-light)' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.82rem' }}>{colLabels[col]}</span>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'var(--bg-surface)', padding: '1px 7px', borderRadius: 10 }}>{colStories.length}</span>
-              </div>
-              {colStories.length === 0 && (
-                <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.72rem' }}>暂无需求</div>
-              )}
-              {colStories.map(story => {
-                const children = childMap[story.id] || [];
-                const doneCount = children.filter(c => c.status === 'DONE').length;
-                return (
-                  <div key={story.id} style={{
-                    background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
-                    borderRadius: 'var(--radius-sm)', padding: '8px 10px', marginBottom: 8
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', cursor: 'pointer' }} onClick={() => toggle(story.id)}>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 3 }}>{story.title}</div>
-                        <div style={{ display: 'flex', gap: 8, fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-                          <span>{children.length} 个任务</span>
-                          {children.length > 0 && <span style={{ color: 'var(--green-500)' }}>{doneCount} 完成</span>}
-                          {story.assignee_name && <span>👤 {story.assignee_name}</span>}
-                        </div>
-                        {children.length > 0 && (
-                          <div style={{ marginTop: 4, height: 3, background: 'var(--border-light)', borderRadius: 2 }}>
-                            <div style={{ height: '100%', width: `${Math.round((doneCount / children.length) * 100)}%`, background: 'var(--green-400)', borderRadius: 2 }} />
-                          </div>
-                        )}
-                      </div>
-                      <span style={{ fontSize: '0.6rem', transform: expanded.has(story.id) ? 'rotate(90deg)' : '', transition: '0.2s' }}>▶</span>
-                    </div>
-                    {expanded.has(story.id) && (
-                      <div style={{ marginTop: 8, paddingTop: 6, borderTop: '1px solid var(--border-light)' }}>
-                        {children.map(child => (
-                          <div key={child.id}
-                            onClick={(e) => { e.stopPropagation(); onEditTask(child); }}
-                            style={{ padding: '4px 6px', marginBottom: 3, borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.74rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-raised)' }}>
-                            <span>{child.title}</span>
-                            <span style={{ fontSize: '0.62rem', color: (statusLabels[child.status]?.color) || 'var(--text-muted)' }}>{statusLabels[child.status]?.label || child.status}</span>
-                          </div>
-                        ))}
-                        <div onClick={(e) => { e.stopPropagation(); onCreateTask('TODO', story.id); }}
-                          style={{ padding: '4px 6px', marginTop: 3, borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent' }}>
-                          + 添加任务
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              <div onClick={() => { onCreateTask(col, undefined); }}
-                style={{ padding: '4px 6px', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.7rem', color: 'var(--text-muted)', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent' }}>
-                + 新建需求
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
-  }
-
 function KnowledgePanel() {
   return <KnowledgeBasePanel />;
 }
@@ -1031,8 +919,10 @@ function BacklogPanel({ onEditStory, onCreateStory, selectedIteration }: { onEdi
               }} />
               {/* Content */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 3, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {story.title}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {story.title}
+                  </span>
                 </div>
                 <div style={{ display: 'flex', gap: 10, fontSize: '0.66rem', color: 'var(--text-muted)', alignItems: 'center' }}>
                   <span style={{ color: priorityColor[story.priority], fontWeight: 500 }}>{priorityLabel[story.priority] || story.priority}</span>
@@ -1555,7 +1445,8 @@ export default function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { current, loading, fetchDetail } = useWorkspaceStore();
-  const { create, update, remove } = useTaskStore();
+  const { create, update, remove, reviewDesign } = useTaskStore();
+  const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState('tasks');
   const [activeView, setActiveView] = useState('kanban');
   const [taskPanelOpen, setTaskPanelOpen] = useState(false);
@@ -1577,7 +1468,7 @@ export default function WorkspaceDetailPage() {
     if (ttype === 'BUG') return 'DEVELOPMENT';
     return 'DEVELOPMENT';
   };
-  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; phase: string; iteration_id?: string; milestone_id: string; assignee_id?: string; reviewer_id?: string; proposer_id?: string; analyst_id?: string; qa_owner_id?: string; verifier_id?: string; parent_id?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', phase: 'DEVELOPMENT', milestone_id: '' });
+  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; phase: string; iteration_id?: string; milestone_id: string; assignee_id?: string; reviewer_id?: string; proposer_id?: string; analyst_id?: string; qa_owner_id?: string; verifier_id?: string; parent_id?: string; design_doc?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', phase: 'DEVELOPMENT', milestone_id: '', design_doc: '' });
   const [stories, setStories] = useState<Task[]>([]);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -1592,6 +1483,7 @@ export default function WorkspaceDetailPage() {
   const [parentStory, setParentStory] = useState<Task | null>(null);
   const [attachments, setAttachments] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [reviewNote, setReviewNote] = useState('');
 
   const fetchComments = async (taskId: string) => {
     const res: any = await api.get(`/tasks/${taskId}/comments`);
@@ -1618,7 +1510,7 @@ export default function WorkspaceDetailPage() {
     }
     if (task) {
       setEditingTask(task);
-      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'REQUIREMENTS', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, reviewer_id: task.reviewer_id || undefined, proposer_id: task.proposer_id || undefined, analyst_id: task.analyst_id || undefined, qa_owner_id: task.qa_owner_id || undefined, verifier_id: task.verifier_id || undefined, parent_id: task.parent_id || undefined });
+      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'REQUIREMENTS', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, reviewer_id: task.reviewer_id || undefined, proposer_id: task.proposer_id || undefined, analyst_id: task.analyst_id || undefined, qa_owner_id: task.qa_owner_id || undefined, verifier_id: task.verifier_id || undefined, parent_id: task.parent_id || undefined, design_doc: (task as any).design_doc || '' });
       fetchComments(task.id);
       fetchActivity(task.id);
       fetchRelations(task);
@@ -1630,9 +1522,19 @@ export default function WorkspaceDetailPage() {
       setActivityLogs([]);
       setAttachments([]);
       const newType = defaultType || 'TASK';
-      // Backlog stories don't auto-assign to an iteration
-      const autoIterationId = (defaultType === 'STORY') ? undefined : (isFull ? selectedIteration || undefined : undefined);
-      setTaskForm({ title: '', description: '', task_type: newType, priority: 'MEDIUM', status: status || 'TODO', phase: getDefaultPhase(newType), iteration_id: autoIterationId, milestone_id: isFull ? '' : selectedMilestone, assignee_id: undefined, reviewer_id: undefined, proposer_id: undefined, analyst_id: undefined, qa_owner_id: undefined, verifier_id: undefined, parent_id: parentStoryId || undefined });
+      const isStory = newType === 'STORY';
+      setTaskForm({
+        title: '', description: '', task_type: newType,
+        priority: 'MEDIUM',
+        status: isStory ? 'DONE' : (status || 'TODO'),
+        phase: getDefaultPhase(newType),
+        iteration_id: isStory ? undefined : (isFull ? selectedIteration || undefined : undefined),
+        milestone_id: isFull ? '' : selectedMilestone,
+        assignee_id: undefined, reviewer_id: undefined,
+        proposer_id: isStory && user ? user.id : undefined,
+        analyst_id: undefined, qa_owner_id: undefined, verifier_id: undefined,
+        parent_id: parentStoryId || undefined,
+      });
     }
     setShowDelete(false);
     setTaskPanelOpen(true);
@@ -1829,7 +1731,7 @@ export default function WorkspaceDetailPage() {
               <div className="ws-panel active" id="ws-panel-tasks">
                 <div className="view-switcher">
                   {(isFull
-                    ? [{ key: 'kanban', label: '看板' }, { key: 'story', label: '需求' }, { key: 'list', label: '列表' }, { key: 'gantt', label: '甘特图' }]
+                    ? [{ key: 'kanban', label: '看板' }, { key: 'list', label: '列表' }]
                     : [{ key: 'kanban', label: '看板' }, { key: 'list', label: '列表' }]
                   ).map((v: any) => (
                     <button
@@ -1842,15 +1744,7 @@ export default function WorkspaceDetailPage() {
                   ))}
                 </div>
                 {activeView === 'kanban' && <KanbanView onCreateTask={(status, phase) => openTaskPanel(status, undefined, undefined, phase)} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
-                {activeView === 'story' && <StoryBoard scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} onEditTask={(task) => openTaskPanel(undefined, task)} onCreateTask={(status, parentId) => openTaskPanel(status, undefined, parentId)} />}
                 {activeView === 'list' && <ListView onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
-                {activeView === 'gantt' && <GanttView scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
-              </div>
-            )}
-
-            {activeTab === 'epics' && (
-              <div className="ws-panel active">
-                <StoryBoard milestoneFilter={selectedMilestone} onEditTask={(task) => openTaskPanel(undefined, task)} onCreateTask={(status, parentId) => openTaskPanel(status, undefined, parentId)} />
               </div>
             )}
 
@@ -2110,203 +2004,183 @@ export default function WorkspaceDetailPage() {
 
         {(!editingTask || detailTab === 'info') && (
         <div>
+        {/* Phase status banner */}
+        {editingTask && isFull && editingTask.task_type === 'STORY' && (
+          <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)', border: '1px solid var(--border-light)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>当前阶段</span>
+              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--blue-600)' }}>{
+                ({REQUIREMENTS:'需求分析',DESIGN:'方案设计',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线',ACCEPTANCE:'验收交付'})[editingTask.phase] || editingTask.phase
+              }</span>
+            </div>
+            <div style={{ display: 'flex', gap: 3, marginBottom: 6 }}>
+              {(['REQUIREMENTS','DESIGN','DEVELOPMENT','TESTING','RELEASE','ACCEPTANCE'] as const).map((ph) => {
+                const labels: Record<string,string> = {REQUIREMENTS:'需求',DESIGN:'设计',DEVELOPMENT:'开发',TESTING:'测试',RELEASE:'发布',ACCEPTANCE:'验收'};
+                const phases = ['REQUIREMENTS','DESIGN','DEVELOPMENT','TESTING','RELEASE','ACCEPTANCE'] as readonly string[];
+                const curIdx = phases.indexOf(editingTask.phase);
+                const phIdx = phases.indexOf(ph);
+                return (
+                  <div key={ph} style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{ height: 4, borderRadius: 2, background: phIdx === curIdx ? 'var(--blue-500)' : phIdx < curIdx ? 'var(--green-300)' : 'var(--border-light)' }} />
+                    <div style={{ fontSize: '0.5rem', color: phIdx === curIdx ? 'var(--blue-600)' : 'var(--text-muted)', marginTop: 2 }}>{labels[ph]}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ─── SIMPLE FIELDS (always visible) ─── */}
         <div className="form-group">
           <label>{taskForm.task_type === 'STORY' ? '需求名称' : '任务名称'}</label>
-          <input
-            type="text"
-            placeholder={taskForm.task_type === 'STORY' ? '输入需求名称' : '输入任务名称'}
-            value={taskForm.title}
-            onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))}
-          />
+          <input type="text" placeholder={taskForm.task_type === 'STORY' ? '输入需求名称' : '输入任务名称'}
+            value={taskForm.title} onChange={(e) => setTaskForm((f) => ({ ...f, title: e.target.value }))} />
         </div>
         <div className="form-group">
           <label>描述</label>
-          <textarea
-            rows={4}
-            placeholder="任务描述（可选）"
-            style={{ width: '100%', padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', fontFamily: 'inherit', background: 'var(--bg-surface)', color: 'var(--text-primary)', resize: 'vertical' }}
-            value={taskForm.description}
-            onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))}
-          />
+          <textarea rows={3} placeholder="补充说明..." style={{ width:'100%',padding:'7px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.82rem',fontFamily:'inherit',background:'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical' }}
+            value={taskForm.description} onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))} />
         </div>
         <div className="form-row">
-          {taskForm.task_type === 'STORY' ? (
-            <div className="form-group">
-              <label>类型</label>
-              <div style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', fontSize: '0.82rem', background: 'var(--bg-surface)', color: 'var(--blue-600)', fontWeight: 500 }}>📋 需求 (Story)</div>
-            </div>
-          ) : (
-            <div className="form-group">
-              <label>类型</label>
-              <select value={taskForm.task_type} onChange={(e) => setTaskForm((f) => ({ ...f, task_type: e.target.value }))}>
-                <option value="TASK">任务 (Task)</option>
-                <option value="BUG">缺陷 (Bug)</option>
-                {isFull && <option value="STORY">需求 (Story)</option>}
-                {isFull && <option value="SUB_TASK">子任务</option>}
-                {isFull && <option value="SPIKE">技术调研</option>}
-              </select>
-            </div>
-          )}
-          <div className="form-group">
-            <label>状态</label>
-            <select value={taskForm.status} onChange={(e) => setTaskForm((f) => ({ ...f, status: e.target.value }))}>
-              <option value="TODO">待办</option>
-              <option value="IN_PROGRESS">进行中</option>
-              <option value="IN_REVIEW">审核中</option>
-              <option value="DONE">已完成</option>
-            </select>
-          </div>
-          <div className="form-group">
-            <label>优先级</label>
+          <div className="form-group"><label>优先级</label>
             <select value={taskForm.priority} onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value }))}>
-              <option value="CRITICAL">紧急</option>
-              <option value="HIGH">高</option>
-              <option value="MEDIUM">中</option>
-              <option value="LOW">低</option>
+              <option value="CRITICAL">紧急</option><option value="HIGH">高</option><option value="MEDIUM">中</option><option value="LOW">低</option>
             </select>
           </div>
-        </div>
-        <div className="form-row">
-          {isFull ? (
-            <div className="form-group">
-              <label>所属迭代</label>
-              <select
-                style={{ width: '100%' }}
-                value={taskForm.iteration_id || ''}
-                onChange={(e) => setTaskForm((f: any) => ({ ...f, iteration_id: e.target.value || undefined }))}
-              >
-                <option value="">不关联迭代</option>
-                {allIterations.map((it) => (
-                  <option key={it.id} value={it.id}>{it.name}</option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div className="form-group">
-              <label>所属里程碑</label>
-              <select
-                style={{ width: '100%' }}
-                value={taskForm.milestone_id || ''}
-                onChange={(e) => setTaskForm((f) => ({ ...f, milestone_id: e.target.value }))}
-              >
-                <option value="">不关联里程碑</option>
-                {allMilestones.map((m: Milestone) => (
-                  <option key={m.id} value={m.id}>{m.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-        </div>
-        {/* Parent Story selector — show for TASK/BUG/SPIKE/SUB_TASK */}
-        {isFull && taskForm.task_type !== 'STORY' && (
-          <div className="form-group">
-            <label>所属需求 (Story)</label>
-            <select
-              style={{ width: '100%' }}
-              value={taskForm.parent_id || ''}
-              onChange={(e) => setTaskForm((f) => ({ ...f, parent_id: e.target.value || undefined }))}
-            >
-              <option value="">无（独立任务）</option>
-              {stories.map((s) => (
-                <option key={s.id} value={s.id}>{s.title}</option>
-              ))}
+          <div className="form-group"><label>状态</label>
+            <select value={taskForm.status} onChange={(e) => setTaskForm((f) => ({ ...f, status: e.target.value }))}>
+              <option value="TODO">待办</option><option value="IN_PROGRESS">进行中</option><option value="IN_REVIEW">审核中</option><option value="DONE">已完成</option>
             </select>
-            {stories.length === 0 && (
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 2 }}>当前里程碑下暂无需求，可先创建一个 Story 再关联任务</div>
-            )}
           </div>
-        )}
-        <div className="form-group" style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
-          <label>指派给</label>
-          <select
-            style={{ width: '100%' }}
-            value={taskForm.assignee_id || ''}
-            onChange={(e) => setTaskForm((f) => ({ ...f, assignee_id: e.target.value || undefined }))}
-          >
-            <option value="">不指派</option>
-            {allMembers.map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
-          </select>
         </div>
         {isFull && (
           <div className="form-group">
-            <label>阶段审核人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（负责审核本阶段推进）</span></label>
-            <select
-              style={{ width: '100%' }}
-              value={taskForm.reviewer_id || ''}
-              onChange={(e) => setTaskForm((f) => ({ ...f, reviewer_id: e.target.value || undefined }))}
-            >
-              <option value="">不限（由项目负责人审核）</option>
-              {allReviewers.map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+            <label>所属迭代</label>
+            <select style={{ width:'100%' }} value={taskForm.iteration_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, iteration_id: e.target.value||undefined }))}>
+              <option value="">不关联迭代</option>
+              {allIterations.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
             </select>
           </div>
         )}
-        {/* Story-specific roles */}
-        {isFull && taskForm.task_type === 'STORY' && (
+
+        {/* ─── PHASE-SPECIFIC: DESIGN phase — design editor + review ─── */}
+        {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase === 'DESIGN' && (
           <>
-            <div className="form-row">
-              <div className="form-group">
-                <label>提出人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（需求发起者）</span></label>
-                <select
-                  style={{ width: '100%' }}
-                  value={taskForm.proposer_id || ''}
-                  onChange={(e) => setTaskForm((f) => ({ ...f, proposer_id: e.target.value || undefined }))}
-                >
-                  <option value="">未指定</option>
-                  {allMembers.map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
-                </select>
-              </div>
-              <div className="form-group">
-                <label>需求分析师 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（分析+PRD）</span></label>
-                <select
-                  style={{ width: '100%' }}
-                  value={taskForm.analyst_id || ''}
-                  onChange={(e) => setTaskForm((f) => ({ ...f, analyst_id: e.target.value || undefined }))}
-                >
-                  <option value="">未指定</option>
-                  {allMembers.map((m) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="form-group">
-              <label>测试负责人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（测试验证阶段推进）</span></label>
-              <select
-                style={{ width: '100%' }}
-                value={taskForm.qa_owner_id || ''}
-                onChange={(e) => setTaskForm((f) => ({ ...f, qa_owner_id: e.target.value || undefined }))}
-              >
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
+            <label style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 8, display: 'block' }}>方案设计文档 ✍️</label>
+            <textarea
+              placeholder="在此编写技术方案设计...&#10;&#10;📌 建议包含：&#10;1. 架构设计&#10;2. 接口定义&#10;3. 数据模型&#10;4. 关键技术选型&#10;5. 风险点与对策"
+              value={taskForm.design_doc || ''}
+              onChange={async (e) => {
+                const v = e.target.value;
+                setTaskForm((f: any) => ({ ...f, design_doc: v }));
+                // Auto-save debounced
+                if (id && editingTask) {
+                  clearTimeout((window as any).__designSaveTimer);
+                  (window as any).__designSaveTimer = setTimeout(async () => {
+                    await update(id, editingTask.id, { design_doc: v } as any);
+                  }, 1500);
+                }
+              }}
+              rows={12}
+              style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.82rem',fontFamily:'monospace',background:'#fafbfc',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6 }}
+            />
+            <div style={{ fontSize:'0.6rem',color:'var(--text-muted)',marginTop:2 }}>✏️ 实时自动保存</div>
+          </div>
+          {/* Designer + Reviewer */}
+          <div style={{ marginTop: 12, display:'flex', gap: 12 }}>
+            <div className="form-group" style={{ flex:1 }}>
+              <label>设计师 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（编写方案的人）</span></label>
+              <select style={{ width:'100%' }} value={taskForm.assignee_id||''} onChange={(e) => setTaskForm((f) => ({...f, assignee_id: e.target.value||undefined }))}>
                 <option value="">未指定</option>
-                {allMembers.map((m: WorkspaceMember) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
+                {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
               </select>
             </div>
+            <div className="form-group" style={{ flex:1 }}>
+              <label>评审人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（审核方案的人）</span></label>
+              <select style={{ width:'100%' }} value={taskForm.reviewer_id||''} onChange={(e) => setTaskForm((f) => ({...f, reviewer_id: e.target.value||undefined }))}>
+                <option value="">由负责人审核</option>
+                {allReviewers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+              </select>
+            </div>
+          </div>
+          {/* Design review section */}
+          <div style={{ marginTop: 12, padding: '10px 12px', background: '#f0f4ff', borderRadius: 'var(--radius-md)', border: '1px solid #cbd5e1' }}>
+            <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 4 }}>方案评审</div>
+            <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginBottom: 8 }}>
+              {editingTask.design_review_status === 'APPROVED' ? '✅ 已通过' : editingTask.design_review_status === 'REJECTED' ? '❌ 已驳回' : '⏳ 待评审'}
+              {editingTask.design_reviewer_name && <span> — 评审人：{editingTask.design_reviewer_name}</span>}
+            </div>
+            {editingTask.design_review_status !== 'APPROVED' && (
+              <>
+                <textarea placeholder="评审意见（必填）" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2}
+                  style={{ width:'100%',padding:'6px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.76rem',fontFamily:'inherit',resize:'vertical',marginBottom:8 }} />
+                <div style={{ display:'flex',gap:8 }}>
+                  <button className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                    if (!id) return;
+                    await reviewDesign(id, editingTask.id, 'APPROVED', reviewNote);
+                    setReviewNote('');
+                    await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                    setEditingTask(useTaskStore.getState().current);
+                    fetchActivity(editingTask.id);
+                  }}>✓ 通过</button>
+                  <button className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                    if (!id) return;
+                    await reviewDesign(id, editingTask.id, 'REJECTED', reviewNote);
+                    setReviewNote('');
+                    await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                    setEditingTask(useTaskStore.getState().current);
+                    fetchActivity(editingTask.id);
+                  }} style={{ color:'var(--red-500)' }}>✗ 驳回</button>
+                </div>
+              </>
+            )}
+          </div>
           </>
         )}
-        {/* Bug-specific roles */}
+
+        {/* ─── PHASE-SPECIFIC: DEVELOPMENT+ phases — designer + reviewer ─── */}
+        {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase !== 'REQUIREMENTS' && editingTask.phase !== 'DESIGN' && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
+            <div style={{ display:'flex', gap: 12 }}>
+              <div className="form-group" style={{ flex:1 }}>
+                <label>负责人</label>
+                <select style={{ width:'100%' }} value={taskForm.assignee_id||''} onChange={(e) => setTaskForm((f) => ({...f, assignee_id: e.target.value||undefined }))}>
+                  <option value="">不指派</option>
+                  {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{ flex:1 }}>
+                <label>测试负责人</label>
+                <select style={{ width:'100%' }} value={taskForm.qa_owner_id||''} onChange={(e) => setTaskForm((f) => ({...f, qa_owner_id: e.target.value||undefined }))}>
+                  <option value="">未指定</option>
+                  {allMembers.map((m: WorkspaceMember) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── BUG roles ─── */}
         {taskForm.task_type === 'BUG' && (
-          <>
-            <div className="form-group">
-              <label>发现人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（Bug 提交者）</span></label>
-              <select
-                style={{ width: '100%' }}
-                value={taskForm.proposer_id || ''}
-                onChange={(e) => setTaskForm((f) => ({ ...f, proposer_id: e.target.value || undefined }))}
-              >
-                <option value="">未指定</option>
-                {allMembers.map((m: WorkspaceMember) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
-              </select>
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
+            <div style={{ display:'flex', gap: 12 }}>
+              <div className="form-group" style={{ flex:1 }}><label>发现人</label>
+                <select style={{ width:'100%' }} value={taskForm.proposer_id||''} onChange={(e) => setTaskForm((f) => ({...f, proposer_id: e.target.value||undefined }))}>
+                  <option value="">未指定</option>
+                  {allMembers.map((m: WorkspaceMember) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{ flex:1 }}><label>验证人</label>
+                <select style={{ width:'100%' }} value={taskForm.verifier_id||''} onChange={(e) => setTaskForm((f) => ({...f, verifier_id: e.target.value||undefined }))}>
+                  <option value="">未指定</option>
+                  {allMembers.map((m: WorkspaceMember) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+                </select>
+              </div>
             </div>
-            <div className="form-group">
-              <label>验证人 <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>（验证修复+关闭）</span></label>
-              <select
-                style={{ width: '100%' }}
-                value={taskForm.verifier_id || ''}
-                onChange={(e) => setTaskForm((f) => ({ ...f, verifier_id: e.target.value || undefined }))}
-              >
-                <option value="">未指定</option>
-                {allMembers.map((m: WorkspaceMember) => <option key={m.user_id || m.id} value={m.user_id || m.id}>{m.user_name || m.user_id}</option>)}
-              </select>
-            </div>
-          </>
+          </div>
         )}
+
         <div className="form-actions">
           <button className="btn btn-ghost" onClick={() => setTaskPanelOpen(false)}>取消</button>
           <button

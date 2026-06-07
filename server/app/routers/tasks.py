@@ -46,6 +46,7 @@ async def create_task(
         proposer_id=req.proposer_id, analyst_id=req.analyst_id,
         qa_owner_id=req.qa_owner_id, verifier_id=req.verifier_id,
         reviewer_ids=req.reviewer_ids,
+        design_doc=req.design_doc,
         estimation=req.estimation, estimation_unit=req.estimation_unit,
         sort_order=req.sort_order, due_date=req.due_date,
     )
@@ -187,6 +188,7 @@ async def update_task(
         proposer_id=req.proposer_id, analyst_id=req.analyst_id,
         qa_owner_id=req.qa_owner_id, verifier_id=req.verifier_id,
         reviewer_ids=req.reviewer_ids,
+        design_doc=req.design_doc,
         estimation=req.estimation, estimation_unit=req.estimation_unit,
         sort_order=req.sort_order, due_date=req.due_date,
     )
@@ -287,8 +289,17 @@ async def advance_task_phase(
     if not perms["can_advance_phase"]:
         raise AppException(403, "无权推进此任务阶段", 403)
 
+    # REQUIREMENTS phase: auto-complete and advance in one step
+    if task.phase == "REQUIREMENTS" and task.task_type == "STORY" and task.status != "DONE":
+        task = await task_service.update_task(db, task, status="DONE")
+
     if task.status != "DONE":
         raise AppException(400, "任务未完成，不能推进阶段（需要先完成当前阶段的任务）", 400)
+
+    # Enforce review gates for STORY tasks
+    can_adv, gate_error = await task_service.check_phase_advance_gate(task, db)
+    if not can_adv:
+        raise AppException(400, gate_error, 400)
 
     phases = get_phases_for_type(task.task_type)
     idx = phases.index(task.phase) if task.phase in phases else -1
@@ -365,6 +376,83 @@ async def split_story_tasks(
         field_name="子任务", old_value="", new_value=f"拆分为 {len(created)} 个开发任务")
 
     return {"code": 0, "message": "ok", "data": created}
+
+
+# ── Review ──
+
+class ReviewRequest(BaseModel):
+    action: str  # "APPROVED" or "REJECTED"
+    note: str = ""
+
+
+@router.post("/tasks/{task_id}/review-requirement", response_model=APIResponse)
+async def review_requirement(
+    workspace_id: str,
+    task_id: str,
+    req: ReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    task = await task_service.get_task(db, task_id)
+    if task is None or task.workspace_id != workspace_id:
+        raise AppException(404, "任务不存在", 404)
+    if task.task_type != "STORY":
+        raise AppException(400, "只有需求 (Story) 类型才能进行需求评审", 400)
+    if task.phase != "REQUIREMENTS":
+        raise AppException(400, "只能在「需求分析」阶段进行需求评审", 400)
+    if req.action not in ("APPROVED", "REJECTED"):
+        raise AppException(400, "action 必须是 APPROVED 或 REJECTED", 400)
+
+    is_mgr = await pc.is_manager(workspace_id)
+    if not is_mgr and task.analyst_id != current_user.id:
+        raise AppException(403, "只有需求分析师或项目负责人才能评审需求", 403)
+
+    task = await task_service.review_requirement(db, task, current_user.id, req.action, req.note)
+
+    status_label = "通过" if req.action == "APPROVED" else "驳回"
+    from app.services import activity_svc
+    await activity_svc.log_activity(db, task_id, current_user.id, "UPDATE",
+        field_name="需求评审", old_value=task.requirement_review_status or "未评审",
+        new_value=status_label)
+
+    return {"code": 0, "message": f"需求评审已{status_label}", "data": _task_to_dict(task)}
+
+
+@router.post("/tasks/{task_id}/review-design", response_model=APIResponse)
+async def review_design(
+    workspace_id: str,
+    task_id: str,
+    req: ReviewRequest,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    task = await task_service.get_task(db, task_id)
+    if task is None or task.workspace_id != workspace_id:
+        raise AppException(404, "任务不存在", 404)
+    if task.task_type != "STORY":
+        raise AppException(400, "只有需求 (Story) 类型才能进行方案评审", 400)
+    if task.phase != "DESIGN":
+        raise AppException(400, "只能在「方案设计」阶段进行方案评审", 400)
+    if req.action not in ("APPROVED", "REJECTED"):
+        raise AppException(400, "action 必须是 APPROVED 或 REJECTED", 400)
+
+    is_mgr = await pc.is_manager(workspace_id)
+    if not is_mgr and task.reviewer_id != current_user.id:
+        raise AppException(403, "只有阶段审核人或项目负责人才能评审方案", 403)
+
+    task = await task_service.review_design(db, task, current_user.id, req.action, req.note)
+
+    status_label = "通过" if req.action == "APPROVED" else "驳回"
+    from app.services import activity_svc
+    await activity_svc.log_activity(db, task_id, current_user.id, "UPDATE",
+        field_name="方案评审", old_value=task.design_review_status or "未评审",
+        new_value=status_label)
+
+    return {"code": 0, "message": f"方案评审已{status_label}", "data": _task_to_dict(task)}
 
 
 # ── Backlog ──

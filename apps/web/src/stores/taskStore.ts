@@ -28,6 +28,8 @@ interface TaskState {
   remove: (wsId: string, taskId: string) => Promise<void>;
   moveTask: (wsId: string, taskId: string, newStatus: string, sortOrder: number) => Promise<void>;
   advancePhase: (wsId: string, taskId: string, content?: string) => Promise<Task>;
+  reviewRequirement: (wsId: string, taskId: string, action: string, note?: string) => Promise<void>;
+  reviewDesign: (wsId: string, taskId: string, action: string, note?: string) => Promise<void>;
   splitStory: (wsId: string, taskId: string, children: Partial<Task>[]) => Promise<Task[]>;
 }
 
@@ -119,6 +121,17 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const result = await api.post(`/workspaces/${wsId}/tasks/${taskId}/advance-phase`, { content });
     await get().fetchKanban(wsId, 'phase');
     return result.data;
+  },
+
+  reviewRequirement: async (wsId, taskId, action, note = '') => {
+    await api.post(`/workspaces/${wsId}/tasks/${taskId}/review-requirement`, { action, note });
+    await get().fetchKanban(wsId, get().kanbanGroupBy);
+    await get().fetchBacklog(wsId);
+  },
+
+  reviewDesign: async (wsId, taskId, action, note = '') => {
+    await api.post(`/workspaces/${wsId}/tasks/${taskId}/review-design`, { action, note });
+    await get().fetchKanban(wsId, get().kanbanGroupBy);
   },
 
   splitStory: async (wsId, taskId, children) => {

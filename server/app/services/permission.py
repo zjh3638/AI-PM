@@ -214,6 +214,20 @@ class PermissionChecker:
             task.task_type == "STORY" and self._is_qa_owner(task)
         )
 
+        # Can review requirement (analyst or manager, in REQUIREMENTS phase)
+        can_review_requirement = is_mgr or (
+            task.task_type == "STORY"
+            and task.phase == "REQUIREMENTS"
+            and self._is_analyst(task)
+        )
+
+        # Can review design (reviewer or manager, in DESIGN phase)
+        can_review_design = is_mgr or (
+            task.task_type == "STORY"
+            and task.phase == "DESIGN"
+            and self._is_reviewer(task)
+        )
+
         return {
             "can_view": can_view,
             "can_edit": can_edit,
@@ -224,6 +238,8 @@ class PermissionChecker:
             "can_change_reviewer": can_change_reviewer,
             "can_split": can_split,
             "can_create_test": can_create_test,
+            "can_review_requirement": can_review_requirement,
+            "can_review_design": can_review_design,
             "is_assignee": self._is_assignee(task),
             "is_reviewer": self._is_reviewer(task),
             "is_proposer": self._is_proposer(task),
