@@ -2172,122 +2172,6 @@ export default function WorkspaceDetailPage() {
           </div>
         )}
 
-        {/* ─── OPERATIONS: status transitions + phase advance ─── */}
-        {editingTask && isFull && (() => {
-          const btns: { label: string; cls: string; show: boolean; action: () => Promise<void> }[] = [];
-
-          // Status transition buttons (for STORY)
-          if (editingTask.task_type === 'STORY') {
-            if (editingTask.status === 'TODO') {
-              btns.push({ label: '▶ 开始处理', cls: 'btn-outline', show: true, action: async () => {
-                if (!id) return;
-                await update(id, editingTask.id, { status: 'IN_PROGRESS' });
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-              }});
-            }
-            if (editingTask.status === 'IN_PROGRESS') {
-              btns.push({ label: '✔ 标记完成', cls: 'btn-primary', show: true, action: async () => {
-                if (!id) return;
-                await update(id, editingTask.id, { status: 'DONE' });
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-              }});
-            }
-            if (editingTask.status === 'DONE') {
-              btns.push({ label: '↩ 标记未完', cls: 'btn-ghost', show: true, action: async () => {
-                if (!id) return;
-                await update(id, editingTask.id, { status: 'IN_PROGRESS' });
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-              }});
-            }
-
-            // Phase advance buttons
-            if (editingTask.phase === 'REQUIREMENTS' && editingTask.status === 'DONE') {
-              btns.push({ label: '🚀 开始方案设计', cls: 'btn-primary', show: true, action: async () => {
-                if (!id) return;
-                await advancePhase(id, editingTask.id, '进入方案设计');
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-                setTaskPanelOpen(false);
-              }});
-            }
-            if (editingTask.phase === 'DESIGN' && editingTask.design_review_status === 'APPROVED' && editingTask.status === 'DONE') {
-              btns.push({ label: '💻 进入开发实现', cls: 'btn-primary', show: true, action: async () => {
-                if (!id) return;
-                await advancePhase(id, editingTask.id, '方案已评审，进入开发');
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-                setTaskPanelOpen(false);
-              }});
-            }
-            if (editingTask.phase === 'DEVELOPMENT') {
-              btns.push({ label: `📋 开发任务 (${editingTask.children_count || 0})`, cls: 'btn-outline', show: true, action: async () => {
-                setDetailTab('related');
-              }});
-            }
-            if (editingTask.phase === 'DEVELOPMENT' && editingTask.status === 'DONE' && (editingTask.children_count ?? 0) > 0) {
-              btns.push({ label: '🧪 提交测试', cls: 'btn-primary', show: true, action: async () => {
-                if (!id) return;
-                await advancePhase(id, editingTask.id, '开发完成，提交测试');
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-                setTaskPanelOpen(false);
-              }});
-            }
-            if (editingTask.phase === 'TESTING' && editingTask.status === 'DONE') {
-              btns.push({ label: '🚀 发布上线', cls: 'btn-primary', show: true, action: async () => {
-                if (!id) return;
-                await advancePhase(id, editingTask.id, '测试通过，准备发布');
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-                setTaskPanelOpen(false);
-              }});
-            }
-            if (editingTask.phase === 'RELEASE' && editingTask.status === 'DONE') {
-              btns.push({ label: '✅ 验收交付', cls: 'btn-primary', show: true, action: async () => {
-                if (!id) return;
-                await advancePhase(id, editingTask.id, '发布完成');
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-                setTaskPanelOpen(false);
-              }});
-            }
-          } else {
-            // Non-STORY status buttons
-            if (editingTask.status === 'TODO') {
-              btns.push({ label: '▶ 开始处理', cls: 'btn-outline', show: true, action: async () => {
-                if (!id) return;
-                await update(id, editingTask.id, { status: 'IN_PROGRESS' });
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-              }});
-            }
-            if (editingTask.status === 'IN_PROGRESS') {
-              btns.push({ label: '✔ 标记完成', cls: 'btn-primary', show: true, action: async () => {
-                if (!id) return;
-                await update(id, editingTask.id, { status: 'DONE' });
-                await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                setEditingTask(useTaskStore.getState().current);
-              }});
-            }
-          }
-
-          const visible = btns.filter(b => b.show);
-          if (visible.length === 0) return null;
-          return (
-            <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', border: '1px solid var(--border-light)' }}>
-              <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', fontWeight:600, marginBottom:8, textTransform:'uppercase', letterSpacing:'0.05em' }}>⚡ 操作</div>
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {visible.map((b, i) => (
-                  <button key={i} className={`btn btn-sm ${b.cls}`} style={{ flex: 1 }} onClick={b.action}>{b.label}</button>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
-
         <div className="form-actions">
           <button className="btn btn-ghost" onClick={() => setTaskPanelOpen(false)}>取消</button>
           <button
@@ -2297,6 +2181,110 @@ export default function WorkspaceDetailPage() {
           >
             {taskSubmitting ? '保存中...' : editingTask ? '保存' : taskForm.task_type === 'STORY' ? '创建需求' : '创建任务'}
           </button>
+          {/* Status transition + phase advance buttons alongside save/cancel */}
+          {editingTask && isFull && (() => {
+            const btns: { label: string; cls: string; action: () => Promise<void> }[] = [];
+
+            if (editingTask.task_type === 'STORY') {
+              if (editingTask.status === 'TODO') {
+                btns.push({ label: '▶ 开始处理', cls: 'btn-outline', action: async () => {
+                  if (!id) return;
+                  await update(id, editingTask.id, { status: 'IN_PROGRESS' });
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                }});
+              }
+              if (editingTask.status === 'IN_PROGRESS') {
+                btns.push({ label: '✔ 标记完成', cls: 'btn-outline', action: async () => {
+                  if (!id) return;
+                  await update(id, editingTask.id, { status: 'DONE' });
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                }});
+              }
+              if (editingTask.status === 'DONE') {
+                btns.push({ label: '↩ 标记未完', cls: 'btn-ghost', action: async () => {
+                  if (!id) return;
+                  await update(id, editingTask.id, { status: 'IN_PROGRESS' });
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                }});
+              }
+
+              if (editingTask.phase === 'REQUIREMENTS' && editingTask.status === 'DONE') {
+                btns.push({ label: '🚀 开始方案设计', cls: 'btn-primary', action: async () => {
+                  if (!id) return;
+                  await advancePhase(id, editingTask.id, '进入方案设计');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                }});
+              }
+              if (editingTask.phase === 'DESIGN' && editingTask.design_review_status === 'APPROVED' && editingTask.status === 'DONE') {
+                btns.push({ label: '💻 进入开发实现', cls: 'btn-primary', action: async () => {
+                  if (!id) return;
+                  await advancePhase(id, editingTask.id, '方案已评审，进入开发');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                }});
+              }
+              if (editingTask.phase === 'DEVELOPMENT') {
+                btns.push({ label: `📋 开发任务 (${editingTask.children_count || 0})`, cls: 'btn-outline', action: async () => {
+                  setDetailTab('related');
+                }});
+              }
+              if (editingTask.phase === 'DEVELOPMENT' && editingTask.status === 'DONE' && (editingTask.children_count ?? 0) > 0) {
+                btns.push({ label: '🧪 提交测试', cls: 'btn-primary', action: async () => {
+                  if (!id) return;
+                  await advancePhase(id, editingTask.id, '开发完成，提交测试');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                }});
+              }
+              if (editingTask.phase === 'TESTING' && editingTask.status === 'DONE') {
+                btns.push({ label: '🚀 发布上线', cls: 'btn-primary', action: async () => {
+                  if (!id) return;
+                  await advancePhase(id, editingTask.id, '测试通过，准备发布');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                }});
+              }
+              if (editingTask.phase === 'RELEASE' && editingTask.status === 'DONE') {
+                btns.push({ label: '✅ 验收交付', cls: 'btn-primary', action: async () => {
+                  if (!id) return;
+                  await advancePhase(id, editingTask.id, '发布完成');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                }});
+              }
+            } else {
+              if (editingTask.status === 'TODO') {
+                btns.push({ label: '▶ 开始处理', cls: 'btn-outline', action: async () => {
+                  if (!id) return;
+                  await update(id, editingTask.id, { status: 'IN_PROGRESS' });
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                }});
+              }
+              if (editingTask.status === 'IN_PROGRESS') {
+                btns.push({ label: '✔ 标记完成', cls: 'btn-outline', action: async () => {
+                  if (!id) return;
+                  await update(id, editingTask.id, { status: 'DONE' });
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                }});
+              }
+            }
+
+            if (btns.length === 0) return null;
+            return btns.map((b, i) => (
+              <button key={i} className={`btn ${b.cls}`} onClick={b.action}>{b.label}</button>
+            ));
+          })()}
         </div>
 
         {/* Delete section — edit mode only */}
