@@ -2006,16 +2006,26 @@ export default function WorkspaceDetailPage() {
 
         {(!editingTask || detailTab === 'info') && (
         <div>
-        {/* Phase status banner */}
+        {/* Phase status banner + review action */}
         {editingTask && isFull && editingTask.task_type === 'STORY' && (
-          <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)', border: '1px solid var(--border-light)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 500 }}>当前阶段</span>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--blue-600)' }}>{
-                ({REQUIREMENTS:'需求分析',DESIGN:'方案设计',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线',ACCEPTANCE:'验收交付'})[editingTask.phase] || editingTask.phase
-              }</span>
+          <div style={{ marginBottom: 16, padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--bg-raised)', border: '1px solid var(--border-light)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>当前阶段</span>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--blue-600)' }}>{
+                  ({REQUIREMENTS:'需求分析',DESIGN:'方案设计',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线',ACCEPTANCE:'验收交付'})[editingTask.phase] || editingTask.phase
+                }</span>
+              </div>
+              {/* Design review badge */}
+              {editingTask.phase === 'DESIGN' && (
+                editingTask.design_review_status === 'APPROVED'
+                  ? <span style={{ fontSize:'0.7rem',padding:'2px 10px',borderRadius:10,background:'#dcfce7',color:'#16a34a',fontWeight:600 }}>✅ 方案已通过</span>
+                  : editingTask.design_review_status === 'REJECTED'
+                  ? <span style={{ fontSize:'0.7rem',padding:'2px 10px',borderRadius:10,background:'#fee2e2',color:'#dc2626',fontWeight:600 }}>❌ 方案已驳回</span>
+                  : <span style={{ fontSize:'0.7rem',padding:'2px 10px',borderRadius:10,background:'#fef3c7',color:'#d97706',fontWeight:600 }}>⏳ 待评审</span>
+              )}
             </div>
-            <div style={{ display: 'flex', gap: 3, marginBottom: 6 }}>
+            <div style={{ display: 'flex', gap: 3 }}>
               {(['REQUIREMENTS','DESIGN','DEVELOPMENT','TESTING','RELEASE','ACCEPTANCE'] as const).map((ph) => {
                 const labels: Record<string,string> = {REQUIREMENTS:'需求',DESIGN:'设计',DEVELOPMENT:'开发',TESTING:'测试',RELEASE:'发布',ACCEPTANCE:'验收'};
                 const phases = ['REQUIREMENTS','DESIGN','DEVELOPMENT','TESTING','RELEASE','ACCEPTANCE'] as readonly string[];
@@ -2032,7 +2042,7 @@ export default function WorkspaceDetailPage() {
           </div>
         )}
 
-        {/* ─── SIMPLE FIELDS (always visible) ─── */}
+        {/* ─── COMMON FIELDS ─── */}
         <div className="form-group">
           <label>{taskForm.task_type === 'STORY' ? '需求名称' : '任务名称'}</label>
           <input type="text" placeholder={taskForm.task_type === 'STORY' ? '输入需求名称' : '输入任务名称'}
@@ -2040,7 +2050,7 @@ export default function WorkspaceDetailPage() {
         </div>
         <div className="form-group">
           <label>描述</label>
-          <textarea rows={3} placeholder="补充说明..." style={{ width:'100%',padding:'7px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.82rem',fontFamily:'inherit',background:'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical' }}
+          <textarea rows={2} placeholder="补充说明..." style={{ width:'100%',padding:'7px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.82rem',fontFamily:'inherit',background:'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical' }}
             value={taskForm.description} onChange={(e) => setTaskForm((f) => ({ ...f, description: e.target.value }))} />
         </div>
         <div className="form-row">
@@ -2049,74 +2059,70 @@ export default function WorkspaceDetailPage() {
               <option value="CRITICAL">紧急</option><option value="HIGH">高</option><option value="MEDIUM">中</option><option value="LOW">低</option>
             </select>
           </div>
-          <div className="form-group"><label>状态</label>
-            <select value={taskForm.status} onChange={(e) => setTaskForm((f) => ({ ...f, status: e.target.value }))}>
-              <option value="TODO">待办</option><option value="IN_PROGRESS">进行中</option><option value="IN_REVIEW">审核中</option><option value="DONE">已完成</option>
-            </select>
-          </div>
-        </div>
-        {isFull && (
-          <div className="form-group">
-            <label>所属迭代</label>
-            <select style={{ width:'100%' }} value={taskForm.iteration_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, iteration_id: e.target.value||undefined }))}>
-              <option value="">不关联迭代</option>
-              {allIterations.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
-            </select>
-          </div>
-        )}
-
-        {/* Assignee picker — shown when creating child task */}
-        {taskForm.parent_id && !editingTask && (
-          <div className="form-group" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
-            <label>指派给 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（执行该任务的开发者）</span></label>
-            <select style={{ width:'100%' }} value={taskForm.assignee_id||''} onChange={(e) => setTaskForm((f) => ({...f, assignee_id: e.target.value||undefined }))}>
-              <option value="">未指派</option>
-              {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-            </select>
-          </div>
-        )}
-
-        {/* ─── PHASE-SPECIFIC: REQUIREMENTS phase — 需求负责人 + 测试负责人 ─── */}
-        {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase === 'REQUIREMENTS' && (
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
-            <div style={{ display:'flex', gap: 12 }}>
-              <div className="form-group" style={{ flex:1 }}>
-                <label>需求提出人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（谁提的需求）</span></label>
-                <select style={{ width:'100%' }} value={taskForm.proposer_id||''} onChange={(e) => setTaskForm((f) => ({...f, proposer_id: e.target.value||undefined }))}>
-                  <option value="">未指定</option>
-                  {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ flex:1 }}>
-                <label>需求负责人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（PM指定，负责方案设计、拆分任务、提交测试）</span></label>
-                <select style={{ width:'100%' }} value={taskForm.analyst_id||''} onChange={(e) => setTaskForm((f) => ({...f, analyst_id: e.target.value||undefined }))}>
-                  <option value="">未指定</option>
-                  {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="form-group" style={{ marginTop: 12 }}>
-              <label>测试负责人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（默认同需求提出人；负责需求测试，可驳回）</span></label>
-              <select style={{ width:'100%' }} value={taskForm.qa_owner_id||''} onChange={(e) => setTaskForm((f) => ({...f, qa_owner_id: e.target.value||undefined }))}>
-                <option value="">未指定</option>
-                {allMembers.map((m: WorkspaceMember) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+          {isFull && (
+            <div className="form-group"><label>所属迭代</label>
+              <select style={{ width:'100%' }} value={taskForm.iteration_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, iteration_id: e.target.value||undefined }))}>
+                <option value="">不关联迭代</option>
+                {allIterations.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
               </select>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* ─── PHASE-SPECIFIC: DESIGN phase — design editor + review ─── */}
+        {/* ─── ROLE CARD — unified person assignment per phase/type ─── */}
+        {(() => {
+          const roles: { key: string; label: string; hint: string; value: string }[] = [];
+          if (taskForm.task_type === 'BUG') {
+            roles.push({ key: 'proposer_id', label: '发现人', hint: '', value: taskForm.proposer_id||'' });
+            roles.push({ key: 'verifier_id', label: '验证人', hint: '', value: taskForm.verifier_id||'' });
+          } else if (taskForm.task_type === 'TASK' || taskForm.task_type === 'SUB_TASK') {
+            roles.push({ key: 'assignee_id', label: '负责人', hint: '', value: taskForm.assignee_id||'' });
+          } else if (editingTask && isFull && editingTask.task_type === 'STORY') {
+            if (editingTask.phase === 'REQUIREMENTS') {
+              roles.push({ key: 'proposer_id', label: '需求提出人', hint: '谁提的需求', value: taskForm.proposer_id||'' });
+              roles.push({ key: 'analyst_id', label: '需求负责人', hint: 'PM指定，负责方案设计、拆分任务、提交测试', value: taskForm.analyst_id||'' });
+              roles.push({ key: 'qa_owner_id', label: '测试负责人', hint: '默认=需求提出人', value: taskForm.qa_owner_id||'' });
+            } else if (editingTask.phase === 'DESIGN') {
+              roles.push({ key: 'analyst_id', label: '需求负责人', hint: '编写方案', value: taskForm.analyst_id||'' });
+              roles.push({ key: 'reviewer_id', label: '设计评审人(PM)', hint: '审核方案，可驳回', value: taskForm.reviewer_id||'' });
+              if (editingTask.design_review_status === 'APPROVED') roles[1].label = `✅ ${roles[1].label}`;
+              if (editingTask.design_review_status === 'REJECTED') roles[1].label = `❌ ${roles[1].label}`;
+            } else {
+              roles.push({ key: 'assignee_id', label: '负责人', hint: '', value: taskForm.assignee_id||'' });
+              roles.push({ key: 'qa_owner_id', label: '测试负责人', hint: '', value: taskForm.qa_owner_id||'' });
+            }
+          } else if (taskForm.parent_id && !editingTask) {
+            roles.push({ key: 'assignee_id', label: '指派给', hint: '执行该任务的开发者', value: taskForm.assignee_id||'' });
+          }
+          if (roles.length === 0) return null;
+          return (
+            <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', border: '1px solid var(--border-light)' }}>
+              <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', fontWeight:600, marginBottom:8, textTransform:'uppercase', letterSpacing:'0.05em' }}>👤 人员</div>
+              <div style={{ display:'flex', gap: 10, flexWrap:'wrap' }}>
+                {roles.map((r) => (
+                  <div key={r.key} style={{ flex: roles.length <= 2 ? 1 : '1 1 calc(50% - 5px)', minWidth: 120 }}>
+                    <label style={{ fontSize:'0.7rem', fontWeight:500, display:'block', marginBottom:3 }}>{r.label}{r.hint ? <span style={{ fontSize:'0.58rem',color:'var(--text-muted)',fontWeight:400 }}> · {r.hint}</span> : ''}</label>
+                    <select style={{ width:'100%' }} value={r.value} onChange={(e) => setTaskForm((f) => ({...f, [r.key]: e.target.value||undefined }))}>
+                      <option value="">{r.key === 'reviewer_id' ? '由负责人审核' : '未指定'}</option>
+                      {(r.key === 'reviewer_id' ? allReviewers : allMembers).map((m: any) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* ─── DESIGN DOC (DESIGN phase) ─── */}
         {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase === 'DESIGN' && (
-          <>
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
-            <label style={{ fontSize: '0.85rem', fontWeight: 700, marginBottom: 8, display: 'block' }}>方案设计文档 ✍️</label>
+          <div style={{ marginTop: 12 }}>
+            <label style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6, display: 'block' }}>📝 方案设计文档</label>
             <textarea
-              placeholder="在此编写技术方案设计...&#10;&#10;📌 建议包含：&#10;1. 架构设计&#10;2. 接口定义&#10;3. 数据模型&#10;4. 关键技术选型&#10;5. 风险点与对策"
+              placeholder="编写技术方案设计...&#10;📌 建议：架构设计 / 接口定义 / 数据模型 / 技术选型 / 风险对策"
               value={taskForm.design_doc || ''}
               onChange={async (e) => {
                 const v = e.target.value;
                 setTaskForm((f: any) => ({ ...f, design_doc: v }));
-                // Auto-save debounced
                 if (id && editingTask) {
                   clearTimeout((window as any).__designSaveTimer);
                   (window as any).__designSaveTimer = setTimeout(async () => {
@@ -2124,170 +2130,163 @@ export default function WorkspaceDetailPage() {
                   }, 1500);
                 }
               }}
-              rows={12}
-              style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.82rem',fontFamily:'monospace',background:'#fafbfc',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6 }}
+              rows={8}
+              style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'monospace',background:'#fafbfc',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6 }}
             />
-            <div style={{ fontSize:'0.6rem',color:'var(--text-muted)',marginTop:2 }}>✏️ 实时自动保存</div>
+            <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>✏️ 实时自动保存</div>
           </div>
-          {/* Designer = 需求负责人, Reviewer = PM */}
-          <div style={{ marginTop: 12, display:'flex', gap: 12 }}>
-            <div className="form-group" style={{ flex:1 }}>
-              <label>需求负责人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（编写方案的人）</span></label>
-              <select style={{ width:'100%' }} value={taskForm.analyst_id||''} onChange={(e) => setTaskForm((f) => ({...f, analyst_id: e.target.value||undefined }))}>
-                <option value="">未指定</option>
-                {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-              </select>
-            </div>
-            <div className="form-group" style={{ flex:1 }}>
-              <label>设计评审人(PM) <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（审核方案，可驳回）</span></label>
-              <select style={{ width:'100%' }} value={taskForm.reviewer_id||''} onChange={(e) => setTaskForm((f) => ({...f, reviewer_id: e.target.value||undefined }))}>
-                <option value="">由负责人审核</option>
-                {allReviewers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-              </select>
-            </div>
-          </div>
-          {/* Design review section */}
-          <div style={{ marginTop: 12, padding: '10px 12px', background: '#f0f4ff', borderRadius: 'var(--radius-md)', border: '1px solid #cbd5e1' }}>
-            <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 4 }}>方案评审</div>
-            <div style={{ fontSize: '0.66rem', color: 'var(--text-muted)', marginBottom: 8 }}>
-              {editingTask.design_review_status === 'APPROVED' ? '✅ 已通过' : editingTask.design_review_status === 'REJECTED' ? '❌ 已驳回' : '⏳ 待评审'}
-              {editingTask.design_reviewer_name && <span> — 评审人：{editingTask.design_reviewer_name}</span>}
-            </div>
-            {editingTask.design_review_status !== 'APPROVED' && (
-              <>
-                <textarea placeholder="评审意见（必填）" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2}
-                  style={{ width:'100%',padding:'6px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.76rem',fontFamily:'inherit',resize:'vertical',marginBottom:8 }} />
-                <div style={{ display:'flex',gap:8 }}>
-                  <button className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
-                    if (!id) return;
-                    await reviewDesign(id, editingTask.id, 'APPROVED', reviewNote);
-                    setReviewNote('');
-                    await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                    setEditingTask(useTaskStore.getState().current);
-                    fetchActivity(editingTask.id);
-                  }}>✓ 通过</button>
-                  <button className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
-                    if (!id) return;
-                    await reviewDesign(id, editingTask.id, 'REJECTED', reviewNote);
-                    setReviewNote('');
-                    await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                    setEditingTask(useTaskStore.getState().current);
-                    fetchActivity(editingTask.id);
-                  }} style={{ color:'var(--red-500)' }}>✗ 驳回</button>
-                </div>
-              </>
-            )}
-          </div>
-          </>
         )}
 
-        {/* ─── PHASE-SPECIFIC: DEVELOPMENT+ phases — designer + reviewer ─── */}
-        {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase !== 'REQUIREMENTS' && editingTask.phase !== 'DESIGN' && (
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
-            <div style={{ display:'flex', gap: 12 }}>
-              <div className="form-group" style={{ flex:1 }}>
-                <label>负责人</label>
-                <select style={{ width:'100%' }} value={taskForm.assignee_id||''} onChange={(e) => setTaskForm((f) => ({...f, assignee_id: e.target.value||undefined }))}>
-                  <option value="">不指派</option>
-                  {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ flex:1 }}>
-                <label>测试负责人</label>
-                <select style={{ width:'100%' }} value={taskForm.qa_owner_id||''} onChange={(e) => setTaskForm((f) => ({...f, qa_owner_id: e.target.value||undefined }))}>
-                  <option value="">未指定</option>
-                  {allMembers.map((m: WorkspaceMember) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-                </select>
-              </div>
+        {/* ─── DESIGN REVIEW — prominent action area ─── */}
+        {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase === 'DESIGN' && editingTask.design_review_status !== 'APPROVED' && (
+          <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '2px solid', borderColor:
+            editingTask.design_review_status === 'REJECTED' ? 'var(--red-300)' : 'var(--amber-300)',
+            background: editingTask.design_review_status === 'REJECTED' ? '#fef2f2' : '#fffbeb',
+          }}>
+            <div style={{ fontWeight: 600, fontSize: '0.8rem', marginBottom: 4, color: editingTask.design_review_status === 'REJECTED' ? 'var(--red-600)' : 'var(--amber-600)' }}>
+              {editingTask.design_review_status === 'REJECTED' ? '🔴 方案已驳回，需修改后重新提交' : '🟡 方案待评审'}
+            </div>
+            {editingTask.design_reviewer_name && (
+              <div style={{ fontSize:'0.66rem', color:'var(--text-muted)', marginBottom:6 }}>评审人：{editingTask.design_reviewer_name}</div>
+            )}
+            <textarea placeholder="评审意见（必填）" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2}
+              style={{ width:'100%',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.78rem',fontFamily:'inherit',resize:'vertical',marginBottom:8 }} />
+            <div style={{ display:'flex', gap: 8 }}>
+              <button className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                if (!id) return;
+                await reviewDesign(id, editingTask.id, 'APPROVED', reviewNote);
+                setReviewNote('');
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+                fetchActivity(editingTask.id);
+              }} style={{ flex:1 }}>✓ 通过方案</button>
+              <button className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                if (!id) return;
+                await reviewDesign(id, editingTask.id, 'REJECTED', reviewNote);
+                setReviewNote('');
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+                fetchActivity(editingTask.id);
+              }} style={{ flex:1, color:'var(--red-500)', borderColor:'var(--red-300)' }}>✗ 驳回修改</button>
             </div>
           </div>
         )}
 
-        {/* ─── BUG roles ─── */}
-        {taskForm.task_type === 'BUG' && (
-          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
-            <div style={{ display:'flex', gap: 12 }}>
-              <div className="form-group" style={{ flex:1 }}><label>发现人</label>
-                <select style={{ width:'100%' }} value={taskForm.proposer_id||''} onChange={(e) => setTaskForm((f) => ({...f, proposer_id: e.target.value||undefined }))}>
-                  <option value="">未指定</option>
-                  {allMembers.map((m: WorkspaceMember) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-                </select>
-              </div>
-              <div className="form-group" style={{ flex:1 }}><label>验证人</label>
-                <select style={{ width:'100%' }} value={taskForm.verifier_id||''} onChange={(e) => setTaskForm((f) => ({...f, verifier_id: e.target.value||undefined }))}>
-                  <option value="">未指定</option>
-                  {allMembers.map((m: WorkspaceMember) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-                </select>
+        {/* ─── OPERATIONS: status transitions + phase advance ─── */}
+        {editingTask && isFull && (() => {
+          const btns: { label: string; cls: string; show: boolean; action: () => Promise<void> }[] = [];
+
+          // Status transition buttons (for STORY)
+          if (editingTask.task_type === 'STORY') {
+            if (editingTask.status === 'TODO') {
+              btns.push({ label: '▶ 开始处理', cls: 'btn-outline', show: true, action: async () => {
+                if (!id) return;
+                await update(id, editingTask.id, { status: 'IN_PROGRESS' });
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+              }});
+            }
+            if (editingTask.status === 'IN_PROGRESS') {
+              btns.push({ label: '✔ 标记完成', cls: 'btn-primary', show: true, action: async () => {
+                if (!id) return;
+                await update(id, editingTask.id, { status: 'DONE' });
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+              }});
+            }
+            if (editingTask.status === 'DONE') {
+              btns.push({ label: '↩ 标记未完', cls: 'btn-ghost', show: true, action: async () => {
+                if (!id) return;
+                await update(id, editingTask.id, { status: 'IN_PROGRESS' });
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+              }});
+            }
+
+            // Phase advance buttons
+            if (editingTask.phase === 'REQUIREMENTS' && editingTask.status === 'DONE') {
+              btns.push({ label: '🚀 开始方案设计', cls: 'btn-primary', show: true, action: async () => {
+                if (!id) return;
+                await advancePhase(id, editingTask.id, '进入方案设计');
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+                setTaskPanelOpen(false);
+              }});
+            }
+            if (editingTask.phase === 'DESIGN' && editingTask.design_review_status === 'APPROVED' && editingTask.status === 'DONE') {
+              btns.push({ label: '💻 进入开发实现', cls: 'btn-primary', show: true, action: async () => {
+                if (!id) return;
+                await advancePhase(id, editingTask.id, '方案已评审，进入开发');
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+                setTaskPanelOpen(false);
+              }});
+            }
+            if (editingTask.phase === 'DEVELOPMENT') {
+              btns.push({ label: `📋 开发任务 (${editingTask.children_count || 0})`, cls: 'btn-outline', show: true, action: async () => {
+                setDetailTab('related');
+              }});
+            }
+            if (editingTask.phase === 'DEVELOPMENT' && editingTask.status === 'DONE' && (editingTask.children_count ?? 0) > 0) {
+              btns.push({ label: '🧪 提交测试', cls: 'btn-primary', show: true, action: async () => {
+                if (!id) return;
+                await advancePhase(id, editingTask.id, '开发完成，提交测试');
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+                setTaskPanelOpen(false);
+              }});
+            }
+            if (editingTask.phase === 'TESTING' && editingTask.status === 'DONE') {
+              btns.push({ label: '🚀 发布上线', cls: 'btn-primary', show: true, action: async () => {
+                if (!id) return;
+                await advancePhase(id, editingTask.id, '测试通过，准备发布');
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+                setTaskPanelOpen(false);
+              }});
+            }
+            if (editingTask.phase === 'RELEASE' && editingTask.status === 'DONE') {
+              btns.push({ label: '✅ 验收交付', cls: 'btn-primary', show: true, action: async () => {
+                if (!id) return;
+                await advancePhase(id, editingTask.id, '发布完成');
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+                setTaskPanelOpen(false);
+              }});
+            }
+          } else {
+            // Non-STORY status buttons
+            if (editingTask.status === 'TODO') {
+              btns.push({ label: '▶ 开始处理', cls: 'btn-outline', show: true, action: async () => {
+                if (!id) return;
+                await update(id, editingTask.id, { status: 'IN_PROGRESS' });
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+              }});
+            }
+            if (editingTask.status === 'IN_PROGRESS') {
+              btns.push({ label: '✔ 标记完成', cls: 'btn-primary', show: true, action: async () => {
+                if (!id) return;
+                await update(id, editingTask.id, { status: 'DONE' });
+                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                setEditingTask(useTaskStore.getState().current);
+              }});
+            }
+          }
+
+          const visible = btns.filter(b => b.show);
+          if (visible.length === 0) return null;
+          return (
+            <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', border: '1px solid var(--border-light)' }}>
+              <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', fontWeight:600, marginBottom:8, textTransform:'uppercase', letterSpacing:'0.05em' }}>⚡ 操作</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {visible.map((b, i) => (
+                  <button key={i} className={`btn btn-sm ${b.cls}`} style={{ flex: 1 }} onClick={b.action}>{b.label}</button>
+                ))}
               </div>
             </div>
-          </div>
-        )}
-
-        {/* Phase-specific action buttons */}
-        {editingTask && isFull && editingTask.task_type === 'STORY' && (
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border-light)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {editingTask.phase === 'REQUIREMENTS' && editingTask.status === 'DONE' && (
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
-                if (!id) return;
-                try {
-                  await advancePhase(id, editingTask.id, '进入方案设计');
-                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
-              }}>🚀 开始方案设计</button>
-            )}
-            {editingTask.phase === 'DESIGN' && editingTask.design_review_status === 'APPROVED' && editingTask.status === 'DONE' && (
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
-                if (!id) return;
-                try {
-                  await advancePhase(id, editingTask.id, '方案已评审，进入开发');
-                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
-              }}>💻 进入开发实现</button>
-            )}
-            {editingTask.phase === 'DEVELOPMENT' && (
-              <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setDetailTab('related')}>
-                📋 管理开发任务 ({editingTask.children_count || 0})
-              </button>
-            )}
-            {editingTask.phase === 'DEVELOPMENT' && editingTask.status === 'DONE' && (editingTask.children_count ?? 0) > 0 && (
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
-                if (!id) return;
-                try {
-                  await advancePhase(id, editingTask.id, '开发完成，提交测试');
-                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
-              }}>🧪 提交测试</button>
-            )}
-            {editingTask.phase === 'TESTING' && editingTask.status === 'DONE' && (
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
-                if (!id) return;
-                try {
-                  await advancePhase(id, editingTask.id, '测试通过，准备发布');
-                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
-              }}>🚀 发布上线</button>
-            )}
-            {editingTask.phase === 'RELEASE' && editingTask.status === 'DONE' && (
-              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
-                if (!id) return;
-                try {
-                  await advancePhase(id, editingTask.id, '发布完成');
-                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
-              }}>✅ 验收交付</button>
-            )}
-          </div>
-        )}
+          );
+        })()}
 
         <div className="form-actions">
           <button className="btn btn-ghost" onClick={() => setTaskPanelOpen(false)}>取消</button>
