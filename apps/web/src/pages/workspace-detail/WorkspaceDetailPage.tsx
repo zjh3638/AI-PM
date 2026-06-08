@@ -1532,7 +1532,9 @@ export default function WorkspaceDetailPage() {
         milestone_id: isFull ? '' : selectedMilestone,
         assignee_id: undefined, reviewer_id: undefined,
         proposer_id: isStory && user ? user.id : undefined,
-        analyst_id: undefined, qa_owner_id: undefined, verifier_id: undefined,
+        analyst_id: undefined,
+        qa_owner_id: isStory && user ? user.id : undefined,
+        verifier_id: undefined,
         parent_id: parentStoryId || undefined,
       });
     }
@@ -2074,6 +2076,35 @@ export default function WorkspaceDetailPage() {
           </div>
         )}
 
+        {/* ─── PHASE-SPECIFIC: REQUIREMENTS phase — 需求负责人 + 测试负责人 ─── */}
+        {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase === 'REQUIREMENTS' && (
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
+            <div style={{ display:'flex', gap: 12 }}>
+              <div className="form-group" style={{ flex:1 }}>
+                <label>需求提出人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（谁提的需求）</span></label>
+                <select style={{ width:'100%' }} value={taskForm.proposer_id||''} onChange={(e) => setTaskForm((f) => ({...f, proposer_id: e.target.value||undefined }))}>
+                  <option value="">未指定</option>
+                  {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{ flex:1 }}>
+                <label>需求负责人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（PM指定，负责方案设计、拆分任务、提交测试）</span></label>
+                <select style={{ width:'100%' }} value={taskForm.analyst_id||''} onChange={(e) => setTaskForm((f) => ({...f, analyst_id: e.target.value||undefined }))}>
+                  <option value="">未指定</option>
+                  {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-group" style={{ marginTop: 12 }}>
+              <label>测试负责人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（默认同需求提出人；负责需求测试，可驳回）</span></label>
+              <select style={{ width:'100%' }} value={taskForm.qa_owner_id||''} onChange={(e) => setTaskForm((f) => ({...f, qa_owner_id: e.target.value||undefined }))}>
+                <option value="">未指定</option>
+                {allMembers.map((m: WorkspaceMember) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+              </select>
+            </div>
+          </div>
+        )}
+
         {/* ─── PHASE-SPECIFIC: DESIGN phase — design editor + review ─── */}
         {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase === 'DESIGN' && (
           <>
@@ -2098,17 +2129,17 @@ export default function WorkspaceDetailPage() {
             />
             <div style={{ fontSize:'0.6rem',color:'var(--text-muted)',marginTop:2 }}>✏️ 实时自动保存</div>
           </div>
-          {/* Designer + Reviewer */}
+          {/* Designer = 需求负责人, Reviewer = PM */}
           <div style={{ marginTop: 12, display:'flex', gap: 12 }}>
             <div className="form-group" style={{ flex:1 }}>
-              <label>设计师 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（编写方案的人）</span></label>
-              <select style={{ width:'100%' }} value={taskForm.assignee_id||''} onChange={(e) => setTaskForm((f) => ({...f, assignee_id: e.target.value||undefined }))}>
+              <label>需求负责人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（编写方案的人）</span></label>
+              <select style={{ width:'100%' }} value={taskForm.analyst_id||''} onChange={(e) => setTaskForm((f) => ({...f, analyst_id: e.target.value||undefined }))}>
                 <option value="">未指定</option>
                 {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
               </select>
             </div>
             <div className="form-group" style={{ flex:1 }}>
-              <label>评审人 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（审核方案的人）</span></label>
+              <label>设计评审人(PM) <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（审核方案，可驳回）</span></label>
               <select style={{ width:'100%' }} value={taskForm.reviewer_id||''} onChange={(e) => setTaskForm((f) => ({...f, reviewer_id: e.target.value||undefined }))}>
                 <option value="">由负责人审核</option>
                 {allReviewers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
