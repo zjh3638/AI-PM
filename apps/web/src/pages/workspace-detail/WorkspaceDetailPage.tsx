@@ -2152,7 +2152,7 @@ export default function WorkspaceDetailPage() {
             <textarea placeholder="评审意见（必填）" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2}
               style={{ width:'100%',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.78rem',fontFamily:'inherit',resize:'vertical',marginBottom:8 }} />
             <div style={{ display:'flex', gap: 8 }}>
-              <button className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+              <button type="button" className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
                 if (!id) return;
                 await reviewDesign(id, editingTask.id, 'APPROVED', reviewNote);
                 setReviewNote('');
@@ -2160,7 +2160,7 @@ export default function WorkspaceDetailPage() {
                 setEditingTask(useTaskStore.getState().current);
                 fetchActivity(editingTask.id);
               }} style={{ flex:1 }}>✓ 通过方案</button>
-              <button className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+              <button type="button" className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
                 if (!id) return;
                 await reviewDesign(id, editingTask.id, 'REJECTED', reviewNote);
                 setReviewNote('');
@@ -2173,7 +2173,7 @@ export default function WorkspaceDetailPage() {
         )}
 
         <div className="form-actions">
-          <button className="btn btn-ghost" onClick={() => setTaskPanelOpen(false)}>取消</button>
+          <button type="button" className="btn btn-ghost" onClick={() => setTaskPanelOpen(false)}>取消</button>
           <button
             className="btn btn-primary"
             disabled={taskSubmitting || !taskForm.title.trim()}
@@ -2282,7 +2282,7 @@ export default function WorkspaceDetailPage() {
 
             if (btns.length === 0) return null;
             return btns.map((b, i) => (
-              <button key={i} className={`btn ${b.cls}`} onClick={b.action}>{b.label}</button>
+              <button key={i} type="button" className={`btn ${b.cls}`} onClick={b.action}>{b.label}</button>
             ));
           })()}
         </div>
