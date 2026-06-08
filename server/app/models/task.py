@@ -1,7 +1,7 @@
 from typing import Optional
 from datetime import date, datetime
 
-from sqlalchemy import String, Text, Float, Date, ForeignKey, JSON
+from sqlalchemy import String, Text, Float, Integer, Date, ForeignKey, JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -31,6 +31,7 @@ class Task(Base, UUIDMixin, TimestampMixin):
     proposer_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     analyst_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     qa_owner_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
+    acceptance_owner_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     # Bug-specific roles
     verifier_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     # Multi-reviewers for Story
@@ -43,7 +44,14 @@ class Task(Base, UUIDMixin, TimestampMixin):
     design_review_status: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     design_reviewer_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     design_review_note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    design_doc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 方案设计文档
+
+    # Phase artifact fields
+    prd_doc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # 需求PRD
+    design_doc: Mapped[Optional[str]] = mapped_column(Text, nullable=True)    # 方案设计文档
+    self_test_report: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # 自测报告
+    test_report: Mapped[Optional[str]] = mapped_column(Text, nullable=True)       # 测试报告
+    rating: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)          # 评价打分 1-5
+    evaluation: Mapped[Optional[str]] = mapped_column(Text, nullable=True)         # 评价说明
 
     estimation: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     estimation_unit: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
@@ -62,6 +70,7 @@ class Task(Base, UUIDMixin, TimestampMixin):
     proposer = relationship("User", backref="proposed_tasks", foreign_keys=[proposer_id])
     analyst = relationship("User", backref="analyzed_tasks", foreign_keys=[analyst_id])
     qa_owner = relationship("User", backref="qa_tasks", foreign_keys=[qa_owner_id])
+    acceptance_owner = relationship("User", backref="accepted_tasks", foreign_keys=[acceptance_owner_id])
     verifier = relationship("User", backref="verified_tasks", foreign_keys=[verifier_id])
     requirement_reviewer = relationship("User", backref="req_reviewed_tasks", foreign_keys=[requirement_reviewer_id])
     design_reviewer = relationship("User", backref="design_reviewed_tasks", foreign_keys=[design_reviewer_id])

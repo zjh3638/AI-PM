@@ -153,7 +153,7 @@ async def get_epics(db: AsyncSession, workspace_id: str) -> list[dict]:
 
 
 # Phase definitions per task type
-STORY_PHASES = ["REQUIREMENTS", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE", "ACCEPTANCE"]
+STORY_PHASES = ["REQUIREMENTS", "DESIGN", "DESIGN_REVIEW", "DEVELOPMENT", "TESTING", "RELEASE"]
 TASK_PHASES = ["DEVELOPMENT", "TESTING", "RELEASE"]
 BUG_PHASES = ["DEVELOPMENT", "TESTING"]
 
@@ -187,20 +187,26 @@ async def check_phase_advance_gate(task: Task, db: AsyncSession) -> tuple[bool, 
 
     current_phase = task.phase
 
-    # Gate 1: DESIGN → DEVELOPMENT: design review must be APPROVED
+    # Gate 1: DESIGN → DESIGN_REVIEW: design_doc must exist
     if current_phase == "DESIGN":
-        if task.design_review_status != "APPROVED":
-            return False, "方案设计评审未通过，不能进入「开发实现」阶段。请先在需求详情中完成方案评审。"
+        if not task.design_doc:
+            return False, "请先完成方案设计文档。"
         return True, ""
 
-    # Gate 2: DEVELOPMENT → TESTING: ALL child tasks must be DONE
+    # Gate 2: DESIGN_REVIEW → DEVELOPMENT: design review must be APPROVED
+    if current_phase == "DESIGN_REVIEW":
+        if task.design_review_status != "APPROVED":
+            return False, "方案评审未通过，不能进入开发实现。"
+        return True, ""
+
+    # Gate 3: DEVELOPMENT → TESTING: ALL child tasks must be DONE
     if current_phase == "DEVELOPMENT":
         child_result = await db.execute(
             select(Task).where(Task.parent_id == task.id)
         )
         children = child_result.scalars().all()
         if not children:
-            return False, "Story 尚未拆分子任务。请先完成方案设计并拆分开发任务。"
+            return False, "Story 尚未拆分子任务。请先拆分开发任务。"
         not_done = [c for c in children if c.status != "DONE"]
         if not_done:
             titles = "、".join(c.title[:20] for c in not_done[:3])
@@ -318,6 +324,10 @@ def _task_to_dict(task: Task) -> dict:
         design_reviewer_name = task.design_reviewer.display_name if task.design_reviewer else None
     except Exception:
         design_reviewer_name = None
+    try:
+        acceptance_owner_name = task.acceptance_owner.display_name if task.acceptance_owner else None
+    except Exception:
+        acceptance_owner_name = None
 
     return {
         "id": task.id, "workspace_id": task.workspace_id,
@@ -338,6 +348,8 @@ def _task_to_dict(task: Task) -> dict:
         "analyst_name": analyst_name,
         "qa_owner_id": task.qa_owner_id,
         "qa_owner_name": qa_owner_name,
+        "acceptance_owner_id": task.acceptance_owner_id,
+        "acceptance_owner_name": acceptance_owner_name,
         "verifier_id": task.verifier_id,
         "verifier_name": verifier_name,
         "requirement_review_status": task.requirement_review_status,
@@ -349,6 +361,11 @@ def _task_to_dict(task: Task) -> dict:
         "design_reviewer_name": design_reviewer_name,
         "design_review_note": task.design_review_note,
         "design_doc": task.design_doc,
+        "prd_doc": task.prd_doc,
+        "self_test_report": task.self_test_report,
+        "test_report": task.test_report,
+        "rating": task.rating,
+        "evaluation": task.evaluation,
         "reviewer_ids": task.reviewer_ids or [],
         "estimation": task.estimation, "estimation_unit": task.estimation_unit,
         "sort_order": task.sort_order,

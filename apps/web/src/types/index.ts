@@ -90,7 +90,14 @@ export interface Task {
   design_reviewer_id: string | null;
   design_reviewer_name: string | null;
   design_review_note: string | null;
+  acceptance_owner_id: string | null;
+  acceptance_owner_name: string | null;
   design_doc: string | null;
+  prd_doc: string | null;
+  self_test_report: string | null;
+  test_report: string | null;
+  rating: number | null;
+  evaluation: string | null;
   reviewer_ids: string[];
   estimation: number | null;
   estimation_unit: string | null;

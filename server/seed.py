@@ -20,7 +20,7 @@ from app.security import hash_password
 async def seed():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        # Ensure new review columns exist for SQLite (safe DDL, ignored if already present)
+        # Ensure new columns exist for SQLite (safe DDL, ignored if already present)
         from sqlalchemy import text
         for col in [
             "requirement_review_status VARCHAR(20)",
@@ -30,6 +30,12 @@ async def seed():
             "design_reviewer_id VARCHAR(36) REFERENCES users(id)",
             "design_review_note TEXT",
             "design_doc TEXT",
+            "prd_doc TEXT",
+            "self_test_report TEXT",
+            "test_report TEXT",
+            "rating INTEGER",
+            "evaluation TEXT",
+            "acceptance_owner_id VARCHAR(36) REFERENCES users(id)",
         ]:
             try:
                 await conn.execute(text(f"ALTER TABLE tasks ADD COLUMN {col}"))

@@ -333,6 +333,49 @@ async def advance_task_phase(
     return {"code": 0, "message": msg, "data": _task_to_dict(task)}
 
 
+@router.post("/tasks/{task_id}/return-phase", response_model=APIResponse)
+async def return_task_phase(
+    workspace_id: str,
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
+):
+    """Return a STORY to the previous phase (design review reject / testing reject)."""
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    task = await task_service.get_task(db, task_id)
+    if task is None or task.workspace_id != workspace_id:
+        raise AppException(404, "任务不存在", 404)
+
+    if task.task_type != "STORY":
+        raise AppException(400, "只有 Story 可以退回阶段", 400)
+
+    phases = get_phases_for_type(task.task_type)
+    idx = phases.index(task.phase) if task.phase in phases else -1
+    if idx <= 0:
+        raise AppException(400, "已是第一个阶段，无法退回", 400)
+
+    # Only allow return from DESIGN_REVIEW and TESTING
+    if task.phase not in ("DESIGN_REVIEW", "TESTING"):
+        raise AppException(400, f"当前阶段「{task.phase}」不支持退回操作", 400)
+
+    prev_phase = phases[idx - 1]
+    task = await task_service.update_task(db, task, phase=prev_phase, status="TODO")
+
+    # On design review reject, reset review status
+    if task.phase == "DESIGN" and task.design_review_status:
+        task.design_review_status = None
+        task.design_reviewer_id = None
+        task.design_review_note = None
+        await db.commit()
+        await db.refresh(task)
+
+    from app.services import activity_svc
+    await activity_svc.log_activity(db, task_id, current_user.id, "UPDATE",
+        field_name="阶段", old_value=phases[idx], new_value=prev_phase)
+    return {"code": 0, "message": f"阶段退回: {phases[idx]} → {prev_phase}", "data": _task_to_dict(task)}
+
+
 @router.post("/tasks/{task_id}/split", response_model=APIResponse)
 async def split_story_tasks(
     workspace_id: str,

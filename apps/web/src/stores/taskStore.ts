@@ -28,6 +28,7 @@ interface TaskState {
   remove: (wsId: string, taskId: string) => Promise<void>;
   moveTask: (wsId: string, taskId: string, newStatus: string, sortOrder: number) => Promise<void>;
   advancePhase: (wsId: string, taskId: string, content?: string) => Promise<Task>;
+  returnPhase: (wsId: string, taskId: string) => Promise<Task>;
   reviewRequirement: (wsId: string, taskId: string, action: string, note?: string) => Promise<void>;
   reviewDesign: (wsId: string, taskId: string, action: string, note?: string) => Promise<void>;
   splitStory: (wsId: string, taskId: string, children: Partial<Task>[]) => Promise<Task[]>;
@@ -119,6 +120,12 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   advancePhase: async (wsId, taskId, content = '') => {
     const result = await api.post(`/workspaces/${wsId}/tasks/${taskId}/advance-phase`, { content });
+    await get().fetchKanban(wsId, 'phase');
+    return result.data;
+  },
+
+  returnPhase: async (wsId, taskId) => {
+    const result = await api.post(`/workspaces/${wsId}/tasks/${taskId}/return-phase`);
     await get().fetchKanban(wsId, 'phase');
     return result.data;
   },
