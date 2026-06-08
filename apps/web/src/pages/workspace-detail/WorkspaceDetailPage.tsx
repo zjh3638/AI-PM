@@ -354,7 +354,7 @@ function PulseChat() {
 /* ═══════════════════════════════════════════
    KANBAN VIEW
    ═══════════════════════════════════════════ */
-function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreateTask: (status: string, phase?: string) => void; onEditTask: (task: Task) => void; scopeFilter: string; isFull: boolean }) {
+function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreateTask: (status: string, phase?: string, parentStoryId?: string) => void; onEditTask: (task: Task) => void; scopeFilter: string; isFull: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
   const { moveTask, update, advancePhase } = useTaskStore();
   const { user } = useAuthStore();
@@ -645,14 +645,19 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                 <div
                   className={`kanban-card type-story${selected.has(story.id) ? ' selected' : ''}${isOverdue ? ' overdue' : ''}${!canDrag(story) ? ' locked' : ''}`}
                   title={story.title}
-                  onClick={(e) => { if (e.shiftKey) toggleSelect(story.id); else toggleExpand(story.id); }}
+                  onClick={(e) => { if (e.shiftKey) toggleSelect(story.id); else onEditTask(story); }}
                   draggable={canDrag(story)}
                   onDragStart={(e) => { if (!canDrag(story)) { e.preventDefault(); return; } handleDragStart(e, story.id, isFull ? story.phase : story.status); }}
                   style={{ cursor: 'pointer', borderLeft: `3px solid ${({CRITICAL:'var(--red-400)',HIGH:'var(--amber-400)',MEDIUM:'var(--blue-400)',LOW:'var(--text-muted)'})[story.priority] || 'var(--border)'}` }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
                     <div className="card-title" style={{ flex: 1 }}>{story.title}</div>
-                    <span style={{ fontSize: '0.55rem', transform: isExpanded ? 'rotate(90deg)' : '', transition: '0.15s', flexShrink: 0, marginLeft: 4 }}>▶</span>
+                    {children.length > 0 || (story.children_count ?? 0) > 0 ? (
+                      <span onClick={(e) => { e.stopPropagation(); toggleExpand(story.id); }}
+                        style={{ fontSize: '0.65rem', cursor: 'pointer', padding: '0 4px', transform: isExpanded ? 'rotate(90deg)' : '', transition: '0.15s', flexShrink: 0 }} title="展开子任务">▶</span>
+                    ) : (
+                      <span style={{ fontSize: '0.5rem', color: 'var(--text-muted)', flexShrink: 0 }}>{story.children_count ?? 0}</span>
+                    )}
                   </div>
                   <div className="card-meta" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                     <button
@@ -725,11 +730,6 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                       </span>
                     </div>
                   )}
-                  {/* Edit button */}
-                  <div style={{ marginTop: 6, textAlign: 'right' }}>
-                    <button className="btn btn-ghost btn-xs" style={{ fontSize: '0.58rem' }}
-                      onClick={(e) => { e.stopPropagation(); onEditTask(story); }}>编辑</button>
-                  </div>
                 </div>
                 {/* Expanded children */}
                 {isExpanded && (
@@ -747,7 +747,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                       </div>
                       );
                     })}
-                    <div onClick={(e) => { e.stopPropagation(); onEditTask({ ...story, task_type: 'TASK' } as Task); onEditTask(story); onCreateTask('TODO', story.id); }}
+                    <div onClick={(e) => { e.stopPropagation(); onCreateTask('TODO', undefined, story.id); }}
                       style={{ padding: '3px 6px', marginTop: 4, borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.64rem', color: 'var(--text-muted)', textAlign: 'center', border: '1px dashed var(--border)', background: 'transparent' }}>
                       + 添加子任务
                     </div>
@@ -1445,7 +1445,7 @@ export default function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { current, loading, fetchDetail } = useWorkspaceStore();
-  const { create, update, remove, reviewDesign } = useTaskStore();
+  const { create, update, remove, reviewDesign, advancePhase } = useTaskStore();
   const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState('tasks');
   const [activeView, setActiveView] = useState('kanban');
@@ -1743,7 +1743,7 @@ export default function WorkspaceDetailPage() {
                     </button>
                   ))}
                 </div>
-                {activeView === 'kanban' && <KanbanView onCreateTask={(status, phase) => openTaskPanel(status, undefined, undefined, phase)} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
+                {activeView === 'kanban' && <KanbanView onCreateTask={(status, phase, parentId) => openTaskPanel(status, undefined, parentId, phase)} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
                 {activeView === 'list' && <ListView onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
               </div>
             )}
@@ -2063,6 +2063,17 @@ export default function WorkspaceDetailPage() {
           </div>
         )}
 
+        {/* Assignee picker — shown when creating child task */}
+        {taskForm.parent_id && !editingTask && (
+          <div className="form-group" style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-light)' }}>
+            <label>指派给 <span style={{ fontSize:'0.62rem',color:'var(--text-muted)' }}>（执行该任务的开发者）</span></label>
+            <select style={{ width:'100%' }} value={taskForm.assignee_id||''} onChange={(e) => setTaskForm((f) => ({...f, assignee_id: e.target.value||undefined }))}>
+              <option value="">未指派</option>
+              {allMembers.map((m) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+            </select>
+          </div>
+        )}
+
         {/* ─── PHASE-SPECIFIC: DESIGN phase — design editor + review ─── */}
         {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase === 'DESIGN' && (
           <>
@@ -2178,6 +2189,72 @@ export default function WorkspaceDetailPage() {
                 </select>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Phase-specific action buttons */}
+        {editingTask && isFull && editingTask.task_type === 'STORY' && (
+          <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border-light)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {editingTask.phase === 'REQUIREMENTS' && editingTask.status === 'DONE' && (
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
+                if (!id) return;
+                try {
+                  await advancePhase(id, editingTask.id, '进入方案设计');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
+              }}>🚀 开始方案设计</button>
+            )}
+            {editingTask.phase === 'DESIGN' && editingTask.design_review_status === 'APPROVED' && editingTask.status === 'DONE' && (
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
+                if (!id) return;
+                try {
+                  await advancePhase(id, editingTask.id, '方案已评审，进入开发');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
+              }}>💻 进入开发实现</button>
+            )}
+            {editingTask.phase === 'DEVELOPMENT' && (
+              <button className="btn btn-outline" style={{ flex: 1 }} onClick={() => setDetailTab('related')}>
+                📋 管理开发任务 ({editingTask.children_count || 0})
+              </button>
+            )}
+            {editingTask.phase === 'DEVELOPMENT' && editingTask.status === 'DONE' && (editingTask.children_count ?? 0) > 0 && (
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
+                if (!id) return;
+                try {
+                  await advancePhase(id, editingTask.id, '开发完成，提交测试');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
+              }}>🧪 提交测试</button>
+            )}
+            {editingTask.phase === 'TESTING' && editingTask.status === 'DONE' && (
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
+                if (!id) return;
+                try {
+                  await advancePhase(id, editingTask.id, '测试通过，准备发布');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
+              }}>🚀 发布上线</button>
+            )}
+            {editingTask.phase === 'RELEASE' && editingTask.status === 'DONE' && (
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={async () => {
+                if (!id) return;
+                try {
+                  await advancePhase(id, editingTask.id, '发布完成');
+                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                } catch (e: any) { alert(e?.response?.data?.message || '推进失败'); }
+              }}>✅ 验收交付</button>
+            )}
           </div>
         )}
 
