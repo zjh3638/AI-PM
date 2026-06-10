@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useTaskStore } from '../../stores/taskStore';
@@ -409,12 +409,13 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
     { key: 'DONE', title: '已完成' },
   ];
   const allPhaseColDefs: { key: string; title: string; icon?: string; deliverables: string }[] = [
-    { key: 'REQUIREMENTS', title: '需求分析', icon: '📋', deliverables: 'PRD文档、用户故事列表' },
-    { key: 'DESIGN', title: '方案设计', icon: '🎨', deliverables: '技术方案文档、API接口定义' },
+    { key: 'BACKLOG', title: '需求池', icon: '📥', deliverables: '设置需求负责人、规划迭代' },
+    { key: 'REQUIREMENTS', title: '需求分析', icon: '📋', deliverables: '需求PRD' },
+    { key: 'DESIGN', title: '方案设计', icon: '🎨', deliverables: '设计文档' },
     { key: 'DESIGN_REVIEW', title: '设计评审', icon: '🔍', deliverables: '评审结论、修改意见' },
-    { key: 'DEVELOPMENT', title: '开发实现', icon: '💻', deliverables: '代码、单元测试、Story自测报告' },
-    { key: 'TESTING', title: '测试验证', icon: '🧪', deliverables: '测试用例、测试报告、Bug修复确认' },
-    { key: 'RELEASE', title: '发布上线', icon: '🚀', deliverables: '发布说明、需求评价' },
+    { key: 'DEVELOPMENT', title: '开发实现', icon: '💻', deliverables: 'Story自测报告' },
+    { key: 'TESTING', title: '测试验证', icon: '🧪', deliverables: '测试报告' },
+    { key: 'RELEASE', title: '发布上线', icon: '🚀', deliverables: '需求评价（五星打分、说明性评价）' },
   ];
 
   const phaseColDefs = allPhaseColDefs; // Always show all 6 SDLC phases for Story kanban
@@ -691,8 +692,8 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                   {/* Mini phase progress bar */}
                   {isFull && story.task_type === 'STORY' && (
                     <div style={{ display: 'flex', gap: 2, marginTop: 4, alignItems: 'center' }}>
-                      {['REQUIREMENTS', 'DESIGN', 'DESIGN_REVIEW', 'DEVELOPMENT', 'TESTING', 'RELEASE'].map((ph, i) => {
-                        const phaseIdx2 = ['REQUIREMENTS', 'DESIGN', 'DESIGN_REVIEW', 'DEVELOPMENT', 'TESTING', 'RELEASE'].indexOf(story.phase);
+                      {['BACKLOG', 'REQUIREMENTS', 'DESIGN', 'DESIGN_REVIEW', 'DEVELOPMENT', 'TESTING', 'RELEASE'].map((ph, i) => {
+                        const phaseIdx2 = ['BACKLOG', 'REQUIREMENTS', 'DESIGN', 'DESIGN_REVIEW', 'DEVELOPMENT', 'TESTING', 'RELEASE'].indexOf(story.phase);
                         const isPhase = ph === story.phase;
                         const isPast = i <= phaseIdx2;
                         return (
@@ -700,7 +701,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                             flex: 1, height: 3, borderRadius: 2,
                             background: isPhase ? 'var(--blue-500)' : isPast ? 'var(--green-300)' : 'var(--border-light)',
                             transition: 'background 0.3s',
-                          }} title={({REQUIREMENTS:'需求分析',DESIGN:'方案设计',DESIGN_REVIEW:'设计评审',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线'})[ph]} />
+                          }} title={({BACKLOG:'需求池',REQUIREMENTS:'需求分析',DESIGN:'方案设计',DESIGN_REVIEW:'设计评审',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线'})[ph]} />
                         );
                       })}
                     </div>
@@ -718,7 +719,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                     <div style={{ marginTop: 4, fontSize: '0.55rem', color: 'var(--text-muted)' }}>{story.children_count} 个子任务（点击展开加载）</div>
                   )}
                   {/* Design review status badge */}
-                  {isFull && story.task_type === 'STORY' && story.phase === 'DESIGN' && story.design_review_status && (
+                  {isFull && story.task_type === 'STORY' && (story.phase === 'DESIGN_REVIEW' || story.design_review_status) && story.design_review_status && (
                     <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.55rem', padding: '1px 5px', borderRadius: 3,
                         background: story.design_review_status === 'APPROVED' ? '#d4edda' :
@@ -783,14 +784,34 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
               <span style={{ marginLeft: 4 }}>{phaseColDefs.find(p => p.key === gateOpen)?.deliverables}</span>
             </div>
             {/* Gate-specific warnings */}
+            {gateOpen === 'BACKLOG' && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
+                ⚠️ 请确认已<strong>设置需求负责人</strong>并<strong>规划到迭代</strong>
+              </div>
+            )}
+            {gateOpen === 'REQUIREMENTS' && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
+                ⚠️ 请确认<strong>需求PRD</strong>已完成，可在需求详情中编写PRD文档
+              </div>
+            )}
             {gateOpen === 'DESIGN' && (
               <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
-                ⚠️ 请先在需求详情中完成<strong>方案评审</strong>，并拆分开发子任务
+                ⚠️ 请确认<strong>设计文档</strong>已完成，推进后将进入设计评审阶段
+              </div>
+            )}
+            {gateOpen === 'DESIGN_REVIEW' && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
+                ⚠️ 仅<strong>评审通过</strong>的需求会被推进，请在需求详情中完成评审
               </div>
             )}
             {gateOpen === 'DEVELOPMENT' && (
               <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
-                ⚠️ 所有子任务需标记为<strong>已完成</strong>后，才能推进到测试验证
+                ⚠️ 所有子任务需标记为<strong>已完成</strong>，并填写<strong>Story自测报告</strong>
+              </div>
+            )}
+            {gateOpen === 'TESTING' && (
+              <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
+                ⚠️ 请确认<strong>测试报告</strong>已完成，测试不通过的需求可单独退回开发
               </div>
             )}
             <textarea
@@ -964,25 +985,208 @@ function BacklogPanel({ onEditStory, onCreateStory, selectedIteration }: { onEdi
 function MembersPanel() {
   const { id } = useParams<{ id: string }>();
   const { members, loading, fetchMembers } = useWorkspaceStore();
+  const { user } = useAuthStore();
 
   useEffect(() => { if (id) fetchMembers(id); }, [id]);
 
+  // Show add button liberally — backend enforces OWNER/MANAGER permission
+  const canManage = !user || members.length === 0
+    ? true  // if user not loaded yet or empty workspace, show button
+    : members.some((m: WorkspaceMember) => m.user_id === user.id && (m.role === 'OWNER' || m.role === 'MANAGER'));
+
+  // Add member state
+  const [addOpen, setAddOpen] = useState(false);
+  const [users, setUsers] = useState<any[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [addForm, setAddForm] = useState({ user_id: '', role: 'MEMBER' });
+  const [addError, setAddError] = useState('');
+  const [addSubmitting, setAddSubmitting] = useState(false);
+  const [userSearch, setUserSearch] = useState('');
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const selectedUser = users.find((u: any) => u.id === addForm.user_id);
+
+  const fetchUsers = async (keyword = '') => {
+    setUsersLoading(true);
+    setAddError('');
+    try {
+      const params: any = { page_size: 100 };
+      if (keyword) params.keyword = keyword;
+      const res: any = await api.get('/users', { params });
+      const allUsers = res.data || [];
+      const memberIds = new Set(members.map((m: WorkspaceMember) => m.user_id));
+      setUsers(allUsers.filter((u: any) => !memberIds.has(u.id) && u.status === 'ACTIVE'));
+    } catch (e: any) {
+      setUsers([]);
+      setAddError(e?.response?.data?.message || '加载用户列表失败');
+    }
+    setUsersLoading(false);
+  };
+
+  const handleUserSearch = (value: string) => {
+    setUserSearch(value);
+    clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => fetchUsers(value), 300);
+  };
+
+  const openAdd = () => {
+    setAddForm({ user_id: '', role: 'MEMBER' });
+    setAddError('');
+    setUserSearch('');
+    fetchUsers();
+    setAddOpen(true);
+  };
+
+  const submitAdd = async () => {
+    if (!id || !addForm.user_id) { setAddError('请选择用户'); return; }
+    setAddSubmitting(true);
+    setAddError('');
+    try {
+      await api.post(`/workspaces/${id}/members`, addForm);
+      setAddOpen(false);
+      fetchMembers(id);
+    } catch (e: any) {
+      setAddError(e?.response?.data?.message || '添加失败');
+    } finally { setAddSubmitting(false); }
+  };
+
+  const handleRemove = async (member: WorkspaceMember) => {
+    if (!id) return;
+    if (!confirm(`确定移除成员「${member.user_name || member.user_id}」？`)) return;
+    try {
+      await api.delete(`/workspaces/${id}/members/${member.id}`);
+      fetchMembers(id);
+    } catch (e: any) {
+      alert(e?.response?.data?.message || '移除失败');
+    }
+  };
+
   const roleLabels: Record<string, string> = { OWNER: '所有者', MANAGER: '管理员', MEMBER: '成员', VIEWER: '观察者', AI_AGENT: 'AI Agent' };
+  const roleColor: Record<string, string> = { OWNER: 'var(--amber-600)', MANAGER: 'var(--blue-600)', MEMBER: 'var(--text-secondary)', VIEWER: 'var(--text-muted)', AI_AGENT: 'var(--purple-500)' };
 
   return (
-    <div className="member-grid">
-      {members.map((m: WorkspaceMember) => (
-        <div key={m.id} className="member-card">
-          <div className={`m-avatar ${m.role === 'AI_AGENT' ? 'agent' : 'human'}`}>
-            {(m.user_name || m.ai_agent_id || '?')[0]}
-          </div>
-          <div className="m-info">
-            <div className="m-name">{m.user_name || m.ai_agent_id || m.user_id}</div>
-            <div className="m-role">{roleLabels[m.role] || m.role}</div>
-            {m.role !== 'AI_AGENT' && <div className="m-load">负载 78%</div>}
-          </div>
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>共 {members.length} 人</span>
+        {canManage && (
+          <button className="btn btn-primary btn-sm" onClick={openAdd}>+ 添加成员</button>
+        )}
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)' }}>加载中...</div>
+      ) : (
+        <div className="member-grid">
+          {members.map((m: WorkspaceMember) => (
+            <div key={m.id} className="member-card" style={{ position: 'relative' }}>
+              <div className={`m-avatar ${m.role === 'AI_AGENT' ? 'agent' : 'human'}`}>
+                {(m.user_name || m.ai_agent_id || '?')[0]}
+              </div>
+              <div className="m-info">
+                <div className="m-name">{m.user_name || m.ai_agent_id || m.user_id}</div>
+                <div className="m-role" style={{ color: roleColor[m.role] }}>{roleLabels[m.role] || m.role}</div>
+                {m.role !== 'AI_AGENT' && <div className="m-load">负载 78%</div>}
+              </div>
+              {canManage && m.role !== 'OWNER' && (
+                <button
+                  className="btn btn-ghost btn-xs"
+                  style={{ position: 'absolute', top: 8, right: 8, color: 'var(--red-500)', fontSize: '0.6rem' }}
+                  onClick={() => handleRemove(m)}
+                  title="移除成员"
+                >✕</button>
+              )}
+            </div>
+          ))}
         </div>
-      ))}
+      )}
+
+      {/* Add Member Panel — always rendered, controlled by open prop */}
+      <SlidePanel open={addOpen} onClose={() => setAddOpen(false)} title="添加成员">
+        <div className="form-group" style={{ position: 'relative' }}>
+          <label>选择用户</label>
+          {/* Selected user display */}
+          {selectedUser ? (
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
+              background: 'var(--bg-surface)', fontSize: '0.82rem',
+            }}>
+              <span>
+                <strong>{selectedUser.display_name}</strong>
+                <span style={{ color: 'var(--text-muted)', marginLeft: 6 }}>({selectedUser.username})</span>
+                {selectedUser.department_name && (
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginLeft: 6 }}>— {selectedUser.department_name}</span>
+                )}
+              </span>
+              <button className="btn btn-ghost btn-xs" onClick={() => { setAddForm((f) => ({ ...f, user_id: '' })); setUserSearch(''); fetchUsers(); }}>
+                更改
+              </button>
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                placeholder="搜索用户姓名或用户名..."
+                value={userSearch}
+                onChange={(e) => handleUserSearch(e.target.value)}
+                style={{ width: '100%', boxSizing: 'border-box' }}
+                autoFocus
+              />
+              {/* Dropdown list */}
+              <div style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 10,
+                maxHeight: 240, overflowY: 'auto',
+                background: 'var(--bg-surface)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                marginTop: 2,
+              }}>
+                {usersLoading ? (
+                  <div style={{ padding: '10px 12px', fontSize: '0.76rem', color: 'var(--text-muted)' }}>搜索中...</div>
+                ) : users.length === 0 ? (
+                  <div style={{ padding: '10px 12px', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                    {userSearch ? `没有匹配「${userSearch}」的用户` : '暂无可添加的用户'}
+                  </div>
+                ) : (
+                  users.map((u: any) => (
+                    <div
+                      key={u.id}
+                      onClick={() => { setAddForm((f) => ({ ...f, user_id: u.id })); setUserSearch(''); }}
+                      style={{
+                        padding: '8px 12px', cursor: 'pointer', fontSize: '0.8rem',
+                        borderBottom: '1px solid var(--border-light)',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-hover)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                    >
+                      <div style={{ fontWeight: 500 }}>{u.display_name}</div>
+                      <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                        @{u.username}{u.department_name ? ` · ${u.department_name}` : ''}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          )}
+        </div>
+        <div className="form-group">
+          <label>角色</label>
+          <select value={addForm.role} onChange={(e) => setAddForm((f) => ({ ...f, role: e.target.value }))} style={{ width: '100%' }}>
+            <option value="MEMBER">成员</option>
+            <option value="MANAGER">管理员</option>
+            <option value="VIEWER">观察者</option>
+          </select>
+        </div>
+        {addError && (
+          <div style={{ color: 'var(--red-500)', fontSize: '0.78rem', padding: '8px 12px', background: 'var(--red-50)', borderRadius: 'var(--radius-sm)', marginBottom: 8 }}>{addError}</div>
+        )}
+        <div className="form-actions">
+          <button className="btn btn-ghost" onClick={() => setAddOpen(false)}>取消</button>
+          <button className="btn btn-primary" onClick={submitAdd} disabled={addSubmitting || !addForm.user_id}>
+            {addSubmitting ? '添加中...' : '添加'}
+          </button>
+        </div>
+      </SlidePanel>
     </div>
   );
 }
@@ -1464,7 +1668,7 @@ export default function WorkspaceDetailPage() {
   const allReviewers = allMembers.filter((m) => m.role !== 'VIEWER');
 
   const getDefaultPhase = (ttype: string) => {
-    if (ttype === 'STORY') return 'REQUIREMENTS';
+    if (ttype === 'STORY') return 'BACKLOG';
     if (ttype === 'BUG') return 'DEVELOPMENT';
     return 'DEVELOPMENT';
   };
@@ -1724,7 +1928,7 @@ export default function WorkspaceDetailPage() {
               <div className="ws-panel active" id="ws-panel-backlog" style={{ padding: '16px 20px' }}>
                 <BacklogPanel
                   onEditStory={(story) => openTaskPanel(undefined, story)}
-                  onCreateStory={() => openTaskPanel('TODO', undefined, undefined, 'REQUIREMENTS', 'STORY')}
+                  onCreateStory={() => openTaskPanel('TODO', undefined, undefined, 'BACKLOG', 'STORY')}
                   selectedIteration={selectedIteration}
                 />
               </div>
@@ -2014,7 +2218,7 @@ export default function WorkspaceDetailPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>当前阶段</span>
                 <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--blue-600)' }}>{
-                  ({REQUIREMENTS:'需求分析',DESIGN:'方案设计',DESIGN_REVIEW:'设计评审',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线'})[editingTask.phase] || editingTask.phase
+                  ({BACKLOG:'需求池',REQUIREMENTS:'需求分析',DESIGN:'方案设计',DESIGN_REVIEW:'设计评审',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线'})[editingTask.phase] || editingTask.phase
                 }</span>
               </div>
               {/* Design review badge — shown in DESIGN_REVIEW phase */}
@@ -2027,9 +2231,9 @@ export default function WorkspaceDetailPage() {
               )}
             </div>
             <div style={{ display: 'flex', gap: 3 }}>
-              {(['REQUIREMENTS','DESIGN','DESIGN_REVIEW','DEVELOPMENT','TESTING','RELEASE'] as const).map((ph) => {
-                const labels: Record<string,string> = {REQUIREMENTS:'需求',DESIGN:'设计',DESIGN_REVIEW:'评审',DEVELOPMENT:'开发',TESTING:'测试',RELEASE:'发布'};
-                const phases = ['REQUIREMENTS','DESIGN','DESIGN_REVIEW','DEVELOPMENT','TESTING','RELEASE'] as readonly string[];
+              {(['BACKLOG','REQUIREMENTS','DESIGN','DESIGN_REVIEW','DEVELOPMENT','TESTING','RELEASE'] as const).map((ph) => {
+                const labels: Record<string,string> = {BACKLOG:'需求池',REQUIREMENTS:'需求',DESIGN:'设计',DESIGN_REVIEW:'评审',DEVELOPMENT:'开发',TESTING:'测试',RELEASE:'发布'};
+                const phases = ['BACKLOG','REQUIREMENTS','DESIGN','DESIGN_REVIEW','DEVELOPMENT','TESTING','RELEASE'] as readonly string[];
                 const curIdx = phases.indexOf(editingTask.phase);
                 const phIdx = phases.indexOf(ph);
                 return (
@@ -2079,19 +2283,22 @@ export default function WorkspaceDetailPage() {
           } else if (taskForm.task_type === 'TASK' || taskForm.task_type === 'SUB_TASK') {
             roles.push({ key: 'assignee_id', label: '负责人', hint: '', value: taskForm.assignee_id||'' });
           } else if (editingTask && isFull && editingTask.task_type === 'STORY') {
-            if (editingTask.phase === 'REQUIREMENTS') {
+            if (editingTask.phase === 'BACKLOG') {
               roles.push({ key: 'proposer_id', label: '需求提出人', hint: '谁提的需求', value: taskForm.proposer_id||'' });
               roles.push({ key: 'analyst_id', label: '需求负责人', hint: 'PM指定', value: taskForm.analyst_id||'' });
+            } else if (editingTask.phase === 'REQUIREMENTS') {
+              roles.push({ key: 'analyst_id', label: '需求负责人', hint: '编写PRD', value: taskForm.analyst_id||'' });
+              roles.push({ key: 'reviewer_id', label: 'PM', hint: '审核PRD', value: taskForm.reviewer_id||'' });
             } else if (editingTask.phase === 'DESIGN') {
               roles.push({ key: 'analyst_id', label: '需求负责人', hint: '编写方案文档', value: taskForm.analyst_id||'' });
-              roles.push({ key: 'reviewer_id', label: 'PM', hint: '后续评审', value: taskForm.reviewer_id||'' });
+              roles.push({ key: 'reviewer_id', label: 'PM', hint: '组织评审', value: taskForm.reviewer_id||'' });
             } else if (editingTask.phase === 'DESIGN_REVIEW') {
               roles.push({ key: 'reviewer_id', label: '评审人(PM)', hint: '审核并决定通过/驳回', value: taskForm.reviewer_id||'' });
             } else if (editingTask.phase === 'DEVELOPMENT') {
               roles.push({ key: 'analyst_id', label: '需求负责人', hint: '拆分任务、推进开发', value: taskForm.analyst_id||'' });
-              roles.push({ key: 'qa_owner_id', label: '测试负责人', hint: '默认=需求提出人', value: taskForm.qa_owner_id||'' });
+              roles.push({ key: 'reviewer_id', label: 'PM', hint: '', value: taskForm.reviewer_id||'' });
             } else if (editingTask.phase === 'TESTING') {
-              roles.push({ key: 'qa_owner_id', label: '测试负责人', hint: '执行测试，可驳回', value: taskForm.qa_owner_id||'' });
+              roles.push({ key: 'qa_owner_id', label: '测试负责人', hint: '默认=需求提出人，执行测试', value: taskForm.qa_owner_id||'' });
               roles.push({ key: 'reviewer_id', label: 'PM', hint: '', value: taskForm.reviewer_id||'' });
             } else if (editingTask.phase === 'RELEASE') {
               roles.push({ key: 'acceptance_owner_id', label: '验收负责人', hint: '默认=需求提出人', value: taskForm.acceptance_owner_id||'' });
@@ -2126,6 +2333,29 @@ export default function WorkspaceDetailPage() {
             if (!id) return;
             await update(id, editingTask.id, { [field]: value } as any);
           };
+
+          // BACKLOG: show iteration planner + analyst assignment hint
+          if (phase === 'BACKLOG') return (
+            <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', border: '1px solid var(--border-light)' }}>
+              <div style={{ fontSize:'0.82rem', fontWeight:600, marginBottom:8 }}>📥 需求池 — 等待规划</div>
+              <div style={{ fontSize:'0.7rem', color:'var(--text-muted)', marginBottom:10 }}>
+                PM需设置<strong>需求负责人</strong>并<strong>规划到迭代</strong>后，推进到需求分析阶段。
+              </div>
+              <div className="form-group" style={{ marginBottom: 8 }}>
+                <label style={{ fontSize:'0.72rem' }}>规划到迭代</label>
+                <select style={{ width:'100%' }} value={taskForm.iteration_id||''} onChange={(e) => {
+                  const iterId = e.target.value || undefined;
+                  setTaskForm((f:any) => ({...f, iteration_id: iterId}));
+                  if (id && iterId) update(id, editingTask.id, { iteration_id: iterId } as any);
+                }}>
+                  <option value="">选择迭代...</option>
+                  {allIterations.filter(it => it.status === 'PLANNING' || it.status === 'ACTIVE').map((it) => (
+                    <option key={it.id} value={it.id}>{it.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          );
 
           // REQUIREMENTS: PRD
           if (phase === 'REQUIREMENTS') return (
@@ -2184,16 +2414,22 @@ export default function WorkspaceDetailPage() {
                       if (!id) return;
                       await reviewDesign(id, editingTask.id, 'APPROVED', reviewNote);
                       setReviewNote('');
+                      // Auto-advance to DEVELOPMENT
+                      await advancePhase(id, editingTask.id, '方案评审通过');
                       await useTaskStore.getState().fetchDetail(id, editingTask.id);
                       setEditingTask(useTaskStore.getState().current);
+                      setTaskPanelOpen(false);
                       fetchActivity(editingTask.id);
                     }} style={{ flex:1 }}>✓ 评审通过，进入开发</button>
                     <button type="button" className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
                       if (!id) return;
                       await reviewDesign(id, editingTask.id, 'REJECTED', reviewNote);
                       setReviewNote('');
+                      // Auto-return to DESIGN
+                      await returnPhase(id, editingTask.id);
                       await useTaskStore.getState().fetchDetail(id, editingTask.id);
                       setEditingTask(useTaskStore.getState().current);
+                      setTaskPanelOpen(false);
                       fetchActivity(editingTask.id);
                     }} style={{ flex:1, color:'var(--red-500)', borderColor:'var(--red-300)' }}>✗ 驳回，退回方案设计</button>
                   </div>
@@ -2290,52 +2526,43 @@ export default function WorkspaceDetailPage() {
                 }});
               }
 
-              // Phase forward: REQUIREMENTS → DESIGN
+              // BACKLOG → REQUIREMENTS: PM sets analyst + plans iteration
+              if (phase === 'BACKLOG' && editingTask.status === 'DONE') {
+                btns.push({ label: '🚀 推进到需求分析阶段', cls: 'btn-primary', action: async () => {
+                  await advancePhase(id!, editingTask.id, '设置需求负责人、规划迭代');
+                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
+                  setEditingTask(useTaskStore.getState().current);
+                  setTaskPanelOpen(false);
+                }});
+              }
+              // REQUIREMENTS → DESIGN: 需求分析完成
               if (phase === 'REQUIREMENTS' && editingTask.status === 'DONE') {
-                btns.push({ label: '🚀 需求分析完成，进入设计', cls: 'btn-primary', action: async () => {
+                btns.push({ label: '📋 需求分析完成', cls: 'btn-primary', action: async () => {
                   await advancePhase(id!, editingTask.id, '需求PRD');
                   await useTaskStore.getState().fetchDetail(id!, editingTask.id);
                   setEditingTask(useTaskStore.getState().current);
                   setTaskPanelOpen(false);
                 }});
               }
-              // Phase forward: DESIGN → DESIGN_REVIEW
+              // DESIGN → DESIGN_REVIEW: 设计完成
               if (phase === 'DESIGN' && editingTask.status === 'DONE') {
-                btns.push({ label: '📤 设计完成，提交评审', cls: 'btn-primary', action: async () => {
-                  await advancePhase(id!, editingTask.id, '方案设计文档');
+                btns.push({ label: '📝 设计完成，提交评审', cls: 'btn-primary', action: async () => {
+                  await advancePhase(id!, editingTask.id, '设计文档');
                   await useTaskStore.getState().fetchDetail(id!, editingTask.id);
                   setEditingTask(useTaskStore.getState().current);
                   setTaskPanelOpen(false);
                 }});
               }
-              // DESIGN_REVIEW already has its own approve/reject UI above — skip
-              // Phase forward: DESIGN_REVIEW → DEVELOPMENT (auto after approve)
-              if (phase === 'DESIGN_REVIEW' && editingTask.design_review_status === 'APPROVED' && editingTask.status === 'DONE') {
-                btns.push({ label: '💻 进入开发实现', cls: 'btn-primary', action: async () => {
-                  await advancePhase(id!, editingTask.id, '方案评审通过');
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                }});
-              }
-              // Reverse: DESIGN_REVIEW → DESIGN
-              if (phase === 'DESIGN_REVIEW' && editingTask.design_review_status === 'REJECTED') {
-                btns.push({ label: '↩ 退回方案设计', cls: 'btn-ghost', action: async () => {
-                  if (!id) return;
-                  await useTaskStore.getState().returnPhase(id, editingTask.id);
-                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                }});
-              }
-              // DEVELOPMENT actions
+              // DESIGN_REVIEW: approve/reject handled by review panel above
+              // No extra action buttons — auto-advance/reverse on approve/reject
               if (phase === 'DEVELOPMENT') {
                 btns.push({ label: `📋 拆分开发任务 (${editingTask.children_count || 0})`, cls: 'btn-outline', action: async () => {
                   setDetailTab('related');
                 }});
               }
-              if (phase === 'DEVELOPMENT' && editingTask.status === 'DONE' && (editingTask.children_count ?? 0) > 0) {
+              if (phase === 'DEVELOPMENT' && editingTask.status === 'DONE') {
                 btns.push({ label: '🧪 开发完成，提交测试', cls: 'btn-primary', action: async () => {
-                  await advancePhase(id!, editingTask.id, '自测报告');
+                  await advancePhase(id!, editingTask.id, 'Story自测报告');
                   await useTaskStore.getState().fetchDetail(id!, editingTask.id);
                   setEditingTask(useTaskStore.getState().current);
                   setTaskPanelOpen(false);
@@ -2356,9 +2583,9 @@ export default function WorkspaceDetailPage() {
                   setEditingTask(useTaskStore.getState().current);
                 }});
               }
-              // RELEASE: close story
+              // RELEASE: 验收通过 → 需求关闭
               if (phase === 'RELEASE' && editingTask.status === 'DONE') {
-                btns.push({ label: '🔒 需求关闭', cls: 'btn-primary', action: async () => {
+                btns.push({ label: '✅ 验收通过，需求关闭', cls: 'btn-primary', action: async () => {
                   if (!id) return;
                   await update(id, editingTask.id, { status: 'DONE' });
                   await useTaskStore.getState().fetchDetail(id, editingTask.id);

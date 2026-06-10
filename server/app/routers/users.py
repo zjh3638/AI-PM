@@ -41,9 +41,8 @@ async def list_users(
     status: str = Query(default=""),
     department_id: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
-    pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
 ):
-    await pc.require_system_role("SUPER_ADMIN", "ADMIN")
     users, total = await user_service.list_users(
         db,
         page=page,
@@ -58,6 +57,18 @@ async def list_users(
         "data": data, "total": total,
         "page": page, "page_size": page_size,
     }
+
+
+@router.get("/departments/list", response_model=APIResponse)
+async def list_departments(
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    from sqlalchemy import select
+    from app.models.department import Department
+    result = await db.execute(select(Department).order_by(Department.sort_order))
+    depts = result.scalars().all()
+    return {"code": 0, "message": "ok", "data": [{"id": d.id, "name": d.name, "path": d.path} for d in depts]}
 
 
 @router.get("/{user_id}", response_model=APIResponse)
@@ -110,14 +121,3 @@ async def disable_user(
         raise AppException(400, "不能禁用自己")
     await user_service.update_user(db, user, status="DISABLED")
     return {"code": 0, "message": "ok", "data": None}
-
-@router.get("/departments/list", response_model=APIResponse)
-async def list_departments(
-    db: AsyncSession = Depends(get_db),
-    pc: PermissionChecker = Depends(get_permission_checker),
-):
-    from sqlalchemy import select
-    from app.models.department import Department
-    result = await db.execute(select(Department).order_by(Department.sort_order))
-    depts = result.scalars().all()
-    return {"code": 0, "message": "ok", "data": [{"id": d.id, "name": d.name, "path": d.path} for d in depts]}

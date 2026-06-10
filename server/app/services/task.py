@@ -153,7 +153,7 @@ async def get_epics(db: AsyncSession, workspace_id: str) -> list[dict]:
 
 
 # Phase definitions per task type
-STORY_PHASES = ["REQUIREMENTS", "DESIGN", "DESIGN_REVIEW", "DEVELOPMENT", "TESTING", "RELEASE"]
+STORY_PHASES = ["BACKLOG", "REQUIREMENTS", "DESIGN", "DESIGN_REVIEW", "DEVELOPMENT", "TESTING", "RELEASE"]
 TASK_PHASES = ["DEVELOPMENT", "TESTING", "RELEASE"]
 BUG_PHASES = ["DEVELOPMENT", "TESTING"]
 

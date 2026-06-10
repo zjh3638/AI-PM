@@ -70,6 +70,43 @@ async def list_workspaces(
     return {"code": 0, "message": "ok", "data": data, "total": total, "page": page, "page_size": page_size}
 
 
+@router.get("/{workspace_id}/available-users", response_model=APIResponse)
+async def available_users(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    from app.models.department import Department
+    member_user_ids = (
+        await db.execute(
+            select(WorkspaceMember.user_id).where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id.isnot(None),
+            )
+        )
+    ).scalars().all()
+    query = select(User).where(User.status == "ACTIVE")
+    if member_user_ids:
+        query = query.where(User.id.notin_(member_user_ids))
+    query = query.order_by(User.display_name)
+    result = await db.execute(query)
+    users = result.scalars().all()
+    data = []
+    for u in users:
+        dept_name = None
+        if u.department_id:
+            dept = await db.get(Department, u.department_id)
+            if dept:
+                dept_name = dept.name
+        data.append({
+            "id": u.id, "username": u.username,
+            "display_name": u.display_name, "email": u.email,
+            "department_name": dept_name,
+        })
+    return {"code": 0, "message": "ok", "data": data}
+
+
 @router.get("/{workspace_id}", response_model=APIResponse)
 async def get_workspace(
     workspace_id: str,
