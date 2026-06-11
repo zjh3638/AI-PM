@@ -1665,7 +1665,7 @@ export default function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { current, loading, fetchDetail } = useWorkspaceStore();
-  const { create, update, remove, reviewDesign, advancePhase, returnPhase } = useTaskStore();
+  const { create, update, remove, reviewDesign, reviewRequirement, advancePhase, returnPhase } = useTaskStore();
   const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState('tasks');
   const [activeView, setActiveView] = useState('kanban');
@@ -1704,6 +1704,10 @@ export default function WorkspaceDetailPage() {
   const [attachments, setAttachments] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
   const [reviewNote, setReviewNote] = useState('');
+  const [docTab, setDocTab] = useState<'prd' | 'design' | 'test'>('prd');
+  const [dragOver, setDragOver] = useState(false);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
+  const [saveState, setSaveState] = useState<'saved' | 'saving' | ''>('');
 
   const fetchComments = async (taskId: string) => {
     const res: any = await api.get(`/tasks/${taskId}/comments`);
@@ -2075,63 +2079,101 @@ export default function WorkspaceDetailPage() {
         )}
 
         {/* Attachments Tab Content */}
-        {editingTask && detailTab === 'attachments' && (
-          <div style={{ marginBottom: 16 }}>
-            {/* Upload */}
-            <label style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px',
-              fontSize: '0.76rem', cursor: 'pointer', borderRadius: 'var(--radius-sm)',
-              border: '1px dashed var(--border)', background: 'var(--bg-surface)',
-              marginBottom: 12,
-            }}>
-              {uploading ? '⏳ 上传中...' : '📤 上传文件'}
-              <input
-                type="file"
-                style={{ display: 'none' }}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file && editingTask) await handleUpload(editingTask.id, file);
-                  e.target.value = '';
-                }}
-              />
-            </label>
+        {editingTask && detailTab === 'attachments' && (() => {
+          const uploadFiles = async (files: FileList | File[]) => {
+            for (const file of Array.from(files)) {
+              if (editingTask) await handleUpload(editingTask.id, file);
+            }
+          };
 
-            {/* File list */}
-            {attachments.length === 0 ? (
-              <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.74rem', padding: 12 }}>暂无附件</div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 240, overflowY: 'auto' }}>
-                {attachments.map((att: any) => (
-                  <div key={att.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
-                    background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)',
-                    fontSize: '0.74rem',
-                  }}>
-                    <span>{getFileIcon(att.mime_type)}</span>
-                    <a
-                      href={`/api/workspaces/${id}/tasks/${editingTask!.id}/attachments/${att.id}/download`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--blue-600)', textDecoration: 'none' }}
-                    >{att.filename}</a>
-                    <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)' }}>{att.file_size > 1024 ? `${(att.file_size / 1024).toFixed(1)}KB` : `${att.file_size}B`}</span>
-                    <button
-                      className="btn btn-ghost btn-xs"
-                      style={{ fontSize: '0.6rem', color: 'var(--red-500)', padding: '1px 6px' }}
-                      onClick={async () => {
-                        if (!id) return;
-                        try {
-                          await api.delete(`/workspaces/${id}/tasks/${editingTask!.id}/attachments/${att.id}`);
-                          fetchAttachments(editingTask!.id);
-                        } catch { alert('删除附件失败'); }
-                      }}
-                    >删除</button>
-                  </div>
-                ))}
+          return (
+            <div style={{ marginBottom: 16 }}>
+              {/* Drag-drop zone */}
+              <div
+                ref={dropZoneRef}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setDragOver(false); }}
+                onDrop={async (e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  if (e.dataTransfer.files.length > 0) await uploadFiles(e.dataTransfer.files);
+                }}
+                style={{
+                  padding: '16px', textAlign: 'center',
+                  border: `2px dashed ${dragOver ? 'var(--blue-400)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius-md)', marginBottom: 12,
+                  background: dragOver ? 'var(--blue-50)' : 'var(--bg-surface)',
+                  transition: '0.15s',
+                }}
+              >
+                {uploading ? '⏳ 上传中...' : '拖拽文件到此处上传，或点击选择'}
+                <br />
+                <label style={{
+                  display: 'inline-block', marginTop: 8, padding: '4px 12px',
+                  fontSize: '0.72rem', cursor: 'pointer', borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border)', background: '#fff',
+                }}>
+                  选择文件
+                  <input type="file" multiple style={{ display: 'none' }}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) uploadFiles(e.target.files);
+                      e.target.value = '';
+                    }} />
+                </label>
               </div>
-            )}
-          </div>
-        )}
+
+              {/* File list */}
+              {attachments.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.74rem', padding: 12 }}>暂无附件</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 300, overflowY: 'auto' }}>
+                  {attachments.map((att: any) => {
+                    const isImage = att.mime_type?.startsWith('image/');
+                    const downloadUrl = `/api/workspaces/${id}/tasks/${editingTask!.id}/attachments/${att.id}/download`;
+                    const copyMdRef = () => {
+                      const md = isImage ? `![${att.filename}](${window.location.origin}${downloadUrl})` : `[${att.filename}](${window.location.origin}${downloadUrl})`;
+                      navigator.clipboard.writeText(md).catch(() => {});
+                    };
+                    return (
+                      <div key={att.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px',
+                        background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)',
+                        fontSize: '0.74rem',
+                      }}>
+                        {/* Thumbnail for images, icon otherwise */}
+                        {isImage ? (
+                          <img src={downloadUrl} alt={att.filename}
+                            style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: 4, flexShrink: 0, background: 'var(--bg-hover)' }} />
+                        ) : (
+                          <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>{getFileIcon(att.mime_type)}</span>
+                        )}
+                        <a href={downloadUrl} target="_blank" rel="noopener noreferrer"
+                          style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--blue-600)', textDecoration: 'none' }}
+                          title={att.filename}
+                        >{att.filename}</a>
+                        <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)', flexShrink: 0 }}>{att.file_size > 1024 ? `${(att.file_size / 1024).toFixed(1)}KB` : `${att.file_size}B`}</span>
+                        <button type="button" className="btn btn-ghost btn-xs" title="复制 Markdown 引用"
+                          style={{ fontSize: '0.6rem', padding: '1px 4px' }}
+                          onClick={(e) => { e.stopPropagation(); copyMdRef(); }}
+                        >📋</button>
+                        <button type="button" className="btn btn-ghost btn-xs"
+                          style={{ fontSize: '0.6rem', color: 'var(--red-500)', padding: '1px 6px' }}
+                          onClick={async () => {
+                            if (!id) return;
+                            try {
+                              await api.delete(`/workspaces/${id}/tasks/${editingTask!.id}/attachments/${att.id}`);
+                              fetchAttachments(editingTask!.id);
+                            } catch { alert('删除附件失败'); }
+                          }}
+                        >删除</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Related Tab Content */}
         {editingTask && detailTab === 'related' && (
@@ -2340,160 +2382,334 @@ export default function WorkspaceDetailPage() {
           );
         })()}
 
-        {/* ─── PHASE ARTIFACT: per-phase input fields ─── */}
+        {/* ─── Document Tabs — STORY only, always visible ─── */}
         {editingTask && isFull && editingTask.task_type === 'STORY' && (() => {
           const phase = editingTask.phase;
+          const isBacklog = phase === 'BACKLOG';
+
           const saveField = async (field: string, value: string) => {
             if (!id) return;
+            setSaveState('saving');
             await update(id, editingTask.id, { [field]: value } as any);
+            setSaveState('saved');
+            setTimeout(() => setSaveState(''), 2000);
           };
 
-          // BACKLOG: show iteration planner + analyst assignment hint
-          if (phase === 'BACKLOG') return (
-            <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', border: '1px solid var(--border-light)' }}>
-              <div style={{ fontSize:'0.82rem', fontWeight:600, marginBottom:8 }}>📥 需求池 — 等待规划</div>
-              <div style={{ fontSize:'0.7rem', color:'var(--text-muted)', marginBottom:10 }}>
-                PM需设置<strong>需求负责人</strong>并<strong>规划到迭代</strong>后，推进到需求分析阶段。
+          const getEditMode = (relevantPhases: string[]) => {
+            if (isBacklog) return 'locked';
+            return relevantPhases.includes(phase) ? 'editable' : 'readonly';
+          };
+
+          const prdMode = getEditMode(['PLAN', 'DESIGN', 'DEVELOPMENT', 'TESTING']);
+          const designMode = getEditMode(['DESIGN', 'DEVELOPMENT', 'TESTING', 'RELEASE']);
+          const testMode = getEditMode(['DEVELOPMENT', 'TESTING', 'RELEASE']);
+          const ratingMode = getEditMode(['RELEASE']);
+
+          return (
+            <div style={{ marginTop: 14, border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+              {/* Doc tab bar */}
+              <div style={{ display: 'flex', borderBottom: '1px solid var(--border-light)', background: 'var(--bg-raised)' }}>
+                {[
+                  { key: 'prd' as const, label: '📋 需求', count: taskForm.prd_doc?.length || 0 },
+                  { key: 'design' as const, label: '📝 设计', count: taskForm.design_doc?.length || 0 },
+                  { key: 'test' as const, label: '🧪 测试', count: (taskForm.self_test_report?.length || 0) + (taskForm.test_report?.length || 0) },
+                ].map(t => (
+                  <button key={t.key} type="button" onClick={() => setDocTab(t.key)}
+                    style={{
+                      flex: 1, padding: '8px 8px', fontSize: '0.7rem', fontWeight: docTab === t.key ? 600 : 400,
+                      border: 'none', borderBottom: docTab === t.key ? '2px solid var(--blue-500)' : '2px solid transparent',
+                      background: docTab === t.key ? '#fff' : 'transparent',
+                      color: docTab === t.key ? 'var(--blue-600)' : 'var(--text-muted)',
+                      cursor: 'pointer', transition: '0.15s',
+                    }}
+                  >{t.label}{t.count > 0 ? ` (${t.count})` : ''}</button>
+                ))}
               </div>
-              <div className="form-group" style={{ marginBottom: 8 }}>
-                <label style={{ fontSize:'0.72rem' }}>规划到迭代</label>
-                <select style={{ width:'100%' }} value={taskForm.iteration_id||''} onChange={(e) => {
-                  const iterId = e.target.value || undefined;
-                  setTaskForm((f:any) => ({...f, iteration_id: iterId}));
-                  if (id && iterId) update(id, editingTask.id, { iteration_id: iterId } as any);
-                }}>
-                  <option value="">选择迭代...</option>
-                  {allIterations.filter(it => it.status === 'PLANNING' || it.status === 'ACTIVE').map((it) => (
-                    <option key={it.id} value={it.id}>{it.name}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          );
 
-          // PLAN: PRD
-          if (phase === 'PLAN') return (
-            <div style={{ marginTop: 12 }}>
-              <label style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6, display: 'block' }}>📋 需求PRD</label>
-              <textarea placeholder="编写需求PRD文档..." value={taskForm.prd_doc || (editingTask as any).prd_doc || ''}
-                onChange={(e) => setTaskForm((f: any) => ({ ...f, prd_doc: e.target.value }))}
-                onBlur={(e) => saveField('prd_doc', e.target.value)}
-                rows={6}
-                style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background:'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6 }} />
-            </div>
-          );
-
-          // DESIGN: design doc + review
-          if (phase === 'DESIGN') return (
-            <div style={{ marginTop: 12 }}>
-              <label style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6, display: 'block' }}>📝 方案设计文档</label>
-              <textarea placeholder="编写技术方案设计...&#10;📌 建议：架构设计 / 接口定义 / 数据模型 / 技术选型 / 风险对策"
-                value={taskForm.design_doc || ''}
-                onChange={async (e) => {
-                  const v = e.target.value;
-                  setTaskForm((f: any) => ({ ...f, design_doc: v }));
-                  if (id && editingTask) {
-                    clearTimeout((window as any).__designSaveTimer);
-                    (window as any).__designSaveTimer = setTimeout(async () => {
-                      await update(id, editingTask.id, { design_doc: v } as any);
-                    }, 1500);
-                  }
-                }}
-                rows={8}
-                style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'monospace',background:'#fafbfc',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6 }} />
-              <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>✏️ 实时自动保存</div>
-
-              {/* Design review sub-status */}
-              {editingTask.design_review_status && (
-                <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '2px solid', borderColor:
-                  editingTask.design_review_status === 'APPROVED' ? 'var(--green-300)' :
-                  editingTask.design_review_status === 'REJECTED' ? 'var(--red-300)' : 'var(--amber-300)',
-                  background: editingTask.design_review_status === 'APPROVED' ? '#f0fdf4' :
-                  editingTask.design_review_status === 'REJECTED' ? '#fef2f2' : '#fffbeb',
-                }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 4 }}>
-                    {editingTask.design_review_status === 'APPROVED' ? '✅ 方案已通过' :
-                     editingTask.design_review_status === 'REJECTED' ? '❌ 方案已驳回' : '⏳ 等待评审'}
+              {/* Doc tab content */}
+              <div style={{ padding: '12px 14px', background: '#fff' }}>
+                {/* Save indicator */}
+                {saveState && (
+                  <div style={{ fontSize: '0.6rem', color: saveState === 'saving' ? 'var(--amber-500)' : 'var(--green-500)', marginBottom: 6 }}>
+                    {saveState === 'saving' ? '保存中...' : '✓ 已保存'}
                   </div>
-                  {editingTask.design_reviewer_name && <div style={{ fontSize:'0.66rem', color:'var(--text-muted)', marginBottom:6 }}>评审人：{editingTask.design_reviewer_name}</div>}
-                  {editingTask.design_review_note && <div style={{ fontSize:'0.66rem', color:'var(--text-muted)', marginBottom:6 }}>评审意见：{editingTask.design_review_note}</div>}
-                  {editingTask.design_review_status !== 'APPROVED' && editingTask.design_review_status !== 'REJECTED' && (
-                    <>
-                      <textarea placeholder="评审意见（必填）" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2}
-                        style={{ width:'100%',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.78rem',fontFamily:'inherit',resize:'vertical',marginBottom:8 }} />
-                      <div style={{ display:'flex', gap: 8 }}>
-                        <button type="button" className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
-                          if (!id) return;
-                          await reviewDesign(id, editingTask.id, 'APPROVED', reviewNote);
-                          setReviewNote('');
-                          await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                          setEditingTask(useTaskStore.getState().current);
-                          fetchActivity(editingTask.id);
-                        }} style={{ flex:1 }}>✓ 评审通过</button>
-                        <button type="button" className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
-                          if (!id) return;
-                          await reviewDesign(id, editingTask.id, 'REJECTED', reviewNote);
-                          setReviewNote('');
-                          await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                          setEditingTask(useTaskStore.getState().current);
-                          fetchActivity(editingTask.id);
-                        }} style={{ flex:1, color:'var(--red-500)', borderColor:'var(--red-300)' }}>✗ 驳回</button>
+                )}
+
+                {/* PRD Tab */}
+                {docTab === 'prd' && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>需求文档 (PRD)</label>
+                      {prdMode === 'readonly' && <span style={{ fontSize:'0.6rem',padding:'1px 6px',borderRadius:8,background:'var(--bg-hover)',color:'var(--text-muted)' }}>只读</span>}
+                      {prdMode === 'locked' && <span style={{ fontSize:'0.6rem',padding:'1px 6px',borderRadius:8,background:'#fef3c7',color:'#92400e' }}>规划后才可编辑</span>}
+                    </div>
+                    <textarea placeholder="编写需求PRD文档..."
+                      value={taskForm.prd_doc || ''}
+                      onChange={(e) => setTaskForm((f: any) => ({ ...f, prd_doc: e.target.value }))}
+                      onBlur={(e) => { if (prdMode === 'editable') saveField('prd_doc', e.target.value); }}
+                      readOnly={prdMode !== 'editable'}
+                      rows={7}
+                      style={{ width:'100%',padding:'10px 12px',border: '1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background: prdMode !== 'editable' ? 'var(--bg-hover)' : 'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6, opacity: prdMode !== 'editable' ? 0.7 : 1 }} />
+
+                    {/* Requirement review — PLAN phase */}
+                    {editingTask.requirement_review_status && (
+                      <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '2px solid', borderColor:
+                        editingTask.requirement_review_status === 'APPROVED' ? 'var(--green-300)' : 'var(--red-300)',
+                        background: editingTask.requirement_review_status === 'APPROVED' ? '#f0fdf4' : '#fef2f2',
+                      }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 4 }}>
+                          {editingTask.requirement_review_status === 'APPROVED' ? '✅ 需求已通过' : '❌ 需求已驳回'}
+                        </div>
+                        {editingTask.requirement_reviewer_name && <div style={{ fontSize:'0.66rem', color:'var(--text-muted)', marginBottom:4 }}>评审人：{editingTask.requirement_reviewer_name}</div>}
+                        {editingTask.requirement_review_note && <div style={{ fontSize:'0.66rem', color:'var(--text-muted)' }}>评审意见：{editingTask.requirement_review_note}</div>}
                       </div>
-                    </>
-                  )}
-                </div>
+                    )}
+                    {!editingTask.requirement_review_status && editingTask.phase === 'PLAN' && (
+                      <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '2px solid var(--amber-300)', background: '#fffbeb' }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 4 }}>⏳ 等待需求评审</div>
+                        <textarea placeholder="评审意见（必填）" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2}
+                          style={{ width:'100%',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.78rem',fontFamily:'inherit',resize:'vertical',marginBottom:8 }} />
+                        <div style={{ display:'flex', gap: 8 }}>
+                          <button type="button" className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                            if (!id) return;
+                            await reviewRequirement(id, editingTask.id, 'APPROVED', reviewNote);
+                            setReviewNote('');
+                            await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                            setEditingTask(useTaskStore.getState().current);
+                            fetchActivity(editingTask.id);
+                          }} style={{ flex:1 }}>✓ 评审通过</button>
+                          <button type="button" className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                            if (!id) return;
+                            await reviewRequirement(id, editingTask.id, 'REJECTED', reviewNote);
+                            setReviewNote('');
+                            await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                            setEditingTask(useTaskStore.getState().current);
+                            fetchActivity(editingTask.id);
+                          }} style={{ flex:1, color:'var(--red-500)', borderColor:'var(--red-300)' }}>✗ 驳回</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Design Tab */}
+                {docTab === 'design' && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>方案设计文档</label>
+                      {designMode === 'readonly' && <span style={{ fontSize:'0.6rem',padding:'1px 6px',borderRadius:8,background:'var(--bg-hover)',color:'var(--text-muted)' }}>只读</span>}
+                      {designMode === 'locked' && <span style={{ fontSize:'0.6rem',padding:'1px 6px',borderRadius:8,background:'#fef3c7',color:'#92400e' }}>规划后才可编辑</span>}
+                    </div>
+                    <textarea placeholder="编写技术方案设计...&#10;📌 建议：架构设计 / 接口定义 / 数据模型 / 技术选型 / 风险对策"
+                      value={taskForm.design_doc || ''}
+                      onChange={async (e) => {
+                        const v = e.target.value;
+                        setTaskForm((f: any) => ({ ...f, design_doc: v }));
+                        if (id && editingTask) {
+                          clearTimeout((window as any).__designSaveTimer);
+                          (window as any).__designSaveTimer = setTimeout(async () => {
+                            await update(id, editingTask.id, { design_doc: v } as any);
+                          }, 1500);
+                        }
+                      }}
+                      readOnly={designMode !== 'editable'}
+                      rows={9}
+                      style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'monospace',background: designMode !== 'editable' ? 'var(--bg-hover)' : '#fafbfc',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6, opacity: designMode !== 'editable' ? 0.7 : 1 }} />
+                    <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>✏️ {designMode === 'editable' ? '实时自动保存' : '只读模式'}</div>
+
+                    {/* Design review sub-status */}
+                    {editingTask.design_review_status && (
+                      <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '2px solid', borderColor:
+                        editingTask.design_review_status === 'APPROVED' ? 'var(--green-300)' :
+                        editingTask.design_review_status === 'REJECTED' ? 'var(--red-300)' : 'var(--amber-300)',
+                        background: editingTask.design_review_status === 'APPROVED' ? '#f0fdf4' :
+                        editingTask.design_review_status === 'REJECTED' ? '#fef2f2' : '#fffbeb',
+                      }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 4 }}>
+                          {editingTask.design_review_status === 'APPROVED' ? '✅ 方案已通过' :
+                           editingTask.design_review_status === 'REJECTED' ? '❌ 方案已驳回' : '⏳ 等待评审'}
+                        </div>
+                        {editingTask.design_reviewer_name && <div style={{ fontSize:'0.66rem', color:'var(--text-muted)', marginBottom:6 }}>评审人：{editingTask.design_reviewer_name}</div>}
+                        {editingTask.design_review_note && <div style={{ fontSize:'0.66rem', color:'var(--text-muted)', marginBottom:6 }}>评审意见：{editingTask.design_review_note}</div>}
+                        {editingTask.design_review_status !== 'APPROVED' && editingTask.design_review_status !== 'REJECTED' && (
+                          <>
+                            <textarea placeholder="评审意见（必填）" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2}
+                              style={{ width:'100%',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.78rem',fontFamily:'inherit',resize:'vertical',marginBottom:8 }} />
+                            <div style={{ display:'flex', gap: 8 }}>
+                              <button type="button" className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                                if (!id) return;
+                                await reviewDesign(id, editingTask.id, 'APPROVED', reviewNote);
+                                setReviewNote('');
+                                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                                setEditingTask(useTaskStore.getState().current);
+                                fetchActivity(editingTask.id);
+                              }} style={{ flex:1 }}>✓ 评审通过</button>
+                              <button type="button" className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                                if (!id) return;
+                                await reviewDesign(id, editingTask.id, 'REJECTED', reviewNote);
+                                setReviewNote('');
+                                await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                                setEditingTask(useTaskStore.getState().current);
+                                fetchActivity(editingTask.id);
+                              }} style={{ flex:1, color:'var(--red-500)', borderColor:'var(--red-300)' }}>✗ 驳回</button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Test Tab */}
+                {docTab === 'test' && (
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <label style={{ fontSize: '0.78rem', fontWeight: 600 }}>Story自测报告</label>
+                      {testMode === 'readonly' && <span style={{ fontSize:'0.6rem',padding:'1px 6px',borderRadius:8,background:'var(--bg-hover)',color:'var(--text-muted)' }}>只读</span>}
+                    </div>
+                    <textarea placeholder="记录自测结果、覆盖场景、已知问题..."
+                      value={taskForm.self_test_report || ''}
+                      onChange={(e) => setTaskForm((f: any) => ({ ...f, self_test_report: e.target.value }))}
+                      onBlur={(e) => { if (testMode === 'editable') saveField('self_test_report', e.target.value); }}
+                      readOnly={testMode !== 'editable'}
+                      rows={4}
+                      style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background: testMode !== 'editable' ? 'var(--bg-hover)' : 'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6, opacity: testMode !== 'editable' ? 0.7 : 1 }} />
+
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, marginTop: 14, marginBottom: 6, display: 'block' }}>测试报告</label>
+                    <textarea placeholder="测试用例执行结果、Bug统计、质量评估..."
+                      value={taskForm.test_report || ''}
+                      onChange={(e) => setTaskForm((f: any) => ({ ...f, test_report: e.target.value }))}
+                      onBlur={(e) => { if (testMode === 'editable' || phase === 'RELEASE') saveField('test_report', e.target.value); }}
+                      readOnly={testMode !== 'editable' && phase !== 'RELEASE'}
+                      rows={5}
+                      style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background: (testMode !== 'editable' && phase !== 'RELEASE') ? 'var(--bg-hover)' : 'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6, opacity: (testMode !== 'editable' && phase !== 'RELEASE') ? 0.7 : 1 }} />
+
+                    {/* Rating — always visible in test tab */}
+                    <label style={{ fontSize: '0.78rem', fontWeight: 600, marginTop: 14, marginBottom: 6, display: 'block' }}>⭐ 需求评价</label>
+                    <div style={{ display:'flex', gap:4, marginBottom:8 }}>
+                      {[1,2,3,4,5].map((star) => (
+                        <span key={star} onClick={() => {
+                          if (ratingMode === 'editable') {
+                            setTaskForm((f: any) => ({ ...f, rating: star }));
+                            saveField('rating', String(star));
+                          }
+                        }}
+                          style={{ fontSize:'1.4rem', cursor: ratingMode === 'editable' ? 'pointer' : 'default', opacity: (taskForm.rating || 0) >= star ? 1 : 0.3 }}>
+                          ⭐
+                        </span>
+                      ))}
+                    </div>
+                    <textarea placeholder="评价说明..."
+                      value={taskForm.evaluation || ''}
+                      onChange={(e) => setTaskForm((f: any) => ({ ...f, evaluation: e.target.value }))}
+                      onBlur={(e) => { if (ratingMode === 'editable') saveField('evaluation', e.target.value); }}
+                      readOnly={ratingMode !== 'editable'}
+                      rows={3}
+                      style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background: ratingMode !== 'editable' ? 'var(--bg-hover)' : 'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6, opacity: ratingMode !== 'editable' ? 0.7 : 1 }} />
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* BACKLOG planning hint */}
+        {editingTask && isFull && editingTask.task_type === 'STORY' && editingTask.phase === 'BACKLOG' && (
+          <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', border: '1px solid var(--border-light)' }}>
+            <div style={{ fontSize:'0.82rem', fontWeight:600, marginBottom:8 }}>📥 需求池 — 等待规划</div>
+            <div style={{ fontSize:'0.7rem', color:'var(--text-muted)', marginBottom:10 }}>
+              PM需设置<strong>需求负责人</strong>并<strong>规划到迭代</strong>后，推进到需求规划阶段。
+            </div>
+            <div className="form-group" style={{ marginBottom: 8 }}>
+              <label style={{ fontSize:'0.72rem' }}>规划到迭代</label>
+              <select style={{ width:'100%' }} value={taskForm.iteration_id||''} onChange={(e) => {
+                const iterId = e.target.value || undefined;
+                setTaskForm((f:any) => ({...f, iteration_id: iterId}));
+                if (id && iterId) update(id!, editingTask!.id, { iteration_id: iterId } as any);
+              }}>
+                <option value="">选择迭代...</option>
+                {allIterations.filter(it => it.status === 'PLANNING' || it.status === 'ACTIVE').map((it) => (
+                  <option key={it.id} value={it.id}>{it.name}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        )}
+
+        {/* ═══ Workflow Action Bar — STORY only ═══ */}
+        {editingTask && isFull && editingTask.task_type === 'STORY' && (() => {
+          const phase = editingTask.phase;
+          const advanceLabel = (() => {
+            if (phase === 'BACKLOG') return { label: '🚀 推进到需求规划', desc: '设置需求负责人、规划迭代' };
+            if (phase === 'PLAN') return { label: '📋 需求规划完成，进入设计', desc: '需求PRD' };
+            if (phase === 'DESIGN') return { label: '📝 设计完成，进入开发', desc: '设计文档' };
+            if (phase === 'DEVELOPMENT') return { label: '🧪 开发完成，提交测试', desc: 'Story自测报告' };
+            if (phase === 'TESTING') return { label: '✅ 测试通过，发布上线', desc: '测试报告' };
+            return null;
+          })();
+          const canReturn = phase === 'DESIGN' || phase === 'TESTING';
+          const canAdvance = advanceLabel && editingTask.status === 'DONE';
+
+          if (!canAdvance && !canReturn && phase !== 'DEVELOPMENT') return null;
+
+          return (
+            <div style={{
+              margin: '12px 0', padding: '12px 14px',
+              background: 'var(--blue-50)', borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--blue-100)',
+            }}>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 8, fontWeight: 500 }}>
+                🔄 流程操作
+              </div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                {canAdvance && (
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    style={{ flex: 1, fontSize: '0.78rem', padding: '8px 16px', fontWeight: 600 }}
+                    onClick={async () => {
+                      await advancePhase(id!, editingTask.id, advanceLabel.desc);
+                      await useTaskStore.getState().fetchDetail(id!, editingTask.id);
+                      setEditingTask(useTaskStore.getState().current);
+                      setTaskPanelOpen(false);
+                    }}
+                  >
+                    {advanceLabel.label}
+                  </button>
+                )}
+                {!canAdvance && advanceLabel && (
+                  <div style={{ flex: 1, fontSize: '0.72rem', color: 'var(--text-muted)', padding: '8px 12px', textAlign: 'center' }}>
+                    ⚠ 需先完成任务才能推进阶段
+                  </div>
+                )}
+                {canReturn && (
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    style={{ color: 'var(--amber-600)', borderColor: 'var(--amber-300)', whiteSpace: 'nowrap' }}
+                    onClick={async () => {
+                      if (!id) return;
+                      await returnPhase(id, editingTask.id);
+                      await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                      setEditingTask(useTaskStore.getState().current);
+                    }}
+                  >
+                    ↩ 退回
+                  </button>
+                )}
+              </div>
+              {phase === 'DEVELOPMENT' && (
+                <button
+                  type="button"
+                  className="btn btn-outline btn-sm"
+                  style={{ marginTop: 8, width: '100%' }}
+                  onClick={() => setDetailTab('related')}
+                >
+                  📋 拆分开发任务 ({editingTask.children_count || 0} 个子任务)
+                </button>
               )}
             </div>
           );
-
-          // DEVELOPMENT: self-test report + split tasks
-          if (phase === 'DEVELOPMENT') return (
-            <div style={{ marginTop: 12 }}>
-              <label style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6, display: 'block' }}>🧪 Story自测报告</label>
-              <textarea placeholder="记录自测结果、覆盖场景、已知问题..."
-                value={taskForm.self_test_report || (editingTask as any).self_test_report || ''}
-                onChange={(e) => setTaskForm((f: any) => ({ ...f, self_test_report: e.target.value }))}
-                onBlur={(e) => saveField('self_test_report', e.target.value)}
-                rows={5}
-                style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background:'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6 }} />
-            </div>
-          );
-
-          // TESTING: test report + approve/reject
-          if (phase === 'TESTING') return (
-            <div style={{ marginTop: 12 }}>
-              <label style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6, display: 'block' }}>📊 测试报告</label>
-              <textarea placeholder="测试用例执行结果、Bug统计、质量评估..."
-                value={taskForm.test_report || (editingTask as any).test_report || ''}
-                onChange={(e) => setTaskForm((f: any) => ({ ...f, test_report: e.target.value }))}
-                onBlur={(e) => saveField('test_report', e.target.value)}
-                rows={5}
-                style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background:'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6 }} />
-            </div>
-          );
-
-          // RELEASE: rating + evaluation
-          if (phase === 'RELEASE') return (
-            <div style={{ marginTop: 12 }}>
-              <label style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6, display: 'block' }}>⭐ 需求评价</label>
-              <div style={{ display:'flex', gap:4, marginBottom:8 }}>
-                {[1,2,3,4,5].map((star) => (
-                  <span key={star} onClick={() => setTaskForm((f: any) => ({ ...f, rating: star }))}
-                    style={{ fontSize:'1.4rem', cursor:'pointer', opacity: (taskForm.rating || (editingTask as any).rating || 0) >= star ? 1 : 0.3 }}>
-                    ⭐
-                  </span>
-                ))}
-              </div>
-              <textarea placeholder="评价说明..."
-                value={taskForm.evaluation || (editingTask as any).evaluation || ''}
-                onChange={(e) => setTaskForm((f: any) => ({ ...f, evaluation: e.target.value }))}
-                onBlur={(e) => saveField('evaluation', e.target.value)}
-                rows={3}
-                style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background:'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6 }} />
-            </div>
-          );
-
-          return null;
         })()}
 
         <div className="form-actions">
@@ -2505,123 +2721,49 @@ export default function WorkspaceDetailPage() {
           >
             {taskSubmitting ? '保存中...' : editingTask ? '保存' : taskForm.task_type === 'STORY' ? '创建需求' : '创建任务'}
           </button>
-          {/* Per-phase action buttons */}
-          {editingTask && isFull && (() => {
-            const btns: { label: string; cls: string; action: () => Promise<void> }[] = [];
-            const phase = editingTask.phase;
-
-            if (editingTask.task_type === 'STORY') {
-              // Status transition
-              if (editingTask.status === 'TODO') {
-                btns.push({ label: '▶ 开始处理', cls: 'btn-outline', action: async () => {
-                  await update(id!, editingTask.id, { status: 'IN_PROGRESS' });
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                }});
-              }
-              if (editingTask.status === 'IN_PROGRESS') {
-                btns.push({ label: '✔ 标记完成', cls: 'btn-outline', action: async () => {
-                  await update(id!, editingTask.id, { status: 'DONE' });
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                }});
-              }
-              if (editingTask.status === 'DONE' && phase !== 'RELEASE') {
-                btns.push({ label: '↩ 标记未完', cls: 'btn-ghost', action: async () => {
-                  await update(id!, editingTask.id, { status: 'IN_PROGRESS' });
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                }});
-              }
-
-              // BACKLOG → PLAN: PM sets analyst + plans iteration
-              if (phase === 'BACKLOG' && editingTask.status === 'DONE') {
-                btns.push({ label: '🚀 推进到需求规划阶段', cls: 'btn-primary', action: async () => {
-                  await advancePhase(id!, editingTask.id, '设置需求负责人、规划迭代');
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                }});
-              }
-              // PLAN → DESIGN: 需求规划完成
-              if (phase === 'PLAN' && editingTask.status === 'DONE') {
-                btns.push({ label: '📋 需求规划完成', cls: 'btn-primary', action: async () => {
-                  await advancePhase(id!, editingTask.id, '需求PRD');
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                }});
-              }
-              // DESIGN → DEVELOPMENT: 设计评审通过后推进
-              if (phase === 'DESIGN' && editingTask.status === 'DONE') {
-                btns.push({ label: '📝 设计完成，进入开发', cls: 'btn-primary', action: async () => {
-                  await advancePhase(id!, editingTask.id, '设计文档');
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                }});
-              }
-              if (phase === 'DEVELOPMENT') {
-                btns.push({ label: `📋 拆分开发任务 (${editingTask.children_count || 0})`, cls: 'btn-outline', action: async () => {
-                  setDetailTab('related');
-                }});
-              }
-              if (phase === 'DEVELOPMENT' && editingTask.status === 'DONE') {
-                btns.push({ label: '🧪 开发完成，提交测试', cls: 'btn-primary', action: async () => {
-                  await advancePhase(id!, editingTask.id, 'Story自测报告');
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                }});
-              }
-              // TESTING: forward + reverse
-              if (phase === 'TESTING' && editingTask.status === 'DONE') {
-                btns.push({ label: '✅ 测试通过，发布上线', cls: 'btn-primary', action: async () => {
-                  await advancePhase(id!, editingTask.id, '测试报告');
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                }});
-                btns.push({ label: '❌ 测试不通过，退回开发', cls: 'btn-ghost', action: async () => {
-                  if (!id) return;
-                  await useTaskStore.getState().returnPhase(id, editingTask.id);
-                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                }});
-              }
-              // RELEASE: 验收通过 → 需求关闭
-              if (phase === 'RELEASE' && editingTask.status === 'DONE') {
-                btns.push({ label: '✅ 验收通过，需求关闭', cls: 'btn-primary', action: async () => {
-                  if (!id) return;
-                  await update(id, editingTask.id, { status: 'DONE' });
-                  await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                  setTaskPanelOpen(false);
-                }});
-              }
-            } else {
-              if (editingTask.status === 'TODO') {
-                btns.push({ label: '▶ 开始处理', cls: 'btn-outline', action: async () => {
-                  await update(id!, editingTask.id, { status: 'IN_PROGRESS' });
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                }});
-              }
-              if (editingTask.status === 'IN_PROGRESS') {
-                btns.push({ label: '✔ 标记完成', cls: 'btn-outline', action: async () => {
-                  await update(id!, editingTask.id, { status: 'DONE' });
-                  await useTaskStore.getState().fetchDetail(id!, editingTask.id);
-                  setEditingTask(useTaskStore.getState().current);
-                }});
-              }
-            }
-
-            if (btns.length === 0) return null;
-            return btns.map((b, i) => (
-              <button key={i} type="button" className={`btn ${b.cls}`} onClick={b.action}>{b.label}</button>
-            ));
-          })()}
         </div>
+
+        {/* ─── Phase Timeline — STORY only ─── */}
+        {editingTask && isFull && editingTask.task_type === 'STORY' && (() => {
+          const phaseLogs = activityLogs.filter((l: any) => l.field_name === '阶段');
+          return (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border-light)' }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: 10 }}>
+                📜 流程记录
+              </div>
+              {phaseLogs.length === 0 ? (
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.7rem', padding: '8px 0' }}>
+                  暂无流程记录
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {phaseLogs.map((log: any, i: number) => {
+                    const isAdvance = log.action === 'UPDATE' || !log.new_value?.includes('退回');
+                    return (
+                      <div key={i} style={{
+                        display: 'flex', gap: 10, alignItems: 'flex-start',
+                        padding: '8px 10px', background: 'var(--bg-raised)',
+                        borderRadius: 8,
+                        borderLeft: `3px solid ${isAdvance ? 'var(--blue-500)' : 'var(--amber-400)'}`,
+                        fontSize: '0.7rem',
+                      }}>
+                        <div style={{ fontSize: '1rem', flexShrink: 0 }}>{isAdvance ? '🚀' : '↩'}</div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 500, color: 'var(--text-primary)' }}>
+                            {log.old_value || '?'} → {log.new_value || '?'}
+                          </div>
+                          <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginTop: 2 }}>
+                            {new Date(log.created_at).toLocaleString('zh-CN', { month:'numeric', day:'numeric', hour:'2-digit', minute:'2-digit' })} · {log.user_name || log.user_id}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Delete section — edit mode only */}
         {editingTask && (
