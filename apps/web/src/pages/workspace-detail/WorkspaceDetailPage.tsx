@@ -356,7 +356,7 @@ function PulseChat() {
    ═══════════════════════════════════════════ */
 function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreateTask: (status: string, phase?: string, parentStoryId?: string) => void; onEditTask: (task: Task) => void; scopeFilter: string; isFull: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
-  const { moveTask, update, advancePhase } = useTaskStore();
+  const { moveTask, update, advancePhase, returnPhase } = useTaskStore();
   const { user } = useAuthStore();
   const { members } = useWorkspaceStore();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -369,7 +369,8 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
   // Local kanban state to avoid race condition with KpiRow/ReportsPanel
   const [kanban, setKanban] = useState<Record<string, Task[]>>({});
   const [loading, setLoading] = useState(false);
-  const groupBy = isFull ? 'phase' : 'status';
+  const [viewMode, setViewMode] = useState<'phase' | 'status'>('phase');
+  const groupBy = isFull ? viewMode : 'status';
 
   const fetchKanbanData = useCallback(async (wsId: string, groupBy: string) => {
     setLoading(true);
@@ -410,16 +411,15 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
   ];
   const allPhaseColDefs: { key: string; title: string; icon?: string; deliverables: string }[] = [
     { key: 'BACKLOG', title: '需求池', icon: '📥', deliverables: '设置需求负责人、规划迭代' },
-    { key: 'REQUIREMENTS', title: '需求分析', icon: '📋', deliverables: '需求PRD' },
+    { key: 'PLAN', title: '需求规划', icon: '📋', deliverables: '需求PRD' },
     { key: 'DESIGN', title: '方案设计', icon: '🎨', deliverables: '设计文档' },
-    { key: 'DESIGN_REVIEW', title: '设计评审', icon: '🔍', deliverables: '评审结论、修改意见' },
     { key: 'DEVELOPMENT', title: '开发实现', icon: '💻', deliverables: 'Story自测报告' },
     { key: 'TESTING', title: '测试验证', icon: '🧪', deliverables: '测试报告' },
     { key: 'RELEASE', title: '发布上线', icon: '🚀', deliverables: '需求评价（五星打分、说明性评价）' },
   ];
 
   const phaseColDefs = allPhaseColDefs; // Always show all 6 SDLC phases for Story kanban
-  const colDefs = isFull ? phaseColDefs : statusColDefs;
+  const colDefs = isFull && viewMode === 'phase' ? phaseColDefs : statusColDefs;
 
   // Status colors for cards within a phase column
   const statusBadge: Record<string, { bg: string; label: string }> = {
@@ -497,8 +497,15 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
       if (isFull) {
         const phaseIdx = phaseColDefs.findIndex(p => p.key === fromKey);
         const targetIdx = phaseColDefs.findIndex(p => p.key === colKey);
-        if (targetIdx !== phaseIdx + 1) { setDragError('只能拖拽到下一阶段'); return; }
-        await advancePhase(wsId, taskId, '通过拖拽推进阶段');
+        if (targetIdx === phaseIdx + 1) {
+          // Drag right → advance phase
+          await advancePhase(wsId, taskId, '通过拖拽推进阶段');
+        } else if (targetIdx === phaseIdx - 1) {
+          // Drag left → return phase
+          await returnPhase(wsId, taskId);
+        } else if (targetIdx !== phaseIdx) {
+          setDragError('只能拖拽到相邻阶段'); return;
+        }
         await fetchKanbanData(wsId, groupBy);  // refresh local kanban immediately
       } else {
         await moveTask(wsId, taskId, colKey, 0);
@@ -587,6 +594,20 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
         <button onClick={() => { setSelected(new Set()); setBatchAction(null); }}>✕</button>
       </div>
 
+      {/* View switcher — only for PROJECT workspaces */}
+      {isFull && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <button
+            className={`btn btn-sm ${viewMode === 'phase' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setViewMode('phase')}
+          >阶段视图</button>
+          <button
+            className={`btn btn-sm ${viewMode === 'status' ? 'btn-primary' : 'btn-ghost'}`}
+            onClick={() => setViewMode('status')}
+          >状态视图</button>
+        </div>
+      )}
+
       <div style={{
         display: 'grid',
         gridTemplateColumns: `repeat(${colDefs.length}, minmax(180px, 1fr))`,
@@ -648,7 +669,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                   title={story.title}
                   onClick={(e) => { if (e.shiftKey) toggleSelect(story.id); else onEditTask(story); }}
                   draggable={canDrag(story)}
-                  onDragStart={(e) => { if (!canDrag(story)) { e.preventDefault(); return; } handleDragStart(e, story.id, isFull ? story.phase : story.status); }}
+                  onDragStart={(e) => { if (!canDrag(story)) { e.preventDefault(); return; } handleDragStart(e, story.id, isFull && viewMode === 'phase' ? story.phase : story.status); }}
                   style={{ cursor: 'pointer', borderLeft: `3px solid ${({CRITICAL:'var(--red-400)',HIGH:'var(--amber-400)',MEDIUM:'var(--blue-400)',LOW:'var(--text-muted)'})[story.priority] || 'var(--border)'}` }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
@@ -692,8 +713,8 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                   {/* Mini phase progress bar */}
                   {isFull && story.task_type === 'STORY' && (
                     <div style={{ display: 'flex', gap: 2, marginTop: 4, alignItems: 'center' }}>
-                      {['BACKLOG', 'REQUIREMENTS', 'DESIGN', 'DESIGN_REVIEW', 'DEVELOPMENT', 'TESTING', 'RELEASE'].map((ph, i) => {
-                        const phaseIdx2 = ['BACKLOG', 'REQUIREMENTS', 'DESIGN', 'DESIGN_REVIEW', 'DEVELOPMENT', 'TESTING', 'RELEASE'].indexOf(story.phase);
+                      {['BACKLOG', 'PLAN', 'DESIGN', 'DEVELOPMENT', 'TESTING', 'RELEASE'].map((ph, i) => {
+                        const phaseIdx2 = ['BACKLOG', 'PLAN', 'DESIGN', 'DEVELOPMENT', 'TESTING', 'RELEASE'].indexOf(story.phase);
                         const isPhase = ph === story.phase;
                         const isPast = i <= phaseIdx2;
                         return (
@@ -701,7 +722,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                             flex: 1, height: 3, borderRadius: 2,
                             background: isPhase ? 'var(--blue-500)' : isPast ? 'var(--green-300)' : 'var(--border-light)',
                             transition: 'background 0.3s',
-                          }} title={({BACKLOG:'需求池',REQUIREMENTS:'需求分析',DESIGN:'方案设计',DESIGN_REVIEW:'设计评审',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线'})[ph]} />
+                          }} title={({BACKLOG:'需求池',PLAN:'需求规划',DESIGN:'方案设计',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线'})[ph]} />
                         );
                       })}
                     </div>
@@ -719,7 +740,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                     <div style={{ marginTop: 4, fontSize: '0.55rem', color: 'var(--text-muted)' }}>{story.children_count} 个子任务（点击展开加载）</div>
                   )}
                   {/* Design review status badge */}
-                  {isFull && story.task_type === 'STORY' && (story.phase === 'DESIGN_REVIEW' || story.design_review_status) && story.design_review_status && (
+                  {isFull && story.task_type === 'STORY' && story.phase === 'DESIGN' && story.design_review_status && (
                     <div style={{ marginTop: 4, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.55rem', padding: '1px 5px', borderRadius: 3,
                         background: story.design_review_status === 'APPROVED' ? '#d4edda' :
@@ -789,19 +810,14 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                 ⚠️ 请确认已<strong>设置需求负责人</strong>并<strong>规划到迭代</strong>
               </div>
             )}
-            {gateOpen === 'REQUIREMENTS' && (
+            {gateOpen === 'PLAN' && (
               <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
                 ⚠️ 请确认<strong>需求PRD</strong>已完成，可在需求详情中编写PRD文档
               </div>
             )}
             {gateOpen === 'DESIGN' && (
               <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
-                ⚠️ 请确认<strong>设计文档</strong>已完成，推进后将进入设计评审阶段
-              </div>
-            )}
-            {gateOpen === 'DESIGN_REVIEW' && (
-              <div style={{ fontSize: '0.7rem', color: 'var(--amber-600)', marginBottom: 8, padding: '6px 10px', background: '#fff8e1', borderRadius: 'var(--radius-sm)' }}>
-                ⚠️ 仅<strong>评审通过</strong>的需求会被推进，请在需求详情中完成评审
+                ⚠️ 请确认<strong>设计文档</strong>已完成且<strong>设计评审</strong>已通过，推进后将进入开发实现阶段
               </div>
             )}
             {gateOpen === 'DEVELOPMENT' && (
@@ -1714,7 +1730,7 @@ export default function WorkspaceDetailPage() {
     }
     if (task) {
       setEditingTask(task);
-      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'REQUIREMENTS', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, reviewer_id: task.reviewer_id || undefined, proposer_id: task.proposer_id || undefined, analyst_id: task.analyst_id || undefined, qa_owner_id: task.qa_owner_id || undefined, acceptance_owner_id: (task as any).acceptance_owner_id || undefined, verifier_id: task.verifier_id || undefined, parent_id: task.parent_id || undefined, design_doc: (task as any).design_doc || '', prd_doc: (task as any).prd_doc || '', self_test_report: (task as any).self_test_report || '', test_report: (task as any).test_report || '', rating: (task as any).rating || undefined, evaluation: (task as any).evaluation || '' });
+      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'PLAN', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, reviewer_id: task.reviewer_id || undefined, proposer_id: task.proposer_id || undefined, analyst_id: task.analyst_id || undefined, qa_owner_id: task.qa_owner_id || undefined, acceptance_owner_id: (task as any).acceptance_owner_id || undefined, verifier_id: task.verifier_id || undefined, parent_id: task.parent_id || undefined, design_doc: (task as any).design_doc || '', prd_doc: (task as any).prd_doc || '', self_test_report: (task as any).self_test_report || '', test_report: (task as any).test_report || '', rating: (task as any).rating || undefined, evaluation: (task as any).evaluation || '' });
       fetchComments(task.id);
       fetchActivity(task.id);
       fetchRelations(task);
@@ -2147,7 +2163,7 @@ export default function WorkspaceDetailPage() {
                             const t = useTaskStore.getState().current;
                             if (t) {
                               setEditingTask(t);
-                              setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'REQUIREMENTS', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, acceptance_owner_id: (t as any).acceptance_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined, design_doc: (t as any).design_doc || '', prd_doc: (t as any).prd_doc || '', self_test_report: (t as any).self_test_report || '', test_report: (t as any).test_report || '', rating: (t as any).rating || undefined, evaluation: (t as any).evaluation || '' });
+                              setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'PLAN', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, acceptance_owner_id: (t as any).acceptance_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined, design_doc: (t as any).design_doc || '', prd_doc: (t as any).prd_doc || '', self_test_report: (t as any).self_test_report || '', test_report: (t as any).test_report || '', rating: (t as any).rating || undefined, evaluation: (t as any).evaluation || '' });
                               fetchComments(t.id);
                               fetchActivity(t.id);
                               fetchRelations(t);
@@ -2181,7 +2197,7 @@ export default function WorkspaceDetailPage() {
                       const t = useTaskStore.getState().current;
                       if (t) {
                         setEditingTask(t);
-                        setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'REQUIREMENTS', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, acceptance_owner_id: (t as any).acceptance_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined, design_doc: (t as any).design_doc || '', prd_doc: (t as any).prd_doc || '', self_test_report: (t as any).self_test_report || '', test_report: (t as any).test_report || '', rating: (t as any).rating || undefined, evaluation: (t as any).evaluation || '' });
+                        setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'PLAN', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, acceptance_owner_id: (t as any).acceptance_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined, design_doc: (t as any).design_doc || '', prd_doc: (t as any).prd_doc || '', self_test_report: (t as any).self_test_report || '', test_report: (t as any).test_report || '', rating: (t as any).rating || undefined, evaluation: (t as any).evaluation || '' });
                         fetchComments(t.id);
                         fetchActivity(t.id);
                         fetchRelations(t);
@@ -2218,11 +2234,11 @@ export default function WorkspaceDetailPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>当前阶段</span>
                 <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--blue-600)' }}>{
-                  ({BACKLOG:'需求池',REQUIREMENTS:'需求分析',DESIGN:'方案设计',DESIGN_REVIEW:'设计评审',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线'})[editingTask.phase] || editingTask.phase
+                  ({BACKLOG:'需求池',PLAN:'需求规划',DESIGN:'方案设计',DEVELOPMENT:'开发实现',TESTING:'测试验证',RELEASE:'发布上线'})[editingTask.phase] || editingTask.phase
                 }</span>
               </div>
-              {/* Design review badge — shown in DESIGN_REVIEW phase */}
-              {editingTask.phase === 'DESIGN_REVIEW' && (
+              {/* Design review badge — shown during DESIGN phase */}
+              {editingTask.phase === 'DESIGN' && editingTask.design_review_status && (
                 editingTask.design_review_status === 'APPROVED'
                   ? <span style={{ fontSize:'0.7rem',padding:'2px 10px',borderRadius:10,background:'#dcfce7',color:'#16a34a',fontWeight:600 }}>✅ 方案已通过</span>
                   : editingTask.design_review_status === 'REJECTED'
@@ -2231,9 +2247,9 @@ export default function WorkspaceDetailPage() {
               )}
             </div>
             <div style={{ display: 'flex', gap: 3 }}>
-              {(['BACKLOG','REQUIREMENTS','DESIGN','DESIGN_REVIEW','DEVELOPMENT','TESTING','RELEASE'] as const).map((ph) => {
-                const labels: Record<string,string> = {BACKLOG:'需求池',REQUIREMENTS:'需求',DESIGN:'设计',DESIGN_REVIEW:'评审',DEVELOPMENT:'开发',TESTING:'测试',RELEASE:'发布'};
-                const phases = ['BACKLOG','REQUIREMENTS','DESIGN','DESIGN_REVIEW','DEVELOPMENT','TESTING','RELEASE'] as readonly string[];
+              {(['BACKLOG','PLAN','DESIGN','DEVELOPMENT','TESTING','RELEASE'] as const).map((ph) => {
+                const labels: Record<string,string> = {BACKLOG:'需求池',PLAN:'需求',DESIGN:'设计',DEVELOPMENT:'开发',TESTING:'测试',RELEASE:'发布'};
+                const phases = ['BACKLOG','PLAN','DESIGN','DEVELOPMENT','TESTING','RELEASE'] as readonly string[];
                 const curIdx = phases.indexOf(editingTask.phase);
                 const phIdx = phases.indexOf(ph);
                 return (
@@ -2286,14 +2302,12 @@ export default function WorkspaceDetailPage() {
             if (editingTask.phase === 'BACKLOG') {
               roles.push({ key: 'proposer_id', label: '需求提出人', hint: '谁提的需求', value: taskForm.proposer_id||'' });
               roles.push({ key: 'analyst_id', label: '需求负责人', hint: 'PM指定', value: taskForm.analyst_id||'' });
-            } else if (editingTask.phase === 'REQUIREMENTS') {
+            } else if (editingTask.phase === 'PLAN') {
               roles.push({ key: 'analyst_id', label: '需求负责人', hint: '编写PRD', value: taskForm.analyst_id||'' });
               roles.push({ key: 'reviewer_id', label: 'PM', hint: '审核PRD', value: taskForm.reviewer_id||'' });
             } else if (editingTask.phase === 'DESIGN') {
               roles.push({ key: 'analyst_id', label: '需求负责人', hint: '编写方案文档', value: taskForm.analyst_id||'' });
-              roles.push({ key: 'reviewer_id', label: 'PM', hint: '组织评审', value: taskForm.reviewer_id||'' });
-            } else if (editingTask.phase === 'DESIGN_REVIEW') {
-              roles.push({ key: 'reviewer_id', label: '评审人(PM)', hint: '审核并决定通过/驳回', value: taskForm.reviewer_id||'' });
+              roles.push({ key: 'reviewer_id', label: 'PM(评审人)', hint: '组织评审并决定通过/驳回', value: taskForm.reviewer_id||'' });
             } else if (editingTask.phase === 'DEVELOPMENT') {
               roles.push({ key: 'analyst_id', label: '需求负责人', hint: '拆分任务、推进开发', value: taskForm.analyst_id||'' });
               roles.push({ key: 'reviewer_id', label: 'PM', hint: '', value: taskForm.reviewer_id||'' });
@@ -2357,8 +2371,8 @@ export default function WorkspaceDetailPage() {
             </div>
           );
 
-          // REQUIREMENTS: PRD
-          if (phase === 'REQUIREMENTS') return (
+          // PLAN: PRD
+          if (phase === 'PLAN') return (
             <div style={{ marginTop: 12 }}>
               <label style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6, display: 'block' }}>📋 需求PRD</label>
               <textarea placeholder="编写需求PRD文档..." value={taskForm.prd_doc || (editingTask as any).prd_doc || ''}
@@ -2369,7 +2383,7 @@ export default function WorkspaceDetailPage() {
             </div>
           );
 
-          // DESIGN: design doc
+          // DESIGN: design doc + review
           if (phase === 'DESIGN') return (
             <div style={{ marginTop: 12 }}>
               <label style={{ fontSize: '0.82rem', fontWeight: 600, marginBottom: 6, display: 'block' }}>📝 方案设计文档</label>
@@ -2388,52 +2402,46 @@ export default function WorkspaceDetailPage() {
                 rows={8}
                 style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'monospace',background:'#fafbfc',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6 }} />
               <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>✏️ 实时自动保存</div>
-            </div>
-          );
 
-          // DESIGN_REVIEW: approve/reject UI
-          if (phase === 'DESIGN_REVIEW') return (
-            <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '2px solid', borderColor:
-              editingTask.design_review_status === 'APPROVED' ? 'var(--green-300)' :
-              editingTask.design_review_status === 'REJECTED' ? 'var(--red-300)' : 'var(--amber-300)',
-              background: editingTask.design_review_status === 'APPROVED' ? '#f0fdf4' :
-              editingTask.design_review_status === 'REJECTED' ? '#fef2f2' : '#fffbeb',
-            }}>
-              <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 4 }}>
-                {editingTask.design_review_status === 'APPROVED' ? '✅ 方案已通过' :
-                 editingTask.design_review_status === 'REJECTED' ? '❌ 方案已驳回' : '⏳ 等待评审'}
-              </div>
-              {editingTask.design_reviewer_name && <div style={{ fontSize:'0.66rem', color:'var(--text-muted)', marginBottom:6 }}>评审人：{editingTask.design_reviewer_name}</div>}
-              {editingTask.design_doc && <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', marginBottom:8, maxHeight:80, overflow:'auto', whiteSpace:'pre-wrap', background:'var(--bg-surface)', padding:'6px 8px', borderRadius:4 }}>{editingTask.design_doc.slice(0, 300)}{editingTask.design_doc.length > 300 ? '...' : ''}</div>}
-              {editingTask.design_review_status !== 'APPROVED' && (
-                <>
-                  <textarea placeholder="评审意见（必填）" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2}
-                    style={{ width:'100%',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.78rem',fontFamily:'inherit',resize:'vertical',marginBottom:8 }} />
-                  <div style={{ display:'flex', gap: 8 }}>
-                    <button type="button" className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
-                      if (!id) return;
-                      await reviewDesign(id, editingTask.id, 'APPROVED', reviewNote);
-                      setReviewNote('');
-                      // Auto-advance to DEVELOPMENT
-                      await advancePhase(id, editingTask.id, '方案评审通过');
-                      await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                      setEditingTask(useTaskStore.getState().current);
-                      setTaskPanelOpen(false);
-                      fetchActivity(editingTask.id);
-                    }} style={{ flex:1 }}>✓ 评审通过，进入开发</button>
-                    <button type="button" className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
-                      if (!id) return;
-                      await reviewDesign(id, editingTask.id, 'REJECTED', reviewNote);
-                      setReviewNote('');
-                      // Auto-return to DESIGN
-                      await returnPhase(id, editingTask.id);
-                      await useTaskStore.getState().fetchDetail(id, editingTask.id);
-                      setEditingTask(useTaskStore.getState().current);
-                      setTaskPanelOpen(false);
-                      fetchActivity(editingTask.id);
-                    }} style={{ flex:1, color:'var(--red-500)', borderColor:'var(--red-300)' }}>✗ 驳回，退回方案设计</button>
+              {/* Design review sub-status */}
+              {editingTask.design_review_status && (
+                <div style={{ marginTop: 12, padding: '12px 14px', borderRadius: 'var(--radius-md)', border: '2px solid', borderColor:
+                  editingTask.design_review_status === 'APPROVED' ? 'var(--green-300)' :
+                  editingTask.design_review_status === 'REJECTED' ? 'var(--red-300)' : 'var(--amber-300)',
+                  background: editingTask.design_review_status === 'APPROVED' ? '#f0fdf4' :
+                  editingTask.design_review_status === 'REJECTED' ? '#fef2f2' : '#fffbeb',
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.82rem', marginBottom: 4 }}>
+                    {editingTask.design_review_status === 'APPROVED' ? '✅ 方案已通过' :
+                     editingTask.design_review_status === 'REJECTED' ? '❌ 方案已驳回' : '⏳ 等待评审'}
                   </div>
-                </>
+                  {editingTask.design_reviewer_name && <div style={{ fontSize:'0.66rem', color:'var(--text-muted)', marginBottom:6 }}>评审人：{editingTask.design_reviewer_name}</div>}
+                  {editingTask.design_review_note && <div style={{ fontSize:'0.66rem', color:'var(--text-muted)', marginBottom:6 }}>评审意见：{editingTask.design_review_note}</div>}
+                  {editingTask.design_review_status !== 'APPROVED' && editingTask.design_review_status !== 'REJECTED' && (
+                    <>
+                      <textarea placeholder="评审意见（必填）" value={reviewNote} onChange={(e) => setReviewNote(e.target.value)} rows={2}
+                        style={{ width:'100%',padding:'8px 10px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.78rem',fontFamily:'inherit',resize:'vertical',marginBottom:8 }} />
+                      <div style={{ display:'flex', gap: 8 }}>
+                        <button type="button" className="btn btn-primary btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                          if (!id) return;
+                          await reviewDesign(id, editingTask.id, 'APPROVED', reviewNote);
+                          setReviewNote('');
+                          await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                          setEditingTask(useTaskStore.getState().current);
+                          fetchActivity(editingTask.id);
+                        }} style={{ flex:1 }}>✓ 评审通过</button>
+                        <button type="button" className="btn btn-ghost btn-sm" disabled={!reviewNote.trim()} onClick={async () => {
+                          if (!id) return;
+                          await reviewDesign(id, editingTask.id, 'REJECTED', reviewNote);
+                          setReviewNote('');
+                          await useTaskStore.getState().fetchDetail(id, editingTask.id);
+                          setEditingTask(useTaskStore.getState().current);
+                          fetchActivity(editingTask.id);
+                        }} style={{ flex:1, color:'var(--red-500)', borderColor:'var(--red-300)' }}>✗ 驳回</button>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
             </div>
           );
@@ -2526,35 +2534,33 @@ export default function WorkspaceDetailPage() {
                 }});
               }
 
-              // BACKLOG → REQUIREMENTS: PM sets analyst + plans iteration
+              // BACKLOG → PLAN: PM sets analyst + plans iteration
               if (phase === 'BACKLOG' && editingTask.status === 'DONE') {
-                btns.push({ label: '🚀 推进到需求分析阶段', cls: 'btn-primary', action: async () => {
+                btns.push({ label: '🚀 推进到需求规划阶段', cls: 'btn-primary', action: async () => {
                   await advancePhase(id!, editingTask.id, '设置需求负责人、规划迭代');
                   await useTaskStore.getState().fetchDetail(id!, editingTask.id);
                   setEditingTask(useTaskStore.getState().current);
                   setTaskPanelOpen(false);
                 }});
               }
-              // REQUIREMENTS → DESIGN: 需求分析完成
-              if (phase === 'REQUIREMENTS' && editingTask.status === 'DONE') {
-                btns.push({ label: '📋 需求分析完成', cls: 'btn-primary', action: async () => {
+              // PLAN → DESIGN: 需求规划完成
+              if (phase === 'PLAN' && editingTask.status === 'DONE') {
+                btns.push({ label: '📋 需求规划完成', cls: 'btn-primary', action: async () => {
                   await advancePhase(id!, editingTask.id, '需求PRD');
                   await useTaskStore.getState().fetchDetail(id!, editingTask.id);
                   setEditingTask(useTaskStore.getState().current);
                   setTaskPanelOpen(false);
                 }});
               }
-              // DESIGN → DESIGN_REVIEW: 设计完成
+              // DESIGN → DEVELOPMENT: 设计评审通过后推进
               if (phase === 'DESIGN' && editingTask.status === 'DONE') {
-                btns.push({ label: '📝 设计完成，提交评审', cls: 'btn-primary', action: async () => {
+                btns.push({ label: '📝 设计完成，进入开发', cls: 'btn-primary', action: async () => {
                   await advancePhase(id!, editingTask.id, '设计文档');
                   await useTaskStore.getState().fetchDetail(id!, editingTask.id);
                   setEditingTask(useTaskStore.getState().current);
                   setTaskPanelOpen(false);
                 }});
               }
-              // DESIGN_REVIEW: approve/reject handled by review panel above
-              // No extra action buttons — auto-advance/reverse on approve/reject
               if (phase === 'DEVELOPMENT') {
                 btns.push({ label: `📋 拆分开发任务 (${editingTask.children_count || 0})`, cls: 'btn-outline', action: async () => {
                   setDetailTab('related');

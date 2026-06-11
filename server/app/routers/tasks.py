@@ -295,8 +295,8 @@ async def advance_task_phase(
     if not perms["can_advance_phase"]:
         raise AppException(403, "无权推进此任务阶段", 403)
 
-    # REQUIREMENTS phase: auto-complete and advance in one step
-    if task.phase == "REQUIREMENTS" and task.task_type == "STORY" and task.status != "DONE":
+    # PLAN phase: auto-complete and advance in one step
+    if task.phase == "PLAN" and task.task_type == "STORY" and task.status != "DONE":
         task = await task_service.update_task(db, task, status="DONE")
 
     if task.status != "DONE":
@@ -361,8 +361,8 @@ async def return_task_phase(
     if idx <= 0:
         raise AppException(400, "已是第一个阶段，无法退回", 400)
 
-    # Only allow return from DESIGN_REVIEW and TESTING
-    if task.phase not in ("DESIGN_REVIEW", "TESTING"):
+    # Only allow return from DESIGN and TESTING
+    if task.phase not in ("DESIGN", "TESTING"):
         raise AppException(400, f"当前阶段「{task.phase}」不支持退回操作", 400)
 
     prev_phase = phases[idx - 1]
@@ -449,8 +449,8 @@ async def review_requirement(
         raise AppException(404, "任务不存在", 404)
     if task.task_type != "STORY":
         raise AppException(400, "只有需求 (Story) 类型才能进行需求评审", 400)
-    if task.phase != "REQUIREMENTS":
-        raise AppException(400, "只能在「需求分析」阶段进行需求评审", 400)
+    if task.phase != "PLAN":
+        raise AppException(400, "只能在「需求规划」阶段进行需求评审", 400)
     if req.action not in ("APPROVED", "REJECTED"):
         raise AppException(400, "action 必须是 APPROVED 或 REJECTED", 400)
 

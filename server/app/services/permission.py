@@ -30,7 +30,7 @@ STATUS_TRANSITIONS = {
 # Who can advance phase for which task type at which phase
 PHASE_ADVANCE_ROLES = {
     "STORY": {
-        "REQUIREMENTS": {"analyst", "manager"},
+        "PLAN": {"analyst", "manager"},
         "DESIGN": {"assignee", "manager"},
         "DEVELOPMENT": {"assignee", "manager"},
         "TESTING": {"qa_owner", "manager"},
@@ -38,8 +38,6 @@ PHASE_ADVANCE_ROLES = {
         "ACCEPTANCE": {"proposer", "manager"},
     },
     "TASK": {
-        "REQUIREMENTS": {"assignee", "manager"},
-        "DESIGN": {"assignee", "manager"},
         "DEVELOPMENT": {"assignee", "manager"},
         "TESTING": {"reviewer", "manager"},
         "RELEASE": {"manager"},
@@ -214,10 +212,10 @@ class PermissionChecker:
             task.task_type == "STORY" and self._is_qa_owner(task)
         )
 
-        # Can review requirement (analyst or manager, in REQUIREMENTS phase)
+        # Can review requirement (analyst or manager, in PLAN phase)
         can_review_requirement = is_mgr or (
             task.task_type == "STORY"
-            and task.phase == "REQUIREMENTS"
+            and task.phase == "PLAN"
             and self._is_analyst(task)
         )
 

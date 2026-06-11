@@ -26,6 +26,8 @@ docs/superpowers/
 prototypes/
   index.html  # All 8 pages high-fidelity prototype (sole prototype, default entry)
 ```
+## 语言要求
+所有对话都以中文返回
 
 ## Architecture (planned)
 
@@ -38,6 +40,7 @@ prototypes/
 ## Status
 
 - Product design & high-fidelity prototypes completed
-- Phase 0-2 implementation plan written (scaffolding + auth + workspace)
-- Plans 2-4 (Task System + KB, AI Engine, Collaboration) deferred
-- No development started yet — user wants prototypes approved first
+- Phase 0-2 implementation: scaffolding, auth, workspace, task system, kanban — in active development
+- R&D workflow: 6-phase SDLC (BACKLOG→PLAN→DESIGN→DEVELOPMENT→TESTING→RELEASE)
+- Plans 2-4 (KB, AI Engine, Collaboration) deferred
+- React frontend + FastAPI backend + SQLite (dev) / MySQL (prod)

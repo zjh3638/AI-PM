@@ -164,9 +164,8 @@ export type TaskPriority = 'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW';
 
 export const PHASE_LABELS: Record<string, string> = {
   BACKLOG: '需求池',
-  REQUIREMENTS: '需求分析',
+  PLAN: '需求规划',
   DESIGN: '方案设计',
-  DESIGN_REVIEW: '设计评审',
   DEVELOPMENT: '开发实现',
   TESTING: '测试验证',
   RELEASE: '发布上线',

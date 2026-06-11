@@ -99,7 +99,7 @@ export default function PersonalCenterPage() {
                   <span className="todo-text">{t.title}</span>
                   <span className="todo-meta">
                     {t.status === 'TODO' ? <span className="badge" style={{ background: 'var(--bg-hover)' }}>待办</span> : <span className="badge" style={{ background: 'var(--blue-100)', color: 'var(--blue-600)' }}>进行中</span>}
-                    {t.phase && <span style={{ marginLeft: 6, fontSize: '0.65rem', color: 'var(--text-muted)' }}>{t.phase === 'REQUIREMENTS' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : t.phase === 'RELEASE' ? '发布' : ''}</span>}
+                    {t.phase && <span style={{ marginLeft: 6, fontSize: '0.65rem', color: 'var(--text-muted)' }}>{t.phase === 'PLAN' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : t.phase === 'RELEASE' ? '发布' : ''}</span>}
                     {t.due_date && <span style={{ marginLeft: 6, fontSize: '0.65rem', color: new Date(t.due_date) < new Date() ? 'var(--red-500)' : 'var(--text-muted)' }}>📅 {t.due_date}</span>}
                   </span>
                 </div>
@@ -118,7 +118,7 @@ export default function PersonalCenterPage() {
                   <div className="review-info">
                     <div className="ri-title">{t.title}</div>
                     <div className="ri-meta">
-                      {t.phase && <span className="badge badge-blue" style={{ marginRight: 6, fontSize: '0.62rem' }}>{t.phase === 'REQUIREMENTS' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : '发布'}</span>}
+                      {t.phase && <span className="badge badge-blue" style={{ marginRight: 6, fontSize: '0.62rem' }}>{t.phase === 'PLAN' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : '发布'}</span>}
                       {(t.milestone_name || t.iteration_name) && <span style={{ fontSize: '0.64rem', color: 'var(--text-muted)', marginRight: 6 }}>{t.milestone_name || t.iteration_name}</span>}
                       {t.assignee_name || '未分配'}
                     </div>

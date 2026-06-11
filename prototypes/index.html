@@ -628,7 +628,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 /* ═══════════════════════════════════════════
    KANBAN — with batch selection & dependency badges
    ═══════════════════════════════════════════ */
-.kanban-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.kanban-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; overflow-x: auto; }
 .kanban-col {
   background: var(--bg-raised); border-radius: var(--radius-lg); padding: 12px;
   min-height: 200px;
@@ -1693,35 +1693,50 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
         <button class="batch-close" onclick="clearBatch()">✕</button>
       </div>
 
-      <!-- Kanban -->
+      <!-- Kanban — Phase-based for R&D projects -->
       <div class="task-view active" id="view-kanban">
-        <div class="kanban-grid">
-          <div class="kanban-col" data-col="todo">
-            <div class="col-head"><span>待办</span><span class="badge" style="background:var(--bg-hover)">5</span></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">用户登录优化</div><div class="card-meta"><span class="badge badge-blue">AI</span><span class="ms-tag">M2</span><span>中优</span></div></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">数据库迁移脚本</div><div class="card-meta"><span class="ms-tag">M2</span><span>高优</span><span class="dep-badge blocking">阻塞 2</span></div></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">消息推送模块</div><div class="card-meta"><span class="ms-tag">M2</span><span>中优</span><span>张三</span></div></div>
-            <div class="col-add" onclick="event.stopPropagation(); showTaskCreate('todo')">+ 新建任务</div>
+        <div class="view-switcher" style="margin-bottom: 10px; display: flex; gap: 6px;">
+          <button class="view-switch active" onclick="this.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));this.classList.add('active')" style="font-size:0.72rem">阶段视图</button>
+          <button class="view-switch" onclick="this.parentElement.querySelectorAll('button').forEach(b=>b.classList.remove('active'));this.classList.add('active')" style="font-size:0.72rem">状态视图</button>
+        </div>
+        <div class="kanban-grid" style="grid-template-columns:repeat(6, minmax(160px, 1fr))">
+          <!-- BACKLOG -->
+          <div class="kanban-col" data-col="BACKLOG">
+            <div class="col-head"><span>📥 需求池</span><span class="badge" style="background:var(--bg-hover)">2</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--amber-400)"><div class="card-title">AI Agent 需求分析自动生成</div><div class="card-meta"><span class="badge badge-blue">AI</span><span>高优</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--blue-400)"><div class="card-title">多语言国际化支持</div><div class="card-meta"><span>中优</span><span>8 pts</span></div></div>
           </div>
-          <div class="kanban-col" data-col="inprogress">
-            <div class="col-head"><span>进行中</span><span class="badge" style="background:var(--bg-hover)">8</span></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">前端首页重构</div><div class="card-meta"><span class="badge badge-red">延期</span><span class="ms-tag">M3</span><span class="dep-badge blocked">被阻塞</span></div></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">API 接口开发</div><div class="card-meta"><span class="badge badge-blue">AI</span><span class="ms-tag">M2</span><span>高优</span></div></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">性能优化</div><div class="card-meta"><span class="ms-tag">M2</span><span>中优</span><span>王五</span></div></div>
-            <div class="col-add" onclick="event.stopPropagation(); showTaskCreate('inprogress')">+ 新建任务</div>
+          <!-- PLAN -->
+          <div class="kanban-col" data-col="PLAN">
+            <div class="col-head"><span>📋 需求规划</span><span class="badge" style="background:var(--bg-hover)">3</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--red-400)"><div class="card-title">用户登录优化</div><div class="card-meta"><span class="badge badge-red">延期</span><span>高优</span><span>张三</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--amber-400)"><div class="card-title">消息推送模块</div><div class="card-meta"><span>高优</span><span>PRD 起草中</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--blue-400)"><div class="card-title">数据库迁移脚本</div><div class="card-meta"><span class="dep-badge blocking">阻塞2</span><span>中优</span></div></div>
           </div>
-          <div class="kanban-col" data-col="review">
-            <div class="col-head"><span>待 Review</span><span class="badge" style="background:var(--bg-hover)">4</span></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">首页新布局线框图</div><div class="card-meta"><span class="badge badge-blue">AI</span><span class="ms-tag">M3</span><span>设计师</span></div></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">后端 3 个 PR</div><div class="card-meta"><span class="badge badge-blue">AI</span><span class="ms-tag">M2</span><span>开发工程师</span></div></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">UI 组件重构</div><div class="card-meta"><span class="ms-tag">M3</span><span>张三</span></div></div>
-            <div class="col-add" onclick="event.stopPropagation(); showTaskCreate('review')">+ 新建任务</div>
+          <!-- DESIGN -->
+          <div class="kanban-col" data-col="DESIGN">
+            <div class="col-head"><span>🎨 方案设计</span><span class="badge" style="background:var(--bg-hover)">2</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--blue-400)"><div class="card-title">API 接口开发</div><div class="card-meta"><span class="badge badge-blue">AI</span><span>⏳ 待评审</span><span>开发工程师</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--green-400)"><div class="card-title">前端首页重构</div><div class="card-meta"><span>✅ 方案已通过</span><span>李四</span></div></div>
           </div>
-          <div class="kanban-col" data-col="done">
-            <div class="col-head"><span>已完成</span><span class="badge" style="background:var(--bg-hover)">7</span></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">PRD v2 终稿</div><div class="card-meta"><span class="ms-tag">M1</span><span>4/12</span><span>王芳</span></div></div>
-            <div class="kanban-card" onclick="handleCardClick(this, event)"><div class="card-check"></div><div class="card-title">数据清洗脚本</div><div class="card-meta"><span class="ms-tag">M1</span><span>4/10</span><span>王五</span></div></div>
-            <div class="col-add" onclick="event.stopPropagation(); showTaskCreate('done')">+ 新建任务</div>
+          <!-- DEVELOPMENT -->
+          <div class="kanban-col" data-col="DEVELOPMENT">
+            <div class="col-head"><span>💻 开发实现</span><span class="badge" style="background:var(--bg-hover)">4</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--amber-400)"><div class="card-title">注册页面 UI</div><div class="card-meta"><span>进行中</span><span>3 pts</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--blue-400)"><div class="card-title">登录 API 接口</div><div class="card-meta"><span class="badge badge-blue">AI</span><span>2 pts</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--green-400)"><div class="card-title">密码加密存储</div><div class="card-meta"><span>✓ 已完成</span><span>2 pts</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--amber-400)"><div class="card-title">Token 签发与验证</div><div class="card-meta"><span>进行中</span><span>3 pts</span><span>王五</span></div></div>
+          </div>
+          <!-- TESTING -->
+          <div class="kanban-col" data-col="TESTING">
+            <div class="col-head"><span>🧪 测试验证</span><span class="badge" style="background:var(--bg-hover)">2</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--amber-400)"><div class="card-title">性能优化</div><div class="card-meta"><span>测试中</span><span></span><span>王五</span></div></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--red-400)"><div class="card-title">密码框明文 Bug</div><div class="card-meta"><span class="badge badge-red">紧急</span><span>待修复</span></div></div>
+          </div>
+          <!-- RELEASE -->
+          <div class="kanban-col" data-col="RELEASE">
+            <div class="col-head"><span>🚀 发布上线</span><span class="badge" style="background:var(--bg-hover)">1</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--green-400)"><div class="card-title">PRD v2 终稿</div><div class="card-meta"><span>✓ 已完成</span><span>4/12</span><span>王芳</span></div></div>
           </div>
         </div>
       </div>

@@ -110,7 +110,7 @@ async def seed():
             bs = Task(
                 workspace_id=ws_rd.id,
                 task_type="STORY", title=title, description=desc,
-                status="DONE", phase="REQUIREMENTS", priority="HIGH",
+                status="DONE", phase="PLAN", priority="HIGH",
                 assignee_id=admin.id, proposer_id=admin.id, qa_owner_id=admin.id, estimation=est,
                 requirement_review_status="APPROVED",
             )

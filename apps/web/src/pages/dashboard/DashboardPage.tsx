@@ -279,7 +279,7 @@ export default function DashboardPage() {
                     <div style={{ fontWeight: 500, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
                     <div style={{ display: 'flex', gap: 8, fontSize: '0.64rem', color: 'var(--text-muted)' }}>
                       <span>{t.status === 'TODO' ? '待办' : t.status === 'IN_PROGRESS' ? '进行中' : t.status === 'IN_REVIEW' ? '审核中' : t.status}</span>
-                      {t.phase && <span>· {t.phase === 'REQUIREMENTS' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : t.phase === 'RELEASE' ? '发布' : t.phase}</span>}
+                      {t.phase && <span>· {t.phase === 'PLAN' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : t.phase === 'RELEASE' ? '发布' : t.phase}</span>}
                       {t.due_date && <span style={{ color: new Date(t.due_date) < new Date() ? 'var(--red-500)' : 'var(--text-muted)' }}>📅 {t.due_date}</span>}
                     </div>
                   </div>

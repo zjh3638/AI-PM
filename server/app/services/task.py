@@ -20,7 +20,7 @@ async def create_task(db: AsyncSession, workspace_id: str, **kwargs) -> Task:
         if task.proposer_id and not task.qa_owner_id:
             task.qa_owner_id = task.proposer_id
         # Story 本身即是需求阶段的产出物，创建即视为可推进
-        if task.phase == "REQUIREMENTS" and task.status == "TODO":
+        if task.phase == "PLAN" and task.status == "TODO":
             task.status = "DONE"
     db.add(task)
     await db.commit()
@@ -153,7 +153,7 @@ async def get_epics(db: AsyncSession, workspace_id: str) -> list[dict]:
 
 
 # Phase definitions per task type
-STORY_PHASES = ["BACKLOG", "REQUIREMENTS", "DESIGN", "DESIGN_REVIEW", "DEVELOPMENT", "TESTING", "RELEASE"]
+STORY_PHASES = ["BACKLOG", "PLAN", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE"]
 TASK_PHASES = ["DEVELOPMENT", "TESTING", "RELEASE"]
 BUG_PHASES = ["DEVELOPMENT", "TESTING"]
 
@@ -187,19 +187,15 @@ async def check_phase_advance_gate(task: Task, db: AsyncSession) -> tuple[bool, 
 
     current_phase = task.phase
 
-    # Gate 1: DESIGN → DESIGN_REVIEW: design_doc must exist
+    # Gate 1: DESIGN → DEVELOPMENT: design_doc must exist AND design review must be APPROVED
     if current_phase == "DESIGN":
         if not task.design_doc:
             return False, "请先完成方案设计文档。"
-        return True, ""
-
-    # Gate 2: DESIGN_REVIEW → DEVELOPMENT: design review must be APPROVED
-    if current_phase == "DESIGN_REVIEW":
         if task.design_review_status != "APPROVED":
             return False, "方案评审未通过，不能进入开发实现。"
         return True, ""
 
-    # Gate 3: DEVELOPMENT → TESTING: ALL child tasks must be DONE
+    # Gate 2: DEVELOPMENT → TESTING: ALL child tasks must be DONE
     if current_phase == "DEVELOPMENT":
         child_result = await db.execute(
             select(Task).where(Task.parent_id == task.id)
@@ -408,7 +404,7 @@ async def plan_backlog_story(db: AsyncSession, story_id: str, iteration_id: str)
         raise AppException(400, "只能规划需求类型的任务", 400)
     story.iteration_id = iteration_id
     story.status = "DONE"  # 需求即产出物，规划后直接可推进到设计
-    story.phase = "REQUIREMENTS"
+    story.phase = "PLAN"
     story.requirement_review_status = "APPROVED"
     await db.commit()
     await db.refresh(story)
