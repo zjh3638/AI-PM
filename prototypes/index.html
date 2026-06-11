@@ -2532,6 +2532,28 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
         <label>指派给 AI Agent（可选）</label>
         <select id="taskAgent"><option>— 不指派 —</option><option>需求分析师</option><option>设计师</option><option>开发工程师</option><option>项目经理</option></select>
       </div>
+      <!-- Document Tabs -->
+      <div style="display:flex;border-bottom:1px solid var(--border);margin:12px 0 6px">
+        <button class="btn btn-sm btn-primary" style="font-size:0.68rem">📋 需求 (156)</button>
+        <button class="btn btn-sm btn-ghost" style="font-size:0.68rem">📝 设计 (320)</button>
+        <button class="btn btn-sm btn-ghost" style="font-size:0.68rem">🧪 测试 (48)</button>
+        <button class="btn btn-sm btn-ghost" style="font-size:0.68rem">📎 附件 (3)</button>
+      </div>
+      <!-- Workflow Action Bar -->
+      <div style="margin:12px 0;padding:12px 14px;background:var(--blue-50);border-radius:8px;border:1px solid var(--blue-100)">
+        <div style="font-size:0.68rem;color:var(--text-muted);font-weight:500;margin-bottom:8px">🔄 流程操作</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" style="flex:1;font-weight:600">📝 设计完成，进入开发</button>
+          <button class="btn btn-ghost btn-sm" style="color:var(--amber-600)">↩ 退回</button>
+        </div>
+      </div>
+      <!-- Attachment Drop Zone -->
+      <div style="padding:16px;text-align:center;border:2px dashed var(--border);border-radius:8px;margin-top:8px">
+        <div style="font-size:0.74rem;color:var(--text-muted)">📤 拖拽文件到此处上传</div>
+        <div style="margin-top:8px">
+          <span style="font-size:0.68rem;padding:4px 12px;border:1px solid var(--border);border-radius:4px;cursor:pointer">选择文件</span>
+        </div>
+      </div>
       <div class="form-actions">
         <button class="btn btn-ghost btn-sm" onclick="closeTaskPanel()">取消</button>
         <button class="btn btn-primary btn-sm" id="taskSaveBtn" onclick="saveTask()">创建任务</button>
