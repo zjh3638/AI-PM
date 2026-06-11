@@ -1721,6 +1721,76 @@ export default function WorkspaceDetailPage() {
     } catch { setActivityLogs([]); }
   };
 
+  const compressImage = async (file: File): Promise<Blob> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const maxSize = 1200;
+        let { width, height } = img;
+        if (width > maxSize || height > maxSize) {
+          const ratio = Math.min(maxSize / width, maxSize / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d')!;
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => {
+          if (blob) resolve(blob);
+          else reject(new Error('compress failed'));
+        }, 'image/jpeg', 0.8);
+      };
+      img.onerror = () => reject(new Error('image load failed'));
+      img.src = URL.createObjectURL(file);
+    });
+  };
+
+  const handlePasteImage = async (e: React.ClipboardEvent<HTMLTextAreaElement>, field: string) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith('image/')) {
+        e.preventDefault();
+        const file = items[i].getAsFile();
+        if (!file) continue;
+        if (file.size > 10 * 1024 * 1024) {
+          alert('图片过大（>10MB），请手动压缩后上传');
+          continue;
+        }
+        const textarea = e.currentTarget;
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const placeholder = '⏳ 图片上传中...';
+        const before = textarea.value.substring(0, start);
+        const after = textarea.value.substring(end);
+        textarea.value = before + placeholder + after;
+        textarea.selectionStart = textarea.selectionEnd = start + placeholder.length;
+        const ev = new Event('input', { bubbles: true });
+        textarea.dispatchEvent(ev);
+        try {
+          const compressed = await compressImage(file);
+          const form = new FormData();
+          form.append('file', compressed, file.name || 'image.png');
+          const res: any = await api.post(`/workspaces/${id}/tasks/${editingTask!.id}/attachments`, form);
+          const att = res.data;
+          const url = `${window.location.origin}/api/workspaces/${id}/tasks/${editingTask!.id}/attachments/${att.id}/download`;
+          const mdImg = `![${att.filename}](${url})`;
+          const currentVal = textarea.value;
+          textarea.value = currentVal.replace(placeholder, mdImg);
+          textarea.dispatchEvent(ev);
+          const newVal = textarea.value;
+          update(id!, editingTask!.id, { [field]: newVal } as any);
+        } catch {
+          const currentVal = textarea.value;
+          textarea.value = currentVal.replace(placeholder, '⚠️ 图片上传失败');
+          textarea.dispatchEvent(ev);
+        }
+      }
+    }
+  };
+
   // Default to showing all tasks (empty string = no filter)
   const milestones = useMilestoneStore((s) => s.milestones);
 
@@ -2449,6 +2519,7 @@ export default function WorkspaceDetailPage() {
                       onBlur={(e) => { if (prdMode === 'editable') saveField('prd_doc', e.target.value); }}
                       readOnly={prdMode !== 'editable'}
                       rows={7}
+                      onPaste={(e) => handlePasteImage(e, 'prd_doc')}
                       style={{ width:'100%',padding:'10px 12px',border: '1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background: prdMode !== 'editable' ? 'var(--bg-hover)' : 'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6, opacity: prdMode !== 'editable' ? 0.7 : 1 }} />
 
                     {/* Requirement review — PLAN phase */}
@@ -2514,6 +2585,7 @@ export default function WorkspaceDetailPage() {
                       }}
                       readOnly={designMode !== 'editable'}
                       rows={9}
+                      onPaste={(e) => handlePasteImage(e, 'design_doc')}
                       style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'monospace',background: designMode !== 'editable' ? 'var(--bg-hover)' : '#fafbfc',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6, opacity: designMode !== 'editable' ? 0.7 : 1 }} />
                     <div style={{ fontSize:'0.58rem',color:'var(--text-muted)',marginTop:2 }}>✏️ {designMode === 'editable' ? '实时自动保存' : '只读模式'}</div>
 
@@ -2573,6 +2645,7 @@ export default function WorkspaceDetailPage() {
                       onBlur={(e) => { if (testMode === 'editable') saveField('self_test_report', e.target.value); }}
                       readOnly={testMode !== 'editable'}
                       rows={4}
+                      onPaste={(e) => handlePasteImage(e, 'self_test_report')}
                       style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background: testMode !== 'editable' ? 'var(--bg-hover)' : 'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6, opacity: testMode !== 'editable' ? 0.7 : 1 }} />
 
                     <label style={{ fontSize: '0.78rem', fontWeight: 600, marginTop: 14, marginBottom: 6, display: 'block' }}>测试报告</label>
@@ -2582,6 +2655,7 @@ export default function WorkspaceDetailPage() {
                       onBlur={(e) => { if (testMode === 'editable' || phase === 'RELEASE') saveField('test_report', e.target.value); }}
                       readOnly={testMode !== 'editable' && phase !== 'RELEASE'}
                       rows={5}
+                      onPaste={(e) => handlePasteImage(e, 'test_report')}
                       style={{ width:'100%',padding:'10px 12px',border:'1px solid var(--border)',borderRadius:'var(--radius-sm)',fontSize:'0.8rem',fontFamily:'inherit',background: (testMode !== 'editable' && phase !== 'RELEASE') ? 'var(--bg-hover)' : 'var(--bg-surface)',color:'var(--text-primary)',resize:'vertical',lineHeight:1.6, opacity: (testMode !== 'editable' && phase !== 'RELEASE') ? 0.7 : 1 }} />
 
                     {/* Rating — always visible in test tab */}
