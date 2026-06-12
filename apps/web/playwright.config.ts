@@ -30,8 +30,8 @@ export default defineConfig({
 
   webServer: [
     {
-      command: 'cd ../server && source .venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8090',
-      port: 8090,
+      command: 'cd ../server && source .venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000',
+      port: 8000,
       reuseExistingServer: true,
     },
     {
