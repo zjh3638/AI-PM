@@ -2,15 +2,25 @@ import { create } from 'zustand';
 import type { Workspace, WorkspaceMember } from '../types';
 import api from '../api/client';
 
+interface FocusSignal {
+  type: string;
+  level: 'red' | 'amber' | 'green';
+  text: string;
+  action: string;
+  action_target: string;
+}
+
 interface WorkspaceState {
   workspaces: Workspace[];
   total: number;
   loading: boolean;
   current: Workspace | null;
   members: WorkspaceMember[];
+  focusSignals: FocusSignal[];
   fetchList: (params?: Record<string, any>) => Promise<void>;
   fetchDetail: (id: string) => Promise<void>;
   fetchMembers: (id: string) => Promise<void>;
+  fetchFocusSignals: (id: string) => Promise<void>;
   create: (data: Partial<Workspace>) => Promise<Workspace>;
   update: (id: string, data: Partial<Workspace>) => Promise<void>;
   archive: (id: string) => Promise<void>;
@@ -25,6 +35,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   loading: false,
   current: null,
   members: [],
+  focusSignals: [],
 
   fetchList: async (params = {}) => {
     set({ loading: true });
@@ -40,6 +51,13 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
   fetchMembers: async (id: string) => {
     const data = await api.get(`/workspaces/${id}/members`);
     set({ members: data.data });
+  },
+
+  fetchFocusSignals: async (id: string) => {
+    try {
+      const data = await api.get(`/workspaces/${id}/focus-signals`);
+      set({ focusSignals: data.data || [] });
+    } catch { /* ignore */ }
   },
 
   create: async (payload) => {

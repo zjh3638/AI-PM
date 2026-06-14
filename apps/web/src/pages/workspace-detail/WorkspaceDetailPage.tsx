@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useTaskStore } from '../../stores/taskStore';
 import { useAuthStore } from '../../stores/authStore';
-import { PHASE_LABELS, STATUS_LABELS } from '../../types';
+import { PHASE_LABELS, STATUS_LABELS, MILESTONE_PHASE_LABELS, MILESTONE_PHASE_COLORS } from '../../types';
 import type { WorkspaceMember, Task, Iteration, Milestone } from '../../types';
 import { useIterationStore } from '../../stores/iterationStore';
 
@@ -26,9 +26,29 @@ function getFileIcon(mimeType: string): string {
 /* ═══════════════════════════════════════════
    PULSE SIDEBAR
    ═══════════════════════════════════════════ */
+function buildDependencyChain(milestones: Milestone[]): Milestone[] {
+  const visited = new Set<string>();
+  const result: Milestone[] = [];
+  function visit(ms: Milestone) {
+    if (visited.has(ms.id)) return;
+    visited.add(ms.id);
+    const dep = milestones.find(m => m.id === ms.depends_on_id);
+    if (dep) visit(dep);
+    result.push(ms);
+  }
+  milestones.forEach(visit);
+  return result;
+}
+
+function isOverdue(ms: Milestone): boolean {
+  if (ms.phase === 'DONE') return false;
+  if (!ms.end_date) return false;
+  return new Date(ms.end_date) < new Date();
+}
+
 function MilestoneSidebar({ selectedId, onSelect, onEdit }: { selectedId: string; onSelect: (id: string) => void; onEdit: (ms: Milestone) => void }) {
   const { id: wsId } = useParams<{ id: string }>();
-  const { milestones, loading, fetchList, remove } = useMilestoneStore();
+  const { milestones, loading, fetchList, advancePhase } = useMilestoneStore();
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState('');
 
@@ -41,10 +61,18 @@ function MilestoneSidebar({ selectedId, onSelect, onEdit }: { selectedId: string
     setShowCreate(false);
   };
 
+  const handleAdvancePhase = async (msId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!wsId) return;
+    try { await advancePhase(wsId, msId); } catch { /* ignore */ }
+  };
+
   // Compute all-tasks counts
   const totalTasks = milestones.reduce((s, m) => s + m.task_count, 0);
   const totalDone = milestones.reduce((s, m) => s + m.done_count, 0);
   const totalPct = totalTasks > 0 ? Math.round((totalDone / totalTasks) * 100) : 0;
+
+  const sorted = buildDependencyChain(milestones);
 
   return (
     <div className="pulse-sidebar">
@@ -97,10 +125,16 @@ function MilestoneSidebar({ selectedId, onSelect, onEdit }: { selectedId: string
           ) : milestones.length === 0 ? (
             <div style={{ padding: 12, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.76rem' }}>暂无里程碑</div>
           ) : (
-            milestones.map((ms) => {
+            sorted.map((ms) => {
               const pct = ms.task_count > 0 ? Math.round((ms.done_count / ms.task_count) * 100) : 0;
               const isActive = selectedId === ms.id;
-              const st = ms.status;
+              const phase = ms.phase || 'PLANNING';
+              const phaseLabel = MILESTONE_PHASE_LABELS[phase] || phase;
+              const phaseCls = phase === 'DONE' ? 'done' : phase === 'ACTIVE' || phase === 'REVIEW' ? 'active' : 'upcoming';
+
+              // Dependency check
+              const pred = ms.depends_on_id ? milestones.find(m => m.id === ms.depends_on_id) : null;
+              const isBlocked = pred && pred.phase !== 'DONE';
 
               return (
                 <div
@@ -109,17 +143,60 @@ function MilestoneSidebar({ selectedId, onSelect, onEdit }: { selectedId: string
                   onClick={() => onSelect(ms.id)}
                   onDoubleClick={() => onEdit(ms)}
                 >
+                  {/* Dependency chain indicator */}
+                  {ms.depends_on_id && (
+                    <div style={{ fontSize: '0.58rem', color: isBlocked ? 'var(--red-500)' : 'var(--green-500)', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <span style={{ opacity: 0.5 }}>└─</span>
+                      <span>{isBlocked ? '🔒 阻塞' : '✓'} {ms.depends_on_name || ''}</span>
+                    </div>
+                  )}
+
                   <div className="sms-row1">
                     <span className="sms-name">{ms.name}</span>
-                    <span className={`sms-badge ${st === 'DONE' ? 'done' : st === 'ACTIVE' ? 'active' : 'upcoming'}`}>
-                      {st === 'DONE' ? '✓' : st === 'ACTIVE' ? '◎' : '○'}
-                    </span>
+                    <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                      <span className={`sms-badge ${phaseCls}`}>
+                        {phaseLabel}
+                      </span>
+                      {/* Advance phase button */}
+                      {phase !== 'DONE' && (
+                        <button
+                          className="btn-icon-sm"
+                          onClick={(e) => handleAdvancePhase(ms.id, e)}
+                          title="推进阶段"
+                          style={{ width: 16, height: 16, borderRadius: 3, fontSize: '0.55rem', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', cursor: 'pointer', background: 'transparent', border: '1px solid var(--border-light)', lineHeight: 1, padding: 0 }}
+                        >▸</button>
+                      )}
+                    </div>
                   </div>
-                  {ms.description && (
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{ms.description}</div>
+
+                  {/* Phase progress dots */}
+                  <div style={{ display: 'flex', gap: 3, margin: '4px 0' }}>
+                    {['PLANNING', 'ACTIVE', 'REVIEW', 'DONE'].map((ph) => {
+                      const dotIdx = ['PLANNING', 'ACTIVE', 'REVIEW', 'DONE'].indexOf(ph);
+                      const curIdx = ['PLANNING', 'ACTIVE', 'REVIEW', 'DONE'].indexOf(phase);
+                      return (
+                        <div key={ph} style={{
+                          flex: 1, height: 4, borderRadius: 2,
+                          background: dotIdx === curIdx ? (MILESTONE_PHASE_COLORS[ph] || 'var(--blue-500)') :
+                                       dotIdx < curIdx ? 'var(--green-300)' : 'var(--border-light)',
+                          transition: 'background 0.3s',
+                        }} title={MILESTONE_PHASE_LABELS[ph]} />
+                      );
+                    })}
+                  </div>
+
+                  {/* Date range + overdue indicator */}
+                  {(ms.start_date || ms.end_date) && (
+                    <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span>{ms.start_date?.slice(0, 10) || '?'} → {ms.end_date?.slice(0, 10) || '?'}</span>
+                      {isOverdue(ms) && (
+                        <span style={{ color: 'var(--red-500)', fontWeight: 600, fontSize: '0.55rem' }}>⚠ 逾期</span>
+                      )}
+                    </div>
                   )}
+
                   <div className="sms-bar">
-                    <div className={`sms-fill ${st === 'DONE' ? 'done' : st === 'ACTIVE' ? 'active' : 'pending'}`} style={{ width: `${pct}%` }} />
+                    <div className={`sms-fill ${phaseCls}`} style={{ width: `${pct}%` }} />
                   </div>
                   <div className="sms-pct">
                     {ms.done_count}/{ms.task_count} · {pct}%
@@ -138,7 +215,7 @@ function MilestoneSidebar({ selectedId, onSelect, onEdit }: { selectedId: string
           <span><span className="badge badge-blue" style={{ fontSize: '0.6rem', padding: '1px 5px', borderRadius: 4 }}>AI</span> 摘要</span>
         </div>
         <div className="sai-body" style={{ display: 'block' }}>
-          本周完成 <strong>{totalDone} 个任务</strong>，在 <strong>{milestones.filter(m => m.status === 'ACTIVE').length} 个活跃里程碑</strong> 中推进。
+          本周完成 <strong>{totalDone} 个任务</strong>，在 <strong>{milestones.filter(m => m.phase === 'ACTIVE').length} 个活跃里程碑</strong> 中推进。
         </div>
       </div>
     </div>
@@ -216,6 +293,26 @@ function IterationSidebar({ selectedId, onSelect }: { selectedId: string; onSele
                   </div>
                 </div>
               )}
+              {/* Burndown summary */}
+              {it.status === 'ACTIVE' && it.start_date && it.end_date && it.task_count > 0 && (
+                (() => {
+                  const start = new Date(it.start_date);
+                  const end = new Date(it.end_date);
+                  const now = new Date();
+                  const totalDuration = end.getTime() - start.getTime();
+                  const elapsed = now.getTime() - start.getTime();
+                  const timePct = totalDuration > 0 ? Math.min(100, Math.round((elapsed / totalDuration) * 100)) : 0;
+                  const doneCount = it.committed_points || 0;
+                  const workPct = it.capacity_points > 0 ? Math.round((doneCount / it.capacity_points) * 100) : 0;
+                  const ahead = workPct >= timePct;
+                  return (
+                    <div style={{ marginTop: 2, marginLeft: 18, fontSize: '0.58rem', color: ahead ? 'var(--green-500)' : 'var(--red-500)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                      <span>{ahead ? '📈' : '📉'}</span>
+                      <span>已过 {timePct}% ↘ 完成 {workPct}%</span>
+                    </div>
+                  );
+                })()
+              )}
             </div>
           ))}
 
@@ -231,6 +328,30 @@ function IterationSidebar({ selectedId, onSelect }: { selectedId: string; onSele
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   FOCUS STRIP — dynamic workspace signals
+   ═══════════════════════════════════════════ */
+function FocusStrip() {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { focusSignals, fetchFocusSignals } = useWorkspaceStore();
+
+  useEffect(() => { if (wsId) fetchFocusSignals(wsId); }, [wsId]);
+
+  if (focusSignals.length === 0) return null;
+
+  return (
+    <div className="focus-strip">
+      {focusSignals.map((s, i) => (
+        <div key={i} className="fs-item">
+          <span className={`fs-dot ${s.level}`} />
+          <span className="fs-text">{s.text}</span>
+          <button className={`fs-btn${s.level === 'red' || s.type === 'upcoming' ? ' primary' : ''}`}>{s.action}</button>
+        </div>
+      ))}
     </div>
   );
 }
@@ -261,6 +382,31 @@ function KpiRow() {
   const trackItems = isFull ? iterations : milestones;
   const activeItems = trackItems.filter((m: any) => m.status === 'ACTIVE').length;
 
+  // TOPIC-specific metrics
+  const completedMilestones = milestones.filter(m => m.phase === 'DONE').length;
+  const now = new Date();
+  const overdueCount = milestones.filter(m => {
+    if (m.phase === 'DONE') return false;
+    return m.end_date && new Date(m.end_date) < now;
+  }).length;
+
+  // Health score: milestone-weighted for TOPIC
+  const milestoneHealthScore = isFull ? 0 : milestones.reduce((score, m) => {
+    if (m.phase === 'DONE') return score + 1;
+    const isOverdue = m.end_date && new Date(m.end_date) < now;
+    if (isOverdue) return score - 1;
+    if (m.phase === 'ACTIVE' || m.phase === 'REVIEW') return score + 0.5;
+    return score;
+  }, 0);
+  const maxScore = milestones.length;
+  const normalizedHealth = (!isFull && maxScore > 0) ? Math.round((milestoneHealthScore / maxScore) * 100) : 0;
+  const healthLevel = isFull
+    ? (pct >= 70 ? '良好' : pct >= 40 ? '正常' : '注意')
+    : (normalizedHealth >= 70 ? '良好' : normalizedHealth >= 40 ? '正常' : '注意');
+  const healthColor = isFull
+    ? (pct >= 70 ? 'var(--green-600)' : pct >= 40 ? 'var(--blue-600)' : 'var(--amber-600)')
+    : (normalizedHealth >= 70 ? 'var(--green-600)' : normalizedHealth >= 40 ? 'var(--blue-600)' : 'var(--amber-600)');
+
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 14 }}>
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
@@ -268,11 +414,24 @@ function KpiRow() {
         <div style={{ fontSize: '1.8rem', fontWeight: 700 }}>{doneTasks}/{totalTasks}</div>
         <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{pct}% 完成</div>
       </div>
-      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{trackLabel}</div>
-        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--blue-600)' }}>{activeItems}</div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{trackItems.length} 个{trackLabel} · {activeItems} 活跃</div>
-      </div>
+      {isFull ? (
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{trackLabel}</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--blue-600)' }}>{activeItems}</div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{trackItems.length} 个{trackLabel} · {activeItems} 活跃</div>
+        </div>
+      ) : (
+        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>里程碑</div>
+          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: overdueCount > 0 ? 'var(--red-500)' : 'var(--blue-600)' }}>
+            {completedMilestones}/{trackItems.length}
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+            {trackItems.length} 个里程碑 · {completedMilestones} 已完成
+            {overdueCount > 0 && <span style={{ color: 'var(--red-500)', marginLeft: 4 }}>· {overdueCount} 个逾期</span>}
+          </div>
+        </div>
+      )}
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
         <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>团队成员</div>
         <div style={{ fontSize: '1.8rem', fontWeight: 700 }}>{humanMembers}</div>
@@ -280,10 +439,15 @@ function KpiRow() {
       </div>
       <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
         <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>项目健康度</div>
-        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: pct >= 70 ? 'var(--green-600)' : pct >= 40 ? 'var(--blue-600)' : 'var(--amber-600)' }}>
-          {pct >= 70 ? '良好' : pct >= 40 ? '正常' : '注意'}
+        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: healthColor }}>
+          {healthLevel}
         </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>整体进度 {pct}%</div>
+        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+          {isFull
+            ? `整体进度 ${pct}%`
+            : `${completedMilestones}/${trackItems.length} 里程碑完成${overdueCount > 0 ? ` · ${overdueCount} 个逾期` : ''}`
+          }
+        </div>
       </div>
     </div>
   );
@@ -354,11 +518,13 @@ function PulseChat() {
 /* ═══════════════════════════════════════════
    KANBAN VIEW
    ═══════════════════════════════════════════ */
-function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreateTask: (status: string, phase?: string, parentStoryId?: string) => void; onEditTask: (task: Task) => void; scopeFilter: string; isFull: boolean }) {
+function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMode }: { onCreateTask: (status: string, phase?: string, parentStoryId?: string) => void; onEditTask: (task: Task) => void; scopeFilter: string; isFull: boolean; milestoneMode?: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
   const { moveTask, update, advancePhase, returnPhase } = useTaskStore();
   const { user } = useAuthStore();
-  const { members } = useWorkspaceStore();
+  const { members, current } = useWorkspaceStore();
+  const { milestones } = useMilestoneStore();
+  const strictGate = current?.strict_gate !== false;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchAction, setBatchAction] = useState<string | null>(null);
 
@@ -370,18 +536,18 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
   const [kanban, setKanban] = useState<Record<string, Task[]>>({});
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<'phase' | 'status'>('phase');
-  const groupBy = isFull ? viewMode : 'status';
+  const groupBy = milestoneMode ? 'milestone' : (isFull ? viewMode : 'status');
 
   const fetchKanbanData = useCallback(async (wsId: string, groupBy: string) => {
     setLoading(true);
     try {
       const params: Record<string, string> = { group_by: groupBy };
-      if (isFull) params.task_type = 'STORY';
+      if (isFull && !milestoneMode) params.task_type = 'STORY';
       const result = await api.get(`/workspaces/${wsId}/kanban`, { params });
       setKanban(result.data || {});
     } catch { /* ignore */ }
     setLoading(false);
-  }, [isFull]);
+  }, [isFull, milestoneMode]);
 
   useEffect(() => { if (wsId) fetchKanbanData(wsId, groupBy); }, [wsId]);
 
@@ -419,7 +585,12 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
   ];
 
   const phaseColDefs = allPhaseColDefs; // Always show all 6 SDLC phases for Story kanban
-  const colDefs = isFull && viewMode === 'phase' ? phaseColDefs : statusColDefs;
+  const colDefs = milestoneMode
+    ? Object.keys(kanban).map(key => {
+        const meta = (kanban[key] || []).find((t: any) => t._col_meta);
+        return { key, title: (meta as any)?._col_title || key, phase: (meta as any)?._col_phase || '', color: (meta as any)?._col_color };
+      })
+    : (isFull && viewMode === 'phase' ? phaseColDefs : statusColDefs);
 
   // Status colors for cards within a phase column
   const statusBadge: Record<string, { bg: string; label: string }> = {
@@ -494,7 +665,12 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
     }
 
     try {
-      if (isFull) {
+      if (milestoneMode) {
+        // In milestone kanban, dragging changes milestone assignment
+        const targetMsId = colKey === '__unclassified__' ? '' : colKey;
+        await update(wsId, taskId, { milestone_id: targetMsId || null } as any);
+        await fetchKanbanData(wsId, groupBy);
+      } else if (isFull) {
         const phaseIdx = phaseColDefs.findIndex(p => p.key === fromKey);
         const targetIdx = phaseColDefs.findIndex(p => p.key === colKey);
         if (targetIdx === phaseIdx + 1) {
@@ -615,7 +791,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
         overflowX: 'auto',
       }}>
         {colDefs.map((col) => {
-          const colTasks = (kanban[col.key] || []);
+          const colTasks = (kanban[col.key] || []).filter((t: any) => !t._col_meta);
           const doneCount = colTasks.filter((t: Task) => t.status === 'DONE').length;
           const total = colTasks.length;
           const allDone = total > 0 && doneCount === total;
@@ -631,7 +807,11 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
           >
             <div className="col-head" style={isFull ? { flexDirection: 'column', gap: 4, marginBottom: 12 } : {}}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
-                <span>{isFull && col.icon ? `${col.icon} ` : ''}{col.title}</span>
+                <span>{isFull && (col as any).icon ? `${(col as any).icon} ` : ''}{col.title}
+                  {milestoneMode && (col as any).phase && (
+                    <span style={{ marginLeft: 6, fontSize: '0.58rem', padding: '1px 5px', borderRadius: 3, background: (MILESTONE_PHASE_COLORS[(col as any).phase] || 'var(--blue-400)') + '18', color: MILESTONE_PHASE_COLORS[(col as any).phase], fontWeight: 500 }}>{MILESTONE_PHASE_LABELS[(col as any).phase]}</span>
+                  )}
+                </span>
                 <span className="badge" style={{ background: 'var(--bg-hover)' }}>{total}</span>
               </div>
               {isFull && (
@@ -641,14 +821,30 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                       <div style={{ height: '100%', width: `${Math.round((doneCount/total)*100)}%`, background: allDone ? 'var(--green-400)' : 'var(--blue-400)', borderRadius: 2, transition: 'width 0.3s' }} />
                     </div>
                   )}
-                  {/* Gate button: show when any story is DONE, not all */}
-                  {doneCount > 0 && !isLast && (
+                  {/* Gate button: show when any story is DONE, not all (only when strict gate is on) */}
+                  {strictGate && doneCount > 0 && !isLast && (
                     <button
                       className="btn btn-primary btn-xs"
                       style={{ width: '100%', fontSize: '0.68rem', marginTop: 2 }}
                       onClick={() => setGateOpen(col.key)}
                     >
                       推进 {doneCount} 个到「{phaseColDefs[phaseIdx + 1]?.title}」
+                    </button>
+                  )}
+                  {/* When gate is off, direct advance */}
+                  {!strictGate && doneCount > 0 && !isLast && (
+                    <button
+                      className="btn btn-ghost btn-xs"
+                      style={{ width: '100%', fontSize: '0.68rem', marginTop: 2 }}
+                      onClick={async () => {
+                        const tasks = (kanban[col.key] || []).filter((t: Task) => t.status === 'DONE');
+                        for (const t of tasks) {
+                          try { await advancePhase(wsId!, t.id, '直接推进'); } catch { /* skip */ }
+                        }
+                        await fetchKanbanData(wsId!, groupBy);
+                      }}
+                    >
+                      ⚡ 直接推进 {doneCount} 个
                     </button>
                   )}
                   {total > 0 && !allDone && (
@@ -710,6 +906,27 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull }: { onCreat
                     {isOverdue && <span style={{ color: 'var(--red-500)', fontSize: '0.6rem' }}>⚠ 逾期</span>}
                     {story.assignee_name && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }} title={story.assignee_name}>{story.assignee_name}</span>}
                   </div>
+                  {/* TOPIC: milestone phase tag */}
+                  {!isFull && story.milestone_name && (
+                    <div style={{ marginTop: 4, fontSize: '0.58rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <span>📍 {story.milestone_name}</span>
+                      {story.milestone_id && (() => {
+                        const ms = milestones.find(m => m.id === story.milestone_id);
+                        if (!ms) return null;
+                        const msPhase = ms.phase || 'PLANNING';
+                        return (
+                          <span style={{
+                            padding: '1px 5px', borderRadius: 3, fontSize: '0.55rem',
+                            background: (MILESTONE_PHASE_COLORS[msPhase] || 'var(--blue-400)') + '18',
+                            color: MILESTONE_PHASE_COLORS[msPhase] || 'var(--text-muted)',
+                            fontWeight: 500,
+                          }}>
+                            {MILESTONE_PHASE_LABELS[msPhase]}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                  )}
                   {/* Mini phase progress bar */}
                   {isFull && story.task_type === 'STORY' && (
                     <div style={{ display: 'flex', gap: 2, marginTop: 4, alignItems: 'center' }}>
@@ -985,6 +1202,80 @@ function BacklogPanel({ onEditStory, onCreateStory, selectedIteration }: { onEdi
                 <option value="">规划到迭代 ▾</option>
                 {activeIterations.map(it => (
                   <option key={it.id} value={it.id}>{it.name}</option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   IDEA POOL — lightweight backlog for TOPIC workspaces
+   ═══════════════════════════════════════════ */
+function IdeaPool({ selectedMilestone }: { selectedMilestone: string }) {
+  const { id: wsId } = useParams<{ id: string }>();
+  const { ideas, ideasLoading, fetchIdeas } = useTaskStore();
+  const { milestones, fetchList } = useMilestoneStore();
+
+  useEffect(() => {
+    if (wsId) { fetchIdeas(wsId); fetchList(wsId); }
+  }, [wsId]);
+
+  const handlePlan = async (ideaId: string, milestoneId: string) => {
+    if (!wsId || !milestoneId) return;
+    await useTaskStore.getState().update(wsId, ideaId, { milestone_id: milestoneId } as any);
+    fetchIdeas(wsId);
+  };
+
+  const priorityLabel: Record<string, string> = { CRITICAL: '紧急', HIGH: '高', MEDIUM: '中', LOW: '低' };
+  const priorityColor: Record<string, string> = { CRITICAL: 'var(--red-500)', HIGH: 'var(--amber-500)', MEDIUM: 'var(--blue-400)', LOW: 'var(--text-muted)' };
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>未规划想法 · 共 {ideas.length} 个</span>
+      </div>
+
+      {ideasLoading ? (
+        <div style={{ textAlign: 'center', padding: 40, color: 'var(--text-muted)', fontSize: '0.78rem' }}>加载中...</div>
+      ) : ideas.length === 0 ? (
+        <div style={{ textAlign: 'center', padding: 48, color: 'var(--text-muted)', fontSize: '0.78rem' }}>
+          <div style={{ fontSize: '2rem', marginBottom: 8 }}>💡</div>
+          <div>需求池为空</div>
+          <div style={{ fontSize: '0.68rem', marginTop: 4 }}>在任务看板中创建不关联里程碑的任务，它们将出现在这里</div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {ideas.map((idea: Task) => (
+            <div key={idea.id} style={{
+              display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px',
+              background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
+              borderRadius: 'var(--radius-md)',
+            }}>
+              <span style={{
+                width: 4, height: 30, borderRadius: 2,
+                background: priorityColor[idea.priority] || 'var(--text-muted)',
+                flexShrink: 0,
+              }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 600 }}>{idea.title}</div>
+                <div style={{ display: 'flex', gap: 10, fontSize: '0.66rem', color: 'var(--text-muted)', alignItems: 'center', marginTop: 2 }}>
+                  <span style={{ color: priorityColor[idea.priority], fontWeight: 500 }}>{priorityLabel[idea.priority] || idea.priority}</span>
+                  {idea.assignee_name && <span>👤 {idea.assignee_name}</span>}
+                  <span>{idea.created_at?.slice(0, 10)}</span>
+                </div>
+              </div>
+              <select
+                style={{ fontSize: '0.7rem', padding: '4px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-raised)', cursor: 'pointer', flexShrink: 0 }}
+                value=""
+                onChange={(e) => { if (e.target.value) handlePlan(idea.id, e.target.value); }}
+              >
+                <option value="">指派到里程碑 ▾</option>
+                {milestones.filter(m => m.phase !== 'DONE').map(ms => (
+                  <option key={ms.id} value={ms.id}>{ms.name}</option>
                 ))}
               </select>
             </div>
@@ -1674,7 +1965,7 @@ export default function WorkspaceDetailPage() {
   const [selectedMilestone, setSelectedMilestone] = useState<string>('');
   const [selectedIteration, setSelectedIteration] = useState<string>('');
   const [msEditOpen, setMsEditOpen] = useState(false);
-  const [msEditForm, setMsEditForm] = useState<{ id: string; name: string; description: string; plan: string; owner_id: string; status: string; start_date: string; end_date: string }>({ id: '', name: '', description: '', plan: '', owner_id: '', status: 'UPCOMING', start_date: '', end_date: '' });
+  const [msEditForm, setMsEditForm] = useState<{ id: string; name: string; description: string; plan: string; owner_id: string; status: string; phase: string; start_date: string; end_date: string; depends_on_id: string | null }>({ id: '', name: '', description: '', plan: '', owner_id: '', status: 'UPCOMING', phase: 'PLANNING', start_date: '', end_date: '', depends_on_id: null });
   const wsType = current?.type || 'PROJECT';
   const isFull = wsType === 'PROJECT';
   const allMilestones = useMilestoneStore((s) => s.milestones);
@@ -1878,7 +2169,7 @@ export default function WorkspaceDetailPage() {
   };
 
   const openMilestoneEdit = (ms: any) => {
-    setMsEditForm({ id: ms.id, name: ms.name, description: ms.description || '', plan: ms.plan || '', owner_id: ms.owner_id || '', status: ms.status, start_date: ms.start_date?.slice(0, 10) || '', end_date: ms.end_date?.slice(0, 10) || '' });
+    setMsEditForm({ id: ms.id, name: ms.name, description: ms.description || '', plan: ms.plan || '', owner_id: ms.owner_id || '', status: ms.status, phase: ms.phase || 'PLANNING', start_date: ms.start_date?.slice(0, 10) || '', end_date: ms.end_date?.slice(0, 10) || '', depends_on_id: ms.depends_on_id || null });
     setMsEditOpen(true);
   };
 
@@ -1937,13 +2228,14 @@ export default function WorkspaceDetailPage() {
         { key: 'reports', label: '报表' },
       ]
     : [
+        { key: 'ideas', label: '需求池' },
         { key: 'tasks', label: '任务看板' },
         { key: 'kb', label: '知识库' },
         { key: 'members', label: '成员' },
       ];
 
   return (
-    <div style={{ maxWidth: 'none', padding: '16px 20px 40px' }}>
+    <div style={{ maxWidth: 'none', padding: '16px 20px 40px' }} data-ws-type={current.type}>
       {/* Pulse Header */}
       <div className="pulse-header">
         <div className="ph-left">
@@ -1952,7 +2244,21 @@ export default function WorkspaceDetailPage() {
           <div className="proj-meta">
             {isFull ? '研发项目' : '专题项目'} · 创建于 {current.created_at?.slice(0, 10)}
             {' '}
-            <span className="ospec-badge">{isFull ? '迭代驱动研发流程' : '里程碑驱动专题管理'}</span>
+            <span className="ospec-badge">{current.template_name || (isFull ? '迭代驱动研发流程' : '里程碑驱动专题管理')}</span>
+            {isFull && (
+              <span
+                className="ospec-badge"
+                style={{ cursor: 'pointer', marginLeft: 4, background: current.strict_gate ? 'var(--amber-50)' : 'var(--green-50)', color: current.strict_gate ? 'var(--amber-700)' : 'var(--green-700)', border: current.strict_gate ? '1px solid var(--amber-200)' : '1px solid var(--green-200)' }}
+                onClick={async () => {
+                  if (!id) return;
+                  await useWorkspaceStore.getState().update(id, { strict_gate: !current.strict_gate } as any);
+                  fetchDetail(id);
+                }}
+                title={current.strict_gate ? '点击关闭严格门控' : '点击开启严格门控'}
+              >
+                ⚙ {current.strict_gate ? '严格门控' : '灵活推进'}
+              </span>
+            )}
           </div>
         </div>
         <div className="ph-actions">
@@ -1960,24 +2266,8 @@ export default function WorkspaceDetailPage() {
         </div>
       </div>
 
-      {/* Focus Strip */}
-      <div className="focus-strip">
-        <div className="fs-item">
-          <span className="fs-dot red" />
-          <span className="fs-text">前端首页重构延期 3 天 · 阻塞下游 2 个任务</span>
-          <button className="fs-btn primary">处理</button>
-        </div>
-        <div className="fs-item">
-          <span className="fs-dot green" />
-          <span className="fs-text">AI 设计师完成线框图 · 等待 Review</span>
-          <button className="fs-btn primary">Review</button>
-        </div>
-        <div className="fs-item">
-          <span className="fs-dot amber" />
-          <span className="fs-text">李四负载 120% · 建议暂缓新任务</span>
-          <button className="fs-btn">查看</button>
-        </div>
-      </div>
+      {/* Focus Strip — dynamic workspace signals */}
+      <FocusStrip />
 
       {/* KPI Row — full and simple modes only */}
       {<KpiRow />}
@@ -2014,6 +2304,12 @@ export default function WorkspaceDetailPage() {
 
           {/* Tab Panels */}
           <div>
+            {activeTab === 'ideas' && (
+              <div className="ws-panel active" id="ws-panel-ideas" style={{ padding: '16px 20px' }}>
+                <IdeaPool selectedMilestone={selectedMilestone} />
+              </div>
+            )}
+
             {activeTab === 'backlog' && (
               <div className="ws-panel active" id="ws-panel-backlog" style={{ padding: '16px 20px' }}>
                 <BacklogPanel
@@ -2029,7 +2325,7 @@ export default function WorkspaceDetailPage() {
                 <div className="view-switcher">
                   {(isFull
                     ? [{ key: 'kanban', label: '看板' }, { key: 'list', label: '列表' }]
-                    : [{ key: 'kanban', label: '看板' }, { key: 'list', label: '列表' }]
+                    : [{ key: 'kanban', label: '看板(状态)' }, { key: 'kanban-ms', label: '看板(里程碑)' }, { key: 'list', label: '列表' }]
                   ).map((v: any) => (
                     <button
                       key={v.key}
@@ -2041,6 +2337,7 @@ export default function WorkspaceDetailPage() {
                   ))}
                 </div>
                 {activeView === 'kanban' && <KanbanView onCreateTask={(status, phase, parentId) => openTaskPanel(status, undefined, parentId, phase)} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
+                {activeView === 'kanban-ms' && <KanbanView onCreateTask={() => {}} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={selectedMilestone} isFull={false} milestoneMode={true} />}
                 {activeView === 'list' && <ListView onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
               </div>
             )}
@@ -3015,6 +3312,23 @@ export default function WorkspaceDetailPage() {
             <label>结束日期</label>
             <input type="date" value={msEditForm.end_date} onChange={(e) => setMsEditForm((f) => ({ ...f, end_date: e.target.value }))} />
           </div>
+        </div>
+        <div className="form-group">
+          <label>阶段</label>
+          <select value={msEditForm.phase} onChange={(e) => setMsEditForm((f) => ({ ...f, phase: e.target.value }))}>
+            {Object.entries(MILESTONE_PHASE_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </div>
+        <div className="form-group">
+          <label>依赖里程碑</label>
+          <select value={msEditForm.depends_on_id || ''} onChange={(e) => setMsEditForm((f) => ({ ...f, depends_on_id: e.target.value || null }))}>
+            <option value="">无依赖</option>
+            {milestones.filter(m => m.id !== msEditForm.id).map((ms) => (
+              <option key={ms.id} value={ms.id}>{ms.name} ({MILESTONE_PHASE_LABELS[ms.phase]})</option>
+            ))}
+          </select>
         </div>
         <div className="form-group">
           <label>状态</label>

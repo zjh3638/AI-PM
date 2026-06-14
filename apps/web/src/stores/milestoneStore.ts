@@ -9,6 +9,7 @@ interface MilestoneState {
   create(wsId: string, data: Partial<Milestone>): Promise<Milestone>;
   update(wsId: string, msId: string, data: Partial<Milestone>): Promise<void>;
   remove(wsId: string, msId: string): Promise<void>;
+  advancePhase(wsId: string, msId: string): Promise<void>;
 }
 
 export const useMilestoneStore = create<MilestoneState>((set, get) => ({
@@ -34,6 +35,11 @@ export const useMilestoneStore = create<MilestoneState>((set, get) => ({
 
   remove: async (wsId, msId) => {
     await api.delete(`/workspaces/${wsId}/milestones/${msId}`);
+    get().fetchList(wsId);
+  },
+
+  advancePhase: async (wsId, msId) => {
+    await api.post(`/workspaces/${wsId}/milestones/${msId}/advance-phase`);
     get().fetchList(wsId);
   },
 }));

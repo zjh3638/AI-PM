@@ -13,6 +13,8 @@ class MilestoneCreate(BaseModel):
     end_date: Optional[date] = None
     sort_order: int = 0
     color: Optional[str] = None
+    phase: Optional[str] = "PLANNING"
+    depends_on_id: Optional[str] = None
 
 
 class MilestoneUpdate(BaseModel):
@@ -23,5 +25,7 @@ class MilestoneUpdate(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     status: Optional[str] = None
+    phase: Optional[str] = None
     sort_order: Optional[int] = None
     color: Optional[str] = None
+    depends_on_id: Optional[str] = None

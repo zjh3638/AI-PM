@@ -1,6 +1,6 @@
 from typing import Optional, TYPE_CHECKING
 
-from sqlalchemy import String, ForeignKey
+from sqlalchemy import String, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -24,6 +24,7 @@ class Workspace(Base, UUIDMixin, TimestampMixin):
     department_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("departments.id"), nullable=True)
     owner_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     template_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    strict_gate: Mapped[bool] = mapped_column(Boolean, default=True)
     git_repo_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     members: Mapped[list["WorkspaceMember"]] = relationship("WorkspaceMember", back_populates="workspace")

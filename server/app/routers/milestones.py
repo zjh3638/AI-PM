@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -28,6 +29,7 @@ async def create_milestone(
         owner_id=req.owner_id,
         start_date=req.start_date, end_date=req.end_date,
         sort_order=req.sort_order, color=req.color,
+        phase=req.phase, depends_on_id=req.depends_on_id,
     )
     data_list = await ms_service.list_milestones(db, workspace_id)
     created = next((m for m in data_list if m["id"] == ms.id), None)
@@ -78,7 +80,8 @@ async def update_milestone(
         name=req.name, description=req.description, plan=req.plan,
         owner_id=req.owner_id,
         start_date=req.start_date, end_date=req.end_date,
-        status=req.status, sort_order=req.sort_order, color=req.color,
+        status=req.status, phase=req.phase, sort_order=req.sort_order, color=req.color,
+        depends_on_id=req.depends_on_id,
     )
     data_list = await ms_service.list_milestones(db, workspace_id)
     updated = next((m for m in data_list if m["id"] == milestone_id), None)
@@ -98,3 +101,21 @@ async def delete_milestone(
         raise AppException(404, "里程碑不存在", 404)
     await ms_service.delete_milestone(db, ms)
     return {"code": 0, "message": "ok", "data": None}
+
+
+@router.post("/{milestone_id}/advance-phase", response_model=APIResponse)
+async def advance_milestone_phase(
+    workspace_id: str,
+    milestone_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    ms = await ms_service.get_milestone(db, milestone_id)
+    if ms is None or ms.workspace_id != workspace_id:
+        raise AppException(404, "里程碑不存在", 404)
+    ms = await ms_service.advance_milestone_phase(db, ms)
+    data_list = await ms_service.list_milestones(db, workspace_id)
+    updated = next((m for m in data_list if m["id"] == milestone_id), None)
+    return {"code": 0, "message": "ok", "data": updated}

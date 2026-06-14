@@ -61,3 +61,15 @@
   --normal: 200ms;
   --slow: 350ms;
 }
+
+/* ═══ TOPIC workspace — teal accent ═══ */
+[data-ws-type="TOPIC"] {
+  --blue-50: #f0fdfa;
+  --blue-100: #ccfbf1;
+  --blue-200: #99f6e4;
+  --blue-400: #2dd4bf;
+  --blue-500: #14b8a6;
+  --blue-600: #0d9488;
+  --blue-700: #0f766e;
+  --blue-800: #115e59;
+}

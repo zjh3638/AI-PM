@@ -24,6 +24,8 @@ def _ws_to_dict(ws, member_count: int = 0) -> dict:
         "description": ws.description, "type": ws.type,
         "status": ws.status, "visibility": ws.visibility,
         "department_id": ws.department_id, "git_repo_path": ws.git_repo_path,
+        "template_name": getattr(ws, '_template_name', None),
+        "strict_gate": getattr(ws, 'strict_gate', True),
         "member_count": member_count,
         "created_at": ws.created_at.isoformat() if ws.created_at else "",
         "updated_at": ws.updated_at.isoformat() if ws.updated_at else "",
@@ -107,6 +109,13 @@ async def available_users(
     return {"code": 0, "message": "ok", "data": data}
 
 
+async def _load_template_name(db, ws):
+    if ws.template_id:
+        from app.models.workflow import WorkflowTemplate
+        tmpl = await db.get(WorkflowTemplate, ws.template_id)
+        ws._template_name = tmpl.name if tmpl else None
+
+
 @router.get("/{workspace_id}", response_model=APIResponse)
 async def get_workspace(
     workspace_id: str,
@@ -117,6 +126,7 @@ async def get_workspace(
     if ws is None:
         raise AppException(404, "工作空间不存在", 404)
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
+    await _load_template_name(db, ws)
     mc = await _count_members(db, workspace_id)
     return {"code": 0, "message": "ok", "data": _ws_to_dict(ws, mc)}
 
@@ -132,7 +142,8 @@ async def update_workspace(
     ws = await ws_service.get_workspace(db, workspace_id)
     if ws is None:
         raise AppException(404, "工作空间不存在", 404)
-    ws = await ws_service.update_workspace(db, ws, name=req.name, description=req.description, type=req.type, visibility=req.visibility)
+    ws = await ws_service.update_workspace(db, ws, name=req.name, description=req.description, type=req.type, visibility=req.visibility, strict_gate=req.strict_gate)
+    await _load_template_name(db, ws)
     mc = await _count_members(db, workspace_id)
     return {"code": 0, "message": "ok", "data": _ws_to_dict(ws, mc)}
 

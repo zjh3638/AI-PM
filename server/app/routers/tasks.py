@@ -302,8 +302,11 @@ async def advance_task_phase(
     if task.status != "DONE":
         raise AppException(400, "任务未完成，不能推进阶段（需要先完成当前阶段的任务）", 400)
 
-    # Enforce review gates for STORY tasks
-    can_adv, gate_error = await task_service.check_phase_advance_gate(task, db)
+    # Enforce review gates for STORY tasks (respect workspace strict_gate setting)
+    from app.models.workspace import Workspace
+    workspace = await db.get(Workspace, workspace_id)
+    strict_gate = workspace.strict_gate if workspace else True
+    can_adv, gate_error = await task_service.check_phase_advance_gate(task, db, strict_gate)
     if not can_adv:
         raise AppException(400, gate_error, 400)
 
@@ -508,6 +511,18 @@ async def review_design(
 
 class PlanRequest(BaseModel):
     iteration_id: str
+
+
+@router.get("/ideas", response_model=APIResponse)
+async def list_ideas(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    """Lightweight idea pool for TOPIC workspaces — tasks without a milestone."""
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
+    data = await task_service.list_ideas(db, workspace_id)
+    return {"code": 0, "message": "ok", "data": data}
 
 
 @router.get("/backlog", response_model=APIResponse)

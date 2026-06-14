@@ -175,9 +175,11 @@ def get_phases_for_type(task_type: Optional[str] = None) -> list[str]:
     return merged
 
 
-async def check_phase_advance_gate(task: Task, db: AsyncSession) -> tuple[bool, str]:
+async def check_phase_advance_gate(task: Task, db: AsyncSession, strict_gate: bool = True) -> tuple[bool, str]:
     """Validate that a STORY task meets all conditions to advance to the next phase."""
     if task.task_type != "STORY":
+        return True, ""
+    if not strict_gate:
         return True, ""
 
     phases = STORY_PHASES
@@ -252,6 +254,22 @@ async def get_kanban(db: AsyncSession, workspace_id: str, group_by: str = "statu
     if group_by == "phase":
         phases = get_phases_for_type(task_type)
         return {p: [_task_to_dict(t) for t in all_tasks if t.phase == p] for p in phases}
+    elif group_by == "milestone":
+        from app.models.milestone import Milestone
+        ms_result = await db.execute(
+            select(Milestone).where(Milestone.workspace_id == workspace_id).order_by(Milestone.sort_order)
+        )
+        milestones = list(ms_result.scalars().all())
+        columns: dict = {}
+        for ms in milestones:
+            columns[ms.id] = [_task_to_dict(t) for t in all_tasks if t.milestone_id == ms.id]
+            columns[ms.id].insert(0, {"_col_meta": True, "_col_key": ms.id, "_col_title": ms.name, "_col_phase": ms.phase, "_col_color": ms.color})
+        # Unclassified tasks
+        unclassified = [_task_to_dict(t) for t in all_tasks if not t.milestone_id]
+        if unclassified:
+            columns["__unclassified__"] = unclassified
+            columns["__unclassified__"].insert(0, {"_col_meta": True, "_col_key": "__unclassified__", "_col_title": "未归类", "_col_phase": "", "_col_color": None})
+        return columns
     else:
         columns = {}
         for state in ["TODO", "IN_PROGRESS", "IN_REVIEW", "DONE"]:
@@ -370,6 +388,18 @@ def _task_to_dict(task: Task) -> dict:
         "created_at": task.created_at.isoformat() if task.created_at else "",
         "updated_at": task.updated_at.isoformat() if task.updated_at else "",
     }
+
+
+async def list_ideas(db: AsyncSession, workspace_id: str) -> list[dict]:
+    """Return tasks without milestone_id — lightweight idea pool for TOPIC workspaces."""
+    result = await db.execute(
+        select(Task)
+        .where(Task.workspace_id == workspace_id, Task.milestone_id == None)
+        .options(selectinload(Task.assignee), selectinload(Task.proposer))
+        .order_by(Task.priority.asc(), Task.created_at.desc())
+    )
+    tasks = result.scalars().all()
+    return [_task_to_dict(t) for t in tasks]
 
 
 async def list_backlog(db: AsyncSession, workspace_id: str) -> list[dict]:

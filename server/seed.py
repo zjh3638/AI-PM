@@ -11,6 +11,7 @@ from app.models.department import Department
 from app.models.role import Role
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
+from app.models.workflow import WorkflowTemplate, WorkflowState, WorkflowTransition
 from app.models.milestone import Milestone
 from app.models.iteration import Iteration
 from app.models.task import Task
@@ -41,6 +42,20 @@ async def seed():
                 await conn.execute(text(f"ALTER TABLE tasks ADD COLUMN {col}"))
             except Exception:
                 pass
+        # Milestone phase + dependency
+        for col in [
+            "phase VARCHAR(20) DEFAULT 'PLANNING'",
+            "depends_on_id VARCHAR(36) REFERENCES milestones(id)",
+        ]:
+            try:
+                await conn.execute(text(f"ALTER TABLE milestones ADD COLUMN {col}"))
+            except Exception:
+                pass
+        # Workspace strict_gate
+        try:
+            await conn.execute(text("ALTER TABLE workspaces ADD COLUMN strict_gate BOOLEAN DEFAULT 1"))
+        except Exception:
+            pass
 
     async with async_session() as db:
         dept = Department(id="dept-001", name="默认部门", path="/默认部门")
@@ -67,6 +82,43 @@ async def seed():
 
         await db.flush()
 
+        # ═══ Workflow Templates ═══
+        tmpl_full = WorkflowTemplate(name="完整研发流程", description="6阶段SDLC：需求池→规划→设计→开发→测试→发布", is_builtin=True)
+        tmpl_lite = WorkflowTemplate(name="轻量专题流程", description="4阶段轻量流程：计划→执行→审核→完成", is_builtin=True)
+        db.add_all([tmpl_full, tmpl_lite])
+        await db.flush()
+
+        # Full SDLC states
+        full_states = [
+            WorkflowState(template_id=tmpl_full.id, name="需求池", order=0, category="TODO"),
+            WorkflowState(template_id=tmpl_full.id, name="需求规划", order=1, category="TODO"),
+            WorkflowState(template_id=tmpl_full.id, name="方案设计", order=2, category="IN_PROGRESS"),
+            WorkflowState(template_id=tmpl_full.id, name="开发实现", order=3, category="IN_PROGRESS"),
+            WorkflowState(template_id=tmpl_full.id, name="测试验证", order=4, category="IN_REVIEW"),
+            WorkflowState(template_id=tmpl_full.id, name="发布上线", order=5, category="DONE"),
+        ]
+        db.add_all(full_states)
+        await db.flush()
+
+        # Full SDLC transitions
+        for i in range(len(full_states) - 1):
+            db.add(WorkflowTransition(template_id=tmpl_full.id, from_state_id=full_states[i].id, to_state_id=full_states[i+1].id, name=f"{full_states[i].name}→{full_states[i+1].name}"))
+
+        # Lite topic states
+        lite_states = [
+            WorkflowState(template_id=tmpl_lite.id, name="计划", order=0, category="TODO"),
+            WorkflowState(template_id=tmpl_lite.id, name="执行中", order=1, category="IN_PROGRESS"),
+            WorkflowState(template_id=tmpl_lite.id, name="审核中", order=2, category="IN_REVIEW"),
+            WorkflowState(template_id=tmpl_lite.id, name="已完成", order=3, category="DONE"),
+        ]
+        db.add_all(lite_states)
+        await db.flush()
+
+        for i in range(len(lite_states) - 1):
+            db.add(WorkflowTransition(template_id=tmpl_lite.id, from_state_id=lite_states[i].id, to_state_id=lite_states[i+1].id, name=f"{lite_states[i].name}→{lite_states[i+1].name}"))
+
+        await db.flush()
+
         # ═══ Workspace 1: R&D project (PROJECT type) — iterations only, no milestones ═══
         ws_rd = Workspace(
             name="AI-PM 平台开发",
@@ -75,6 +127,7 @@ async def seed():
             type="PROJECT",
             status="ACTIVE",
             visibility="PRIVATE",
+            template_id=tmpl_full.id,
         )
         db.add(ws_rd)
         await db.flush()
@@ -173,6 +226,7 @@ async def seed():
             type="TOPIC",
             status="ACTIVE",
             visibility="PRIVATE",
+            template_id=tmpl_lite.id,
         )
         db.add(ws_topic)
         await db.flush()
@@ -191,6 +245,7 @@ async def seed():
             ms = Milestone(
                 workspace_id=ws_topic.id, name=name, description=desc,
                 status="ACTIVE" if i == 0 else ("DONE" if i < 1 else "UPCOMING"),
+                phase="ACTIVE" if i == 0 else ("DONE" if i < 1 else "PLANNING"),
                 sort_order=i,
                 start_date=today + timedelta(days=i * 7 - 7 if i > 0 else -7),
                 end_date=today + timedelta(days=(i + 1) * 7 - 7),
@@ -198,6 +253,9 @@ async def seed():
             milestones.append(ms)
             db.add(ms)
         await db.flush()
+        # Set milestone dependency chain
+        for i in range(1, len(milestones)):
+            milestones[i].depends_on_id = milestones[i - 1].id
 
         topic_task_defs = [
             ("Jira功能对比", 5, 0),

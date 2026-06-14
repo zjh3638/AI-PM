@@ -19,6 +19,8 @@ export interface Workspace {
   member_count: number;
   department_id: string | null;
   git_repo_path: string | null;
+  template_name: string | null;
+  strict_gate: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -120,13 +122,30 @@ export interface Milestone {
   start_date: string;
   end_date: string;
   status: string;
+  phase: string;
   sort_order: number;
   color: string | null;
+  depends_on_id: string | null;
+  depends_on_name: string | null;
   task_count: number;
   done_count: number;
   created_at: string;
   updated_at: string;
 }
+
+export const MILESTONE_PHASE_LABELS: Record<string, string> = {
+  PLANNING: '计划',
+  ACTIVE: '执行中',
+  REVIEW: '审核中',
+  DONE: '已完成',
+};
+
+export const MILESTONE_PHASE_COLORS: Record<string, string> = {
+  PLANNING: 'var(--blue-500)',
+  ACTIVE: 'var(--amber-500)',
+  REVIEW: 'var(--purple-500)',
+  DONE: 'var(--green-500)',
+};
 
 export interface Iteration {
   id: string;

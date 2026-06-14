@@ -14,6 +14,8 @@ interface TaskState {
   kanbanGroupBy: string;
   backlog: Task[];
   backlogLoading: boolean;
+  ideas: Task[];
+  ideasLoading: boolean;
 
   fetchList: (wsId: string, params?: Record<string, any>) => Promise<void>;
   fetchDetail: (wsId: string, taskId: string) => Promise<void>;
@@ -21,6 +23,7 @@ interface TaskState {
   fetchEpics: (wsId: string) => Promise<void>;
   fetchKanban: (wsId: string, groupBy?: string, taskType?: string) => Promise<void>;
   fetchBacklog: (wsId: string) => Promise<void>;
+  fetchIdeas: (wsId: string) => Promise<void>;
   planStory: (wsId: string, storyId: string, iterationId: string) => Promise<void>;
   fetchPermissions: (wsId: string, taskId: string) => Promise<TaskPermissions>;
   create: (wsId: string, data: Partial<Task>) => Promise<Task>;
@@ -46,11 +49,19 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   kanbanGroupBy: 'status',
   backlog: [],
   backlogLoading: false,
+  ideas: [],
+  ideasLoading: false,
 
   fetchBacklog: async (wsId) => {
     set({ backlogLoading: true });
     const result = await api.get(`/workspaces/${wsId}/backlog`);
     set({ backlog: result.data, backlogLoading: false });
+  },
+
+  fetchIdeas: async (wsId) => {
+    set({ ideasLoading: true });
+    const result = await api.get(`/workspaces/${wsId}/ideas`);
+    set({ ideas: result.data, ideasLoading: false });
   },
 
   planStory: async (wsId, storyId, iterationId) => {

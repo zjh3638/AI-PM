@@ -17,6 +17,7 @@ class WorkspaceUpdate(BaseModel):
     description: Optional[str] = None
     type: Optional[Literal["PROJECT", "TOPIC"]] = None
     visibility: Optional[str] = None
+    strict_gate: Optional[bool] = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -29,6 +30,8 @@ class WorkspaceResponse(BaseModel):
     visibility: str
     department_id: Optional[str] = None
     git_repo_path: Optional[str] = None
+    template_name: Optional[str] = None
+    strict_gate: bool = True
     member_count: int = 0
     created_at: str
     updated_at: str

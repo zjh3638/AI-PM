@@ -15,6 +15,16 @@ async def create_workspace(db: AsyncSession, creator: User, **kwargs) -> Workspa
     if result.scalar_one_or_none():
         raise AppException(400, "工作空间标识已存在")
 
+    # Auto-assign workflow template based on type
+    if "template_id" not in kwargs or not kwargs.get("template_id"):
+        from app.models.workflow import WorkflowTemplate
+        ws_type = kwargs.get("type", "PROJECT")
+        template_name = "完整研发流程" if ws_type == "PROJECT" else "轻量专题流程"
+        tmpl_result = await db.execute(select(WorkflowTemplate).where(WorkflowTemplate.name == template_name))
+        template = tmpl_result.scalar_one_or_none()
+        if template:
+            kwargs["template_id"] = template.id
+
     ws = Workspace(**kwargs)
     db.add(ws)
     await db.flush()
@@ -76,11 +86,20 @@ async def list_workspaces(
         mc_result = await db.execute(
             select(func.count(WorkspaceMember.id)).where(WorkspaceMember.workspace_id == ws.id)
         )
+        # Resolve template name
+        template_name = None
+        if ws.template_id:
+            from app.models.workflow import WorkflowTemplate
+            tmpl = await db.get(WorkflowTemplate, ws.template_id)
+            template_name = tmpl.name if tmpl else None
+
         data.append({
             "id": ws.id, "name": ws.name, "key": ws.key,
             "description": ws.description, "type": ws.type,
             "status": ws.status, "visibility": ws.visibility,
             "department_id": ws.department_id, "git_repo_path": ws.git_repo_path,
+            "template_id": ws.template_id, "template_name": template_name,
+            "strict_gate": ws.strict_gate if hasattr(ws, 'strict_gate') else True,
             "member_count": mc_result.scalar() or 0,
             "created_at": ws.created_at.isoformat() if ws.created_at else "",
             "updated_at": ws.updated_at.isoformat() if ws.updated_at else "",

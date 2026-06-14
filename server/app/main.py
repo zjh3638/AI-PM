@@ -6,7 +6,7 @@ from app.exceptions import AppException, app_exception_handler, global_exception
 from app.middleware import request_logging_middleware
 from app.database import engine, Base
 from app.models import *  # noqa: F401,F403 — ensure all models are registered
-from app.routers import auth, users, workspaces, tasks, iterations, comments, requirements, documents, workflows, search, dashboard, milestones, departments, attachments
+from app.routers import auth, users, workspaces, tasks, iterations, comments, requirements, documents, workflows, search, dashboard, milestones, departments, attachments, signals
 
 app = FastAPI(title="AI-PM API", version="0.0.1")
 
@@ -41,6 +41,7 @@ app.include_router(dashboard.router)
 app.include_router(milestones.router)
 app.include_router(departments.router)
 app.include_router(attachments.router)
+app.include_router(signals.router)
 
 # Serve uploaded files
 from pathlib import Path
