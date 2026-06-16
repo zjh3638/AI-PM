@@ -2141,7 +2141,7 @@ export default function WorkspaceDetailPage() {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
-  const [detailTab, setDetailTab] = useState<'info' | 'related' | 'attachments'>('info');
+  const [detailTab, setDetailTab] = useState<'info' | 'progress' | 'related' | 'attachments'>('info');
   const [relatedTasks, setRelatedTasks] = useState<Task[]>([]);
   const [parentStory, setParentStory] = useState<Task | null>(null);
   const [attachments, setAttachments] = useState<any[]>([]);
@@ -2643,6 +2643,17 @@ export default function WorkspaceDetailPage() {
                 }}
               >🔗 上级任务</button>
             )}
+            {editingTask && (
+              <button
+                onClick={() => setDetailTab('progress')}
+                style={{
+                  padding: '6px 16px', fontSize: '0.76rem', fontWeight: detailTab === 'progress' ? 600 : 400,
+                  border: 'none', background: 'none', borderBottom: detailTab === 'progress' ? '2px solid var(--blue-500)' : '2px solid transparent',
+                  color: detailTab === 'progress' ? 'var(--blue-600)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >📈 进展反馈</button>
+            )}
             <button
               onClick={() => setDetailTab('attachments')}
               style={{
@@ -2653,6 +2664,11 @@ export default function WorkspaceDetailPage() {
               }}
             >📎 附件 ({attachments.length})</button>
           </div>
+        )}
+
+        {/* Progress Tab Content */}
+        {editingTask && detailTab === 'progress' && (
+          <TaskProgressSection taskId={editingTask.id} workspaceId={id!} />
         )}
 
         {/* Attachments Tab Content */}
@@ -2880,11 +2896,6 @@ export default function WorkspaceDetailPage() {
               })}
             </div>
           </div>
-        )}
-
-        {/* ─── PROGRESS FEEDBACK ─── */}
-        {editingTask && (
-          <TaskProgressSection taskId={editingTask.id} workspaceId={id!} />
         )}
 
         {/* ─── COMMON FIELDS ─── */}
