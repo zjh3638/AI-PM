@@ -10,6 +10,7 @@ import { useIterationStore } from '../../stores/iterationStore';
 import { useMilestoneStore } from '../../stores/milestoneStore';
 import SlidePanel from '../../components/common/SlidePanel';
 import KnowledgeBasePanel from '../../components/KnowledgeBase/KnowledgeBasePanel';
+import RiskPanel from './RiskPanel';
 import api from '../../api/client';
 
 function getFileIcon(mimeType: string): string {
@@ -520,7 +521,7 @@ function PulseChat() {
    ═══════════════════════════════════════════ */
 function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMode }: { onCreateTask: (status: string, phase?: string, parentStoryId?: string) => void; onEditTask: (task: Task) => void; scopeFilter: string; isFull: boolean; milestoneMode?: boolean }) {
   const { id: wsId } = useParams<{ id: string }>();
-  const { moveTask, update, advancePhase, returnPhase } = useTaskStore();
+  const { moveTask, update, advancePhase, returnPhase, kanbanVersion } = useTaskStore();
   const { user } = useAuthStore();
   const { members, current } = useWorkspaceStore();
   const { milestones } = useMilestoneStore();
@@ -549,7 +550,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMo
     setLoading(false);
   }, [isFull, milestoneMode]);
 
-  useEffect(() => { if (wsId) fetchKanbanData(wsId, groupBy); }, [wsId]);
+  useEffect(() => { if (wsId) fetchKanbanData(wsId, groupBy); }, [wsId, groupBy, kanbanVersion]);
 
   const toggleExpand = async (storyId: string) => {
     const next = new Set(expandedStories);
@@ -569,10 +570,15 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMo
   // All workspace members can attempt to drag — backend enforces permissions
   const canDrag = (_task: Task): boolean => true;
 
-  const statusColDefs: { key: string; title: string; icon?: string }[] = [
+  const fullStatusColDefs: { key: string; title: string; icon?: string }[] = [
     { key: 'TODO', title: '待办' },
     { key: 'IN_PROGRESS', title: '进行中' },
     { key: 'IN_REVIEW', title: '待 Review' },
+    { key: 'DONE', title: '已完成' },
+  ];
+  const topicStatusColDefs: { key: string; title: string; icon?: string }[] = [
+    { key: 'TODO', title: '待办' },
+    { key: 'IN_PROGRESS', title: '进行中' },
     { key: 'DONE', title: '已完成' },
   ];
   const allPhaseColDefs: { key: string; title: string; icon?: string; deliverables: string }[] = [
@@ -590,7 +596,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMo
         const meta = (kanban[key] || []).find((t: any) => t._col_meta);
         return { key, title: (meta as any)?._col_title || key, phase: (meta as any)?._col_phase || '', color: (meta as any)?._col_color };
       })
-    : (isFull && viewMode === 'phase' ? phaseColDefs : statusColDefs);
+    : (isFull ? (viewMode === 'phase' ? phaseColDefs : fullStatusColDefs) : topicStatusColDefs);
 
   // Status colors for cards within a phase column
   const statusBadge: Record<string, { bg: string; label: string }> = {
@@ -613,7 +619,9 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMo
   const [gateNote, setGateNote] = useState('');
   const [dragError, setDragError] = useState('');
 
-  const statusCycle: Record<string, string> = { TODO: 'IN_PROGRESS', IN_PROGRESS: 'IN_REVIEW', IN_REVIEW: 'DONE', DONE: 'TODO' };
+  const statusCycle: Record<string, string> = isFull
+    ? { TODO: 'IN_PROGRESS', IN_PROGRESS: 'IN_REVIEW', IN_REVIEW: 'DONE', DONE: 'TODO' }
+    : { TODO: 'IN_PROGRESS', IN_PROGRESS: 'DONE', DONE: 'TODO' };
   const statusQuickLabel: Record<string, string> = { TODO: '待办', IN_PROGRESS: '进行中', IN_REVIEW: '审核中', DONE: '已完成' };
 
   const handleStatusQuick = async (e: React.MouseEvent, task: Task) => {
@@ -628,6 +636,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMo
     const nextStatus = statusCycle[task.status] || 'TODO';
     try {
       await update(wsId, task.id, { status: nextStatus } as any);
+      await fetchKanbanData(wsId, groupBy);
     } catch (err: any) {
       const msg = err?.response?.data?.message || '状态变更失败';
       setDragError(msg);
@@ -656,6 +665,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMo
       const nextStatus = statusCycle[task.status] || 'TODO';
       try {
         await update(wsId, taskId, { status: nextStatus } as any);
+        await fetchKanbanData(wsId, groupBy);
       } catch (err: any) {
         const msg = err?.response?.data?.message || '状态变更失败';
         setDragError(msg);
@@ -685,6 +695,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMo
         await fetchKanbanData(wsId, groupBy);  // refresh local kanban immediately
       } else {
         await moveTask(wsId, taskId, colKey, 0);
+        await fetchKanbanData(wsId, groupBy);
       }
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || '操作失败：没有权限或状态不正确';
@@ -995,7 +1006,7 @@ function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFull, milestoneMo
               </div>
                 );
             })}
-            <div className="col-add" onClick={() => onCreateTask(isFull ? 'TODO' : col.key, isFull ? col.key : undefined)}>+ 新建需求</div>
+            <div className="col-add" onClick={() => onCreateTask(isFull ? 'TODO' : col.key, isFull ? col.key : undefined)}>{isFull ? '+ 新建需求' : '+ 新建任务'}</div>
           </div>
           );
         })}
@@ -1979,7 +1990,7 @@ export default function WorkspaceDetailPage() {
     if (ttype === 'BUG') return 'DEVELOPMENT';
     return 'DEVELOPMENT';
   };
-  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; phase: string; iteration_id?: string; milestone_id: string; assignee_id?: string; reviewer_id?: string; proposer_id?: string; analyst_id?: string; qa_owner_id?: string; acceptance_owner_id?: string; verifier_id?: string; parent_id?: string; design_doc?: string; prd_doc?: string; self_test_report?: string; test_report?: string; rating?: number; evaluation?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', phase: 'DEVELOPMENT', milestone_id: '', design_doc: '' });
+  const [taskForm, setTaskForm] = useState<{ title: string; description: string; task_type: string; priority: string; status: string; phase: string; iteration_id?: string; milestone_id: string; assignee_id?: string; reviewer_id?: string; proposer_id?: string; analyst_id?: string; qa_owner_id?: string; acceptance_owner_id?: string; verifier_id?: string; parent_id?: string; design_doc?: string; prd_doc?: string; self_test_report?: string; test_report?: string; rating?: number; evaluation?: string; due_date?: string }>({ title: '', description: '', task_type: 'TASK', priority: 'MEDIUM', status: 'TODO', phase: 'DEVELOPMENT', milestone_id: '', design_doc: '', due_date: '' });
   const [stories, setStories] = useState<Task[]>([]);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -2095,7 +2106,7 @@ export default function WorkspaceDetailPage() {
     }
     if (task) {
       setEditingTask(task);
-      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'PLAN', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, reviewer_id: task.reviewer_id || undefined, proposer_id: task.proposer_id || undefined, analyst_id: task.analyst_id || undefined, qa_owner_id: task.qa_owner_id || undefined, acceptance_owner_id: (task as any).acceptance_owner_id || undefined, verifier_id: task.verifier_id || undefined, parent_id: task.parent_id || undefined, design_doc: (task as any).design_doc || '', prd_doc: (task as any).prd_doc || '', self_test_report: (task as any).self_test_report || '', test_report: (task as any).test_report || '', rating: (task as any).rating || undefined, evaluation: (task as any).evaluation || '' });
+      setTaskForm({ title: task.title, description: task.description || '', task_type: task.task_type, priority: task.priority, status: task.status, phase: task.phase || 'PLAN', iteration_id: task.iteration_id || undefined, milestone_id: task.milestone_id || '', assignee_id: task.assignee_id || undefined, reviewer_id: task.reviewer_id || undefined, proposer_id: task.proposer_id || undefined, analyst_id: task.analyst_id || undefined, qa_owner_id: task.qa_owner_id || undefined, acceptance_owner_id: (task as any).acceptance_owner_id || undefined, verifier_id: task.verifier_id || undefined, parent_id: task.parent_id || undefined, design_doc: (task as any).design_doc || '', prd_doc: (task as any).prd_doc || '', self_test_report: (task as any).self_test_report || '', test_report: (task as any).test_report || '', rating: (task as any).rating || undefined, evaluation: (task as any).evaluation || '', due_date: task.due_date || '' });
       fetchComments(task.id);
       fetchActivity(task.id);
       fetchRelations(task);
@@ -2122,6 +2133,7 @@ export default function WorkspaceDetailPage() {
         acceptance_owner_id: isStory && user ? user.id : undefined,
         verifier_id: undefined,
         parent_id: parentStoryId || undefined,
+        due_date: '',
       });
     }
     setShowDelete(false);
@@ -2225,13 +2237,14 @@ export default function WorkspaceDetailPage() {
         { key: 'kb', label: '知识库' },
         { key: 'iterations', label: '迭代' },
         { key: 'members', label: '成员' },
+        { key: 'risks', label: '风险管理' },
         { key: 'reports', label: '报表' },
       ]
     : [
-        { key: 'ideas', label: '需求池' },
         { key: 'tasks', label: '任务看板' },
         { key: 'kb', label: '知识库' },
         { key: 'members', label: '成员' },
+        { key: 'risks', label: '风险管理' },
       ];
 
   return (
@@ -2360,6 +2373,12 @@ export default function WorkspaceDetailPage() {
               </div>
             )}
 
+            {activeTab === 'risks' && (
+              <div className="ws-panel active">
+                <RiskPanel />
+              </div>
+            )}
+
             {activeTab === 'reports' && (
               <div className="ws-panel active">
                 <ReportsPanel />
@@ -2431,7 +2450,7 @@ export default function WorkspaceDetailPage() {
                   color: detailTab === 'related' ? 'var(--blue-600)' : 'var(--text-muted)',
                   cursor: 'pointer',
                 }}
-              >🔗 关联需求</button>
+              >🔗 上级任务</button>
             )}
             <button
               onClick={() => setDetailTab('attachments')}
@@ -2572,7 +2591,7 @@ export default function WorkspaceDetailPage() {
                             const t = useTaskStore.getState().current;
                             if (t) {
                               setEditingTask(t);
-                              setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'PLAN', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, acceptance_owner_id: (t as any).acceptance_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined, design_doc: (t as any).design_doc || '', prd_doc: (t as any).prd_doc || '', self_test_report: (t as any).self_test_report || '', test_report: (t as any).test_report || '', rating: (t as any).rating || undefined, evaluation: (t as any).evaluation || '' });
+                              setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'PLAN', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, acceptance_owner_id: (t as any).acceptance_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined, design_doc: (t as any).design_doc || '', prd_doc: (t as any).prd_doc || '', self_test_report: (t as any).self_test_report || '', test_report: (t as any).test_report || '', rating: (t as any).rating || undefined, evaluation: (t as any).evaluation || '', due_date: t.due_date || '' });
                               fetchComments(t.id);
                               fetchActivity(t.id);
                               fetchRelations(t);
@@ -2606,7 +2625,7 @@ export default function WorkspaceDetailPage() {
                       const t = useTaskStore.getState().current;
                       if (t) {
                         setEditingTask(t);
-                        setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'PLAN', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, acceptance_owner_id: (t as any).acceptance_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined, design_doc: (t as any).design_doc || '', prd_doc: (t as any).prd_doc || '', self_test_report: (t as any).self_test_report || '', test_report: (t as any).test_report || '', rating: (t as any).rating || undefined, evaluation: (t as any).evaluation || '' });
+                        setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'PLAN', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: t.qa_owner_id || undefined, acceptance_owner_id: (t as any).acceptance_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined, design_doc: (t as any).design_doc || '', prd_doc: (t as any).prd_doc || '', self_test_report: (t as any).self_test_report || '', test_report: (t as any).test_report || '', rating: (t as any).rating || undefined, evaluation: (t as any).evaluation || '', due_date: t.due_date || '' });
                         fetchComments(t.id);
                         fetchActivity(t.id);
                         fetchRelations(t);
@@ -2620,7 +2639,7 @@ export default function WorkspaceDetailPage() {
                     </div>
                     <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', gap: 12 }}>
                       <span>状态: {STATUS_LABELS[parentStory.status]}</span>
-                      <span>阶段: {PHASE_LABELS[parentStory.phase]}</span>
+                      {isFull && <span>阶段: {PHASE_LABELS[parentStory.phase]}</span>}
                       {parentStory.assignee_name && <span>负责人: {parentStory.assignee_name}</span>}
                     </div>
                   </div>
@@ -2688,6 +2707,9 @@ export default function WorkspaceDetailPage() {
             <select value={taskForm.priority} onChange={(e) => setTaskForm((f) => ({ ...f, priority: e.target.value }))}>
               <option value="CRITICAL">紧急</option><option value="HIGH">高</option><option value="MEDIUM">中</option><option value="LOW">低</option>
             </select>
+          </div>
+          <div className="form-group"><label>计划完成</label>
+            <input type="date" value={taskForm.due_date || ''} onChange={(e) => setTaskForm((f) => ({ ...f, due_date: e.target.value }))} />
           </div>
           {isFull && (
             <div className="form-group"><label>所属迭代</label>
@@ -3142,7 +3164,7 @@ export default function WorkspaceDetailPage() {
             {!showDelete ? (
               <button
                 className="btn btn-ghost btn-sm"
-                style={{ color: 'var(--red-500)', borderColor: 'var(--red-200)', width: '100%' }}
+                style={{ color: 'var(--red-500)' }}
                 onClick={() => setShowDelete(true)}
               >
                 删除任务
@@ -3343,7 +3365,7 @@ export default function WorkspaceDetailPage() {
           <button className="btn btn-primary" onClick={submitMsEdit}>保存</button>
         </div>
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
-          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)', borderColor: 'var(--red-200)', width: '100%' }} onClick={deleteMs}>删除里程碑</button>
+          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)' }} onClick={deleteMs}>删除里程碑</button>
         </div>
       </SlidePanel>
     </div>

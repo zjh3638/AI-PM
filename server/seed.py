@@ -56,6 +56,28 @@ async def seed():
             await conn.execute(text("ALTER TABLE workspaces ADD COLUMN strict_gate BOOLEAN DEFAULT 1"))
         except Exception:
             pass
+        # Risks table (SQLite fallback)
+        try:
+            await conn.execute(text("""
+                CREATE TABLE IF NOT EXISTS risks (
+                    id VARCHAR(36) PRIMARY KEY,
+                    workspace_id VARCHAR(36) NOT NULL REFERENCES workspaces(id),
+                    milestone_id VARCHAR(36) REFERENCES milestones(id),
+                    title VARCHAR(500) NOT NULL,
+                    description TEXT,
+                    risk_type VARCHAR(20) NOT NULL DEFAULT 'OTHER',
+                    probability VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+                    impact VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
+                    status VARCHAR(20) NOT NULL DEFAULT 'IDENTIFIED',
+                    mitigation TEXT,
+                    owner_id VARCHAR(36) REFERENCES users(id),
+                    closed_at DATETIME,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """))
+        except Exception:
+            pass
 
     async with async_session() as db:
         dept = Department(id="dept-001", name="默认部门", path="/默认部门")

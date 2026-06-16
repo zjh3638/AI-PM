@@ -12,6 +12,7 @@ interface TaskState {
   epics: Epic[];
   kanban: Record<string, Task[]>;
   kanbanGroupBy: string;
+  kanbanVersion: number;
   backlog: Task[];
   backlogLoading: boolean;
   ideas: Task[];
@@ -47,6 +48,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
   epics: [],
   kanban: {},
   kanbanGroupBy: 'status',
+  kanbanVersion: 0,
   backlog: [],
   backlogLoading: false,
   ideas: [],
@@ -95,7 +97,7 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     const params: Record<string, string> = { group_by: groupBy };
     if (taskType) params.task_type = taskType;
     const result = await api.get(`/workspaces/${wsId}/kanban`, { params });
-    set({ kanban: result.data, kanbanGroupBy: groupBy });
+    set({ kanban: result.data, kanbanGroupBy: groupBy, kanbanVersion: get().kanbanVersion + 1 });
   },
 
   fetchPermissions: async (wsId, taskId) => {

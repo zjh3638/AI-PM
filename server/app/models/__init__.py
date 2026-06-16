@@ -15,6 +15,7 @@ from app.models.document import Document
 from app.models.notification import Notification
 from app.models.activity_log import ActivityLog
 from app.models.attachment import Attachment
+from app.models.risk import Risk
 
 __all__ = [
     "UUIDMixin",
@@ -37,4 +38,5 @@ __all__ = [
     "Notification",
     "ActivityLog",
     "Attachment",
+    "Risk",
 ]

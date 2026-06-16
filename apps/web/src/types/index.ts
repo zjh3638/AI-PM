@@ -203,3 +203,47 @@ export const PRIORITY_LABELS: Record<string, string> = {
   MEDIUM: '中',
   LOW: '低',
 };
+
+// Risk management
+export type RiskType = 'SCHEDULE' | 'QUALITY' | 'RESOURCE' | 'SCOPE' | 'OTHER';
+export type RiskSeverity = 'LOW' | 'MEDIUM' | 'HIGH';
+export type RiskStatus = 'IDENTIFIED' | 'MITIGATING' | 'CLOSED';
+
+export interface Risk {
+  id: string;
+  workspace_id: string;
+  milestone_id: string | null;
+  milestone_name: string | null;
+  title: string;
+  description: string | null;
+  risk_type: RiskType;
+  probability: RiskSeverity;
+  impact: RiskSeverity;
+  status: RiskStatus;
+  mitigation: string | null;
+  owner_id: string | null;
+  owner_name: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const RISK_TYPE_LABELS: Record<string, string> = {
+  SCHEDULE: '进度',
+  QUALITY: '质量',
+  RESOURCE: '资源',
+  SCOPE: '范围',
+  OTHER: '其他',
+};
+
+export const RISK_SEVERITY_LABELS: Record<string, string> = {
+  LOW: '低',
+  MEDIUM: '中',
+  HIGH: '高',
+};
+
+export const RISK_STATUS_LABELS: Record<string, string> = {
+  IDENTIFIED: '已识别',
+  MITIGATING: '应对中',
+  CLOSED: '已关闭',
+};
