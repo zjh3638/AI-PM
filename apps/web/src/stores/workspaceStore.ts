@@ -24,6 +24,7 @@ interface WorkspaceState {
   create: (data: Partial<Workspace>) => Promise<Workspace>;
   update: (id: string, data: Partial<Workspace>) => Promise<void>;
   archive: (id: string) => Promise<void>;
+  remove: (id: string) => Promise<void>;
   addMember: (wsId: string, userId: string, role: string) => Promise<void>;
   updateMember: (wsId: string, memberId: string, role: string) => Promise<void>;
   removeMember: (wsId: string, memberId: string) => Promise<void>;
@@ -72,6 +73,11 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   archive: async (id) => {
     await api.post(`/workspaces/${id}/archive`);
+    await get().fetchList();
+  },
+
+  remove: async (id) => {
+    await api.delete(`/workspaces/${id}`);
     await get().fetchList();
   },
 

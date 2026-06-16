@@ -16,6 +16,7 @@ from app.models.notification import Notification
 from app.models.activity_log import ActivityLog
 from app.models.attachment import Attachment
 from app.models.risk import Risk
+from app.models.task_progress import TaskProgress
 
 __all__ = [
     "UUIDMixin",
@@ -39,4 +40,5 @@ __all__ = [
     "ActivityLog",
     "Attachment",
     "Risk",
+    "TaskProgress",
 ]

@@ -195,6 +195,20 @@ async def archive_workspace(
     return {"code": 0, "message": "ok", "data": None}
 
 
+@router.delete("/{workspace_id}", response_model=APIResponse)
+async def delete_workspace(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER")
+    ws = await ws_service.get_workspace(db, workspace_id)
+    if ws is None:
+        raise AppException(404, "工作空间不存在", 404)
+    await ws_service.delete_workspace(db, ws)
+    return {"code": 0, "message": "ok", "data": None}
+
+
 # --- Member endpoints ---
 
 @router.get("/{workspace_id}/members", response_model=APIResponse)

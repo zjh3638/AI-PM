@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class WorkspaceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    key: str = Field(min_length=2, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
+    key: Optional[str] = Field(default=None, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
     description: Optional[str] = None
     type: Literal["PROJECT", "TOPIC"] = "PROJECT"
     visibility: str = "PRIVATE"

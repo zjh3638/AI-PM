@@ -75,3 +75,4 @@ class Task(Base, UUIDMixin, TimestampMixin):
     requirement_reviewer = relationship("User", backref="req_reviewed_tasks", foreign_keys=[requirement_reviewer_id])
     design_reviewer = relationship("User", backref="design_reviewed_tasks", foreign_keys=[design_reviewer_id])
     milestone = relationship("Milestone", back_populates="tasks")
+    progress_logs = relationship("TaskProgress", back_populates="task")

@@ -47,7 +47,7 @@ export default function WorkspaceListPage() {
   }, [keyword, filterType, filterOwnerId, filterDepartmentId]);
 
   useEffect(() => {
-    api.get('/users', { params: { page_size: 200 } }).then((r: any) => setUsers(r.data || []));
+    api.get('/users', { params: { page_size: 100 } }).then((r: any) => setUsers(r.data || []));
     api.get('/departments/tree').then((r: any) => setDepartments(r.data || []));
   }, []);
 
@@ -202,16 +202,6 @@ export default function WorkspaceListPage() {
         <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item name="name" label="工作空间名称" rules={[{ required: true, message: '请输入名称' }]}>
             <Input placeholder="例如：官网重构项目" />
-          </Form.Item>
-          <Form.Item
-            name="key"
-            label="标识"
-            rules={[
-              { required: true, message: '请输入标识' },
-              { pattern: /^[a-zA-Z0-9_-]+$/, message: '仅允许字母、数字、下划线和连字符' },
-            ]}
-          >
-            <Input placeholder="例如：website-redesign" />
           </Form.Item>
           <Form.Item name="description" label="描述">
             <Input.TextArea rows={3} placeholder="工作空间描述（可选）" />

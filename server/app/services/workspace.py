@@ -11,6 +11,16 @@ from app.exceptions import AppException
 
 
 async def create_workspace(db: AsyncSession, creator: User, **kwargs) -> Workspace:
+    # Auto-generate key from name if not provided
+    import re, secrets
+    if not kwargs.get("key"):
+        name = kwargs.get("name", "project")
+        slug = re.sub(r'[^a-zA-Z0-9_-]', '-', name.lower())[:30].strip('-')
+        if not slug or slug == name.lower():  # name is Chinese or all stripped
+            slug = "proj"
+        suffix = secrets.token_hex(4)
+        kwargs["key"] = f"{slug}-{suffix}"
+
     result = await db.execute(select(Workspace).where(Workspace.key == kwargs["key"]))
     if result.scalar_one_or_none():
         raise AppException(400, "工作空间标识已存在")
@@ -256,4 +266,15 @@ async def update_member_role(db: AsyncSession, member: WorkspaceMember, role: st
 
 async def remove_member(db: AsyncSession, member: WorkspaceMember):
     await db.delete(member)
+    await db.commit()
+
+
+async def delete_workspace(db: AsyncSession, ws: Workspace):
+    # Cascade delete all related data
+    await db.execute(WorkspaceMember.__table__.delete().where(WorkspaceMember.workspace_id == ws.id))
+    from app.models.risk import Risk
+    await db.execute(Risk.__table__.delete().where(Risk.workspace_id == ws.id))
+    from app.models.task import Task
+    await db.execute(Task.__table__.delete().where(Task.workspace_id == ws.id))
+    await db.delete(ws)
     await db.commit()

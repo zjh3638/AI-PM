@@ -249,3 +249,14 @@ export const RISK_STATUS_LABELS: Record<string, string> = {
   MITIGATING: '应对中',
   CLOSED: '已关闭',
 };
+
+// Task progress feedback
+export interface TaskProgress {
+  id: string;
+  task_id: string;
+  progress: number;
+  note: string | null;
+  created_by: string;
+  creator_name: string | null;
+  created_at: string;
+}
