@@ -170,22 +170,6 @@ function MilestoneSidebar({ selectedId, onSelect, onEdit }: { selectedId: string
                     </div>
                   </div>
 
-                  {/* Phase progress dots */}
-                  <div style={{ display: 'flex', gap: 3, margin: '4px 0' }}>
-                    {['PLANNING', 'ACTIVE', 'REVIEW', 'DONE'].map((ph) => {
-                      const dotIdx = ['PLANNING', 'ACTIVE', 'REVIEW', 'DONE'].indexOf(ph);
-                      const curIdx = ['PLANNING', 'ACTIVE', 'REVIEW', 'DONE'].indexOf(phase);
-                      return (
-                        <div key={ph} style={{
-                          flex: 1, height: 4, borderRadius: 2,
-                          background: dotIdx === curIdx ? (MILESTONE_PHASE_COLORS[ph] || 'var(--blue-500)') :
-                                       dotIdx < curIdx ? 'var(--green-300)' : 'var(--border-light)',
-                          transition: 'background 0.3s',
-                        }} title={MILESTONE_PHASE_LABELS[ph]} />
-                      );
-                    })}
-                  </div>
-
                   {/* Date range + overdue indicator */}
                   {(ms.start_date || ms.end_date) && (
                     <div style={{ fontSize: '0.58rem', color: 'var(--text-muted)', marginTop: 2, display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -2923,6 +2907,14 @@ export default function WorkspaceDetailPage() {
               <select style={{ width:'100%' }} value={taskForm.iteration_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, iteration_id: e.target.value||undefined }))}>
                 <option value="">不关联迭代</option>
                 {allIterations.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+              </select>
+            </div>
+          )}
+          {!isFull && (
+            <div className="form-group"><label>关联里程碑</label>
+              <select style={{ width:'100%' }} value={taskForm.milestone_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, milestone_id: e.target.value||undefined }))}>
+                <option value="">不关联</option>
+                {allMilestones.map((ms) => <option key={ms.id} value={ms.id}>{ms.name}</option>)}
               </select>
             </div>
           )}
