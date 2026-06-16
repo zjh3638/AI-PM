@@ -18,12 +18,40 @@ from app.exceptions import AppException
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 
 
+async def _load_owner_info(db, ws):
+    """Load owner display_name and department_name onto workspace object."""
+    if ws.owner_id:
+        owner_result = await db.execute(
+            select(User).where(User.id == ws.owner_id)
+        )
+        owner = owner_result.scalar_one_or_none()
+        if owner:
+            ws._owner_name = owner.display_name
+            if owner.department_id:
+                from app.models.department import Department
+                dept_result = await db.execute(
+                    select(Department).where(Department.id == owner.department_id)
+                )
+                dept = dept_result.scalar_one_or_none()
+                ws._department_name = dept.name if dept else None
+            else:
+                ws._department_name = None
+        else:
+            ws._owner_name = None
+            ws._department_name = None
+    else:
+        ws._owner_name = None
+        ws._department_name = None
+
+
 def _ws_to_dict(ws, member_count: int = 0) -> dict:
     return {
         "id": ws.id, "name": ws.name, "key": ws.key,
         "description": ws.description, "type": ws.type,
         "status": ws.status, "visibility": ws.visibility,
-        "department_id": ws.department_id, "git_repo_path": ws.git_repo_path,
+        "owner_id": ws.owner_id, "owner_name": getattr(ws, '_owner_name', None),
+        "department_id": ws.department_id, "department_name": getattr(ws, '_department_name', None),
+        "git_repo_path": ws.git_repo_path,
         "template_name": getattr(ws, '_template_name', None),
         "strict_gate": getattr(ws, 'strict_gate', True),
         "member_count": member_count,
@@ -62,12 +90,15 @@ async def list_workspaces(
     keyword: str = "",
     status: str = "",
     type: str = "",
+    owner_id: str = "",
+    department_id: str = "",
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     data, total = await ws_service.list_workspaces(
         db, user, page=page, page_size=page_size,
         keyword=keyword or None, status=status or None, ws_type=type or None,
+        owner_id=owner_id or None, department_id=department_id or None,
     )
     return {"code": 0, "message": "ok", "data": data, "total": total, "page": page, "page_size": page_size}
 
@@ -127,6 +158,7 @@ async def get_workspace(
         raise AppException(404, "工作空间不存在", 404)
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
     await _load_template_name(db, ws)
+    await _load_owner_info(db, ws)
     mc = await _count_members(db, workspace_id)
     return {"code": 0, "message": "ok", "data": _ws_to_dict(ws, mc)}
 
@@ -142,8 +174,9 @@ async def update_workspace(
     ws = await ws_service.get_workspace(db, workspace_id)
     if ws is None:
         raise AppException(404, "工作空间不存在", 404)
-    ws = await ws_service.update_workspace(db, ws, name=req.name, description=req.description, type=req.type, visibility=req.visibility, strict_gate=req.strict_gate)
+    ws = await ws_service.update_workspace(db, ws, name=req.name, description=req.description, type=req.type, visibility=req.visibility, strict_gate=req.strict_gate, owner_id=req.owner_id)
     await _load_template_name(db, ws)
+    await _load_owner_info(db, ws)
     mc = await _count_members(db, workspace_id)
     return {"code": 0, "message": "ok", "data": _ws_to_dict(ws, mc)}
 

@@ -381,7 +381,7 @@ function KpiRow() {
 
   const trackLabel = isFull ? '迭代' : '里程碑';
   const trackItems = isFull ? iterations : milestones;
-  const activeItems = trackItems.filter((m: any) => m.status === 'ACTIVE').length;
+  const activeItems = trackItems.filter((m: any) => isFull ? m.status === 'ACTIVE' : (m.phase === 'ACTIVE' || m.phase === 'REVIEW')).length;
 
   // TOPIC-specific metrics
   const completedMilestones = milestones.filter(m => m.phase === 'DONE').length;
@@ -1976,7 +1976,7 @@ export default function WorkspaceDetailPage() {
   const [selectedMilestone, setSelectedMilestone] = useState<string>('');
   const [selectedIteration, setSelectedIteration] = useState<string>('');
   const [msEditOpen, setMsEditOpen] = useState(false);
-  const [msEditForm, setMsEditForm] = useState<{ id: string; name: string; description: string; plan: string; owner_id: string; status: string; phase: string; start_date: string; end_date: string; depends_on_id: string | null }>({ id: '', name: '', description: '', plan: '', owner_id: '', status: 'UPCOMING', phase: 'PLANNING', start_date: '', end_date: '', depends_on_id: null });
+  const [msEditForm, setMsEditForm] = useState<{ id: string; name: string; description: string; plan: string; owner_id: string; phase: string; start_date: string; end_date: string; depends_on_id: string | null }>({ id: '', name: '', description: '', plan: '', owner_id: '', phase: 'PLANNING', start_date: '', end_date: '', depends_on_id: null });
   const wsType = current?.type || 'PROJECT';
   const isFull = wsType === 'PROJECT';
   const allMilestones = useMilestoneStore((s) => s.milestones);
@@ -2010,6 +2010,39 @@ export default function WorkspaceDetailPage() {
   const [dragOver, setDragOver] = useState(false);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   const [saveState, setSaveState] = useState<'saved' | 'saving' | ''>('');
+
+  // Workspace edit
+  const [wsEditOpen, setWsEditOpen] = useState(false);
+  const [wsEditForm, setWsEditForm] = useState({ name: '', description: '', visibility: '', owner_id: '' });
+  const [wsEditSubmitting, setWsEditSubmitting] = useState(false);
+
+  const openWsEdit = () => {
+    if (!current) return;
+    setWsEditForm({
+      name: current.name,
+      description: current.description || '',
+      visibility: current.visibility,
+      owner_id: current.owner_id || '',
+    });
+    setWsEditOpen(true);
+  };
+
+  const handleWsSave = async () => {
+    if (!id || !wsEditForm.name.trim()) return;
+    setWsEditSubmitting(true);
+    try {
+      await useWorkspaceStore.getState().update(id, {
+        name: wsEditForm.name.trim(),
+        description: wsEditForm.description || null,
+        visibility: wsEditForm.visibility,
+        owner_id: wsEditForm.owner_id || null,
+      } as any);
+      await fetchDetail(id);
+      setWsEditOpen(false);
+    } finally {
+      setWsEditSubmitting(false);
+    }
+  };
 
   const fetchComments = async (taskId: string) => {
     const res: any = await api.get(`/tasks/${taskId}/comments`);
@@ -2181,7 +2214,7 @@ export default function WorkspaceDetailPage() {
   };
 
   const openMilestoneEdit = (ms: any) => {
-    setMsEditForm({ id: ms.id, name: ms.name, description: ms.description || '', plan: ms.plan || '', owner_id: ms.owner_id || '', status: ms.status, phase: ms.phase || 'PLANNING', start_date: ms.start_date?.slice(0, 10) || '', end_date: ms.end_date?.slice(0, 10) || '', depends_on_id: ms.depends_on_id || null });
+    setMsEditForm({ id: ms.id, name: ms.name, description: ms.description || '', plan: ms.plan || '', owner_id: ms.owner_id || '', phase: ms.phase || 'PLANNING', start_date: ms.start_date?.slice(0, 10) || '', end_date: ms.end_date?.slice(0, 10) || '', depends_on_id: ms.depends_on_id || null });
     setMsEditOpen(true);
   };
 
@@ -2256,6 +2289,10 @@ export default function WorkspaceDetailPage() {
           <div className="proj-name">{current.name}</div>
           <div className="proj-meta">
             {isFull ? '研发项目' : '专题项目'} · 创建于 {current.created_at?.slice(0, 10)}
+            {' · '}
+            负责人: {current.owner_name || '未指定'}
+            {' · '}
+            {current.visibility === 'PRIVATE' ? '私有' : current.visibility === 'DEPARTMENT' ? '部门可见' : '公开'}
             {' '}
             <span className="ospec-badge">{current.template_name || (isFull ? '迭代驱动研发流程' : '里程碑驱动专题管理')}</span>
             {isFull && (
@@ -2275,6 +2312,7 @@ export default function WorkspaceDetailPage() {
           </div>
         </div>
         <div className="ph-actions">
+          <button className="btn btn-ghost btn-sm" onClick={openWsEdit}>编辑信息</button>
           <button className="btn btn-ghost btn-sm">投屏</button>
         </div>
       </div>
@@ -3352,20 +3390,49 @@ export default function WorkspaceDetailPage() {
             ))}
           </select>
         </div>
-        <div className="form-group">
-          <label>状态</label>
-          <select value={msEditForm.status} onChange={(e) => setMsEditForm((f) => ({ ...f, status: e.target.value }))}>
-            <option value="UPCOMING">即将开始</option>
-            <option value="ACTIVE">进行中</option>
-            <option value="DONE">已完成</option>
-          </select>
-        </div>
         <div className="form-actions">
           <button className="btn btn-ghost" onClick={() => setMsEditOpen(false)}>取消</button>
           <button className="btn btn-primary" onClick={submitMsEdit}>保存</button>
         </div>
         <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
           <button className="btn btn-ghost btn-sm" style={{ color: 'var(--red-500)' }} onClick={deleteMs}>删除里程碑</button>
+        </div>
+      </SlidePanel>
+
+      {/* Workspace Edit SlidePanel */}
+      <SlidePanel open={wsEditOpen} onClose={() => setWsEditOpen(false)} title="编辑基本信息">
+        <div className="form-group">
+          <label>项目名称 *</label>
+          <input type="text" value={wsEditForm.name} onChange={(e) => setWsEditForm({ ...wsEditForm, name: e.target.value })} />
+        </div>
+        <div className="form-group">
+          <label>描述</label>
+          <textarea rows={3} value={wsEditForm.description} onChange={(e) => setWsEditForm({ ...wsEditForm, description: e.target.value })} />
+        </div>
+        <div className="form-row">
+          <div className="form-group">
+            <label>可见性</label>
+            <select value={wsEditForm.visibility} onChange={(e) => setWsEditForm({ ...wsEditForm, visibility: e.target.value })}>
+              <option value="PRIVATE">私有</option>
+              <option value="DEPARTMENT">部门可见</option>
+              <option value="PUBLIC">公开</option>
+            </select>
+          </div>
+          <div className="form-group">
+            <label>项目负责人</label>
+            <select value={wsEditForm.owner_id} onChange={(e) => setWsEditForm({ ...wsEditForm, owner_id: e.target.value })}>
+              <option value="">未指定</option>
+              {allMembers.filter((m: any) => m.user_id).map((m: any) => (
+                <option key={m.user_id} value={m.user_id}>{m.user_name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="form-actions">
+          <button className="btn btn-ghost" onClick={() => setWsEditOpen(false)}>取消</button>
+          <button className="btn btn-primary" onClick={handleWsSave} disabled={!wsEditForm.name.trim() || wsEditSubmitting}>
+            {wsEditSubmitting ? '保存中...' : '保存'}
+          </button>
         </div>
       </SlidePanel>
     </div>

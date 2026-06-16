@@ -24,7 +24,6 @@ class MilestoneUpdate(BaseModel):
     owner_id: Optional[str] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
-    status: Optional[str] = None
     phase: Optional[str] = None
     sort_order: Optional[int] = None
     color: Optional[str] = None

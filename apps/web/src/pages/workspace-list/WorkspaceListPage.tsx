@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Input, Select, Row, Col, Modal, message } from 'antd';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import api from '../../api/client';
 
 const typeLabels: Record<string, { label: string; cls: string }> = {
   PROJECT: { label: '研发项目', cls: 'company' },
@@ -25,12 +26,30 @@ export default function WorkspaceListPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [filterOwnerId, setFilterOwnerId] = useState('');
+  const [filterDepartmentId, setFilterDepartmentId] = useState('');
+  const [users, setUsers] = useState<any[]>([]);
+  const [departments, setDepartments] = useState<any[]>([]);
+
+  const flattenDepts = (items: any[], depth: number = 0): any[] => {
+    const result: any[] = [];
+    for (const d of items) {
+      result.push({ id: d.id, label: '  '.repeat(depth) + d.name });
+      if (d.children?.length) result.push(...flattenDepts(d.children, depth + 1));
+    }
+    return result;
+  };
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    fetchList({ keyword: keyword || undefined, type: filterType || undefined });
-  }, [keyword, filterType]);
+    fetchList({ keyword: keyword || undefined, type: filterType || undefined, owner_id: filterOwnerId || undefined, department_id: filterDepartmentId || undefined });
+  }, [keyword, filterType, filterOwnerId, filterDepartmentId]);
+
+  useEffect(() => {
+    api.get('/users', { params: { page_size: 200 } }).then((r: any) => setUsers(r.data || []));
+    api.get('/departments/tree').then((r: any) => setDepartments(r.data || []));
+  }, []);
 
   const handleCreate = async () => {
     try {
@@ -83,6 +102,24 @@ export default function WorkspaceListPage() {
             { label: '专题项目', value: 'TOPIC' },
           ]}
         />
+        <Select
+          placeholder="团队筛选"
+          value={filterDepartmentId || undefined}
+          onChange={(v) => setFilterDepartmentId(v || '')}
+          allowClear
+          style={{ width: 140 }}
+          options={flattenDepts(departments).map((d: any) => ({ label: d.label, value: d.id }))}
+        />
+        <Select
+          placeholder="负责人筛选"
+          value={filterOwnerId || undefined}
+          onChange={(v) => setFilterOwnerId(v || '')}
+          allowClear
+          showSearch
+          filterOption={(input, option) => (option?.label as string || '').includes(input)}
+          style={{ width: 160 }}
+          options={users.map((u: any) => ({ label: u.display_name, value: u.id }))}
+        />
       </div>
 
       {/* Workspace Cards Grid */}
@@ -115,7 +152,12 @@ export default function WorkspaceListPage() {
                   <span className={`ws-tier ${tier.cls}`}>{tier.label}</span>
                 </div>
                 <div className="ws-summary">
-                  {ws.description || '暂无描述'}。成员 {ws.member_count} 人，标识 {ws.key}。
+                  <div>{ws.description || '暂无描述'}</div>
+                  <div style={{ marginTop: 4, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {ws.owner_name ? <span>负责人: {ws.owner_name}</span> : <span>未指定负责人</span>}
+                    {ws.department_name && <span> · 团队: {ws.department_name}</span>}
+                    <span> · {ws.member_count} 人</span>
+                  </div>
                 </div>
                 <div className="ws-stats">
                   <span>
@@ -197,6 +239,15 @@ export default function WorkspaceListPage() {
               </Form.Item>
             </Col>
           </Row>
+          <Form.Item name="owner_id" label="项目负责人">
+            <Select
+              placeholder="选择负责人（默认创建者）"
+              allowClear
+              showSearch
+              filterOption={(input, option) => (option?.label as string || '').includes(input)}
+              options={users.map((u: any) => ({ label: u.display_name, value: u.id }))}
+            />
+          </Form.Item>
         </Form>
       </Modal>
     </div>

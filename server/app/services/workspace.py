@@ -15,6 +15,10 @@ async def create_workspace(db: AsyncSession, creator: User, **kwargs) -> Workspa
     if result.scalar_one_or_none():
         raise AppException(400, "工作空间标识已存在")
 
+    # Default owner to creator if not specified
+    owner_id = kwargs.pop("owner_id", None) or creator.id
+    kwargs["owner_id"] = owner_id
+
     # Auto-assign workflow template based on type
     if "template_id" not in kwargs or not kwargs.get("template_id"):
         from app.models.workflow import WorkflowTemplate
@@ -29,15 +33,25 @@ async def create_workspace(db: AsyncSession, creator: User, **kwargs) -> Workspa
     db.add(ws)
     await db.flush()
 
+    # Creator always gets OWNER role
     member = WorkspaceMember(workspace_id=ws.id, user_id=creator.id, role="OWNER")
     db.add(member)
+
+    # If owner is different from creator, also add owner as OWNER member
+    if owner_id != creator.id:
+        owner_member = WorkspaceMember(workspace_id=ws.id, user_id=owner_id, role="OWNER")
+        db.add(owner_member)
+
     await db.commit()
     await db.refresh(ws)
     return ws
 
 
 async def get_workspace(db: AsyncSession, workspace_id: str) -> Optional[Workspace]:
-    return await db.get(Workspace, workspace_id)
+    result = await db.execute(
+        select(Workspace).where(Workspace.id == workspace_id)
+    )
+    return result.scalar_one_or_none()
 
 
 async def list_workspaces(
@@ -48,6 +62,8 @@ async def list_workspaces(
     keyword: Optional[str] = None,
     status: Optional[str] = None,
     ws_type: Optional[str] = None,
+    owner_id: Optional[str] = None,
+    department_id: Optional[str] = None,
 ) -> tuple[list[dict], int]:
     member_query = select(WorkspaceMember.workspace_id).where(
         WorkspaceMember.user_id == user.id
@@ -73,6 +89,12 @@ async def list_workspaces(
     if ws_type:
         query = query.where(Workspace.type == ws_type)
         count_query = count_query.where(Workspace.type == ws_type)
+    if owner_id:
+        query = query.where(Workspace.owner_id == owner_id)
+        count_query = count_query.where(Workspace.owner_id == owner_id)
+    if department_id:
+        query = query.where(Workspace.department_id == department_id)
+        count_query = count_query.where(Workspace.department_id == department_id)
 
     total_result = await db.execute(count_query)
     total = total_result.scalar()
@@ -93,11 +115,32 @@ async def list_workspaces(
             tmpl = await db.get(WorkflowTemplate, ws.template_id)
             template_name = tmpl.name if tmpl else None
 
+        # Resolve owner info
+        owner_name = None
+        department_name = None
+        if ws.owner_id:
+            owner_result = await db.execute(
+                select(User).where(User.id == ws.owner_id)
+            )
+            owner = owner_result.scalar_one_or_none()
+            if owner:
+                owner_name = owner.display_name
+                if owner.department_id:
+                    from app.models.department import Department
+                    dept_result = await db.execute(
+                        select(Department).where(Department.id == owner.department_id)
+                    )
+                    dept = dept_result.scalar_one_or_none()
+                    if dept:
+                        department_name = dept.name
+
         data.append({
             "id": ws.id, "name": ws.name, "key": ws.key,
             "description": ws.description, "type": ws.type,
             "status": ws.status, "visibility": ws.visibility,
-            "department_id": ws.department_id, "git_repo_path": ws.git_repo_path,
+            "department_id": ws.department_id, "owner_id": ws.owner_id,
+            "owner_name": owner_name, "department_name": department_name,
+            "git_repo_path": ws.git_repo_path,
             "template_id": ws.template_id, "template_name": template_name,
             "strict_gate": ws.strict_gate if hasattr(ws, 'strict_gate') else True,
             "member_count": mc_result.scalar() or 0,
@@ -108,6 +151,40 @@ async def list_workspaces(
 
 
 async def update_workspace(db: AsyncSession, ws: Workspace, **kwargs) -> Workspace:
+    new_owner_id = kwargs.pop("owner_id", None)
+
+    # Sync member roles when owner changes
+    if new_owner_id is not None and new_owner_id != ws.owner_id:
+        old_owner_id = ws.owner_id
+        # Downgrade old owner's OWNER role to MEMBER
+        if old_owner_id:
+            old_member_result = await db.execute(
+                select(WorkspaceMember).where(
+                    WorkspaceMember.workspace_id == ws.id,
+                    WorkspaceMember.user_id == old_owner_id,
+                    WorkspaceMember.role == "OWNER",
+                )
+            )
+            old_member = old_member_result.scalar_one_or_none()
+            if old_member:
+                old_member.role = "MEMBER"
+
+        # Ensure new owner has OWNER role as member
+        new_member_result = await db.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == ws.id,
+                WorkspaceMember.user_id == new_owner_id,
+            )
+        )
+        new_member = new_member_result.scalar_one_or_none()
+        if new_member:
+            new_member.role = "OWNER"
+        else:
+            owner_member = WorkspaceMember(workspace_id=ws.id, user_id=new_owner_id, role="OWNER")
+            db.add(owner_member)
+
+        ws.owner_id = new_owner_id
+
     for field, value in kwargs.items():
         if value is not None:
             setattr(ws, field, value)

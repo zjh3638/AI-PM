@@ -18,6 +18,9 @@ export interface Workspace {
   visibility: 'PRIVATE' | 'DEPARTMENT' | 'PUBLIC';
   member_count: number;
   department_id: string | null;
+  department_name: string | null;
+  owner_id: string | null;
+  owner_name: string | null;
   git_repo_path: string | null;
   template_name: string | null;
   strict_gate: boolean;
@@ -121,7 +124,6 @@ export interface Milestone {
   owner_name: string | null;
   start_date: string;
   end_date: string;
-  status: string;
   phase: string;
   sort_order: number;
   color: string | null;

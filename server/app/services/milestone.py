@@ -48,7 +48,7 @@ async def list_milestones(db: AsyncSession, workspace_id: str) -> list[dict]:
             "owner_name": ms.owner.display_name if ms.owner else None,
             "start_date": ms.start_date.isoformat() if ms.start_date else "",
             "end_date": ms.end_date.isoformat() if ms.end_date else "",
-            "status": ms.status, "phase": ms.phase, "sort_order": ms.sort_order, "color": ms.color,
+            "phase": ms.phase, "sort_order": ms.sort_order, "color": ms.color,
             "depends_on_id": ms.depends_on_id,
             "depends_on_name": ms.depends_on.name if ms.depends_on else None,
             "task_count": task_count, "done_count": done_count,
@@ -117,10 +117,6 @@ async def advance_milestone_phase(db: AsyncSession, ms: Milestone) -> Milestone:
         if pred and pred.phase != "DONE":
             raise AppException(400, f"依赖的里程碑「{pred.name}」尚未完成，无法启动", 400)
     ms.phase = next_phase
-    if next_phase == "ACTIVE":
-        ms.status = "ACTIVE"
-    elif next_phase == "DONE":
-        ms.status = "DONE"
     await db.commit()
     await db.refresh(ms)
     return ms

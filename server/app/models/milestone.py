@@ -27,7 +27,6 @@ class Milestone(Base, UUIDMixin, TimestampMixin):
     owner_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("users.id"), nullable=True)
     start_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     end_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
-    status: Mapped[str] = mapped_column(String(20), default="UPCOMING")
     phase: Mapped[str] = mapped_column(String(20), default="PLANNING")
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     color: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

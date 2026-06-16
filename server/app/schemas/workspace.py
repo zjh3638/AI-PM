@@ -10,6 +10,7 @@ class WorkspaceCreate(BaseModel):
     type: Literal["PROJECT", "TOPIC"] = "PROJECT"
     visibility: str = "PRIVATE"
     department_id: Optional[str] = None
+    owner_id: Optional[str] = None
 
 
 class WorkspaceUpdate(BaseModel):
@@ -18,6 +19,7 @@ class WorkspaceUpdate(BaseModel):
     type: Optional[Literal["PROJECT", "TOPIC"]] = None
     visibility: Optional[str] = None
     strict_gate: Optional[bool] = None
+    owner_id: Optional[str] = None
 
 
 class WorkspaceResponse(BaseModel):
@@ -29,6 +31,9 @@ class WorkspaceResponse(BaseModel):
     status: str
     visibility: str
     department_id: Optional[str] = None
+    owner_id: Optional[str] = None
+    owner_name: Optional[str] = None
+    department_name: Optional[str] = None
     git_repo_path: Optional[str] = None
     template_name: Optional[str] = None
     strict_gate: bool = True

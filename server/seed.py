@@ -266,7 +266,6 @@ async def seed():
         for i, (name, desc) in enumerate(milestone_names):
             ms = Milestone(
                 workspace_id=ws_topic.id, name=name, description=desc,
-                status="ACTIVE" if i == 0 else ("DONE" if i < 1 else "UPCOMING"),
                 phase="ACTIVE" if i == 0 else ("DONE" if i < 1 else "PLANNING"),
                 sort_order=i,
                 start_date=today + timedelta(days=i * 7 - 7 if i > 0 else -7),
