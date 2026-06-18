@@ -224,13 +224,13 @@ async def aggregate_milestones(db: AsyncSession, group_id: str) -> list[dict]:
         .join(ProjectGroupItem, ProjectGroupItem.workspace_id == Milestone.workspace_id)
         .join(Workspace, Workspace.id == Milestone.workspace_id)
         .where(ProjectGroupItem.group_id == group_id)
-        .order_by(Milestone.due_date.asc())
+        .order_by(Milestone.end_date.asc().nullslast())
     )
     milestones = [
         {
             "type": "milestone", "id": m.id, "name": m.name,
             "workspace_id": m.workspace_id, "workspace_name": ws_name,
-            "due_date": m.due_date.isoformat() if m.due_date else None,
+            "end_date": m.end_date.isoformat() if m.end_date else None,
             "status": getattr(m, "status", None),
         }
         for m, ws_name in ms_result.all()

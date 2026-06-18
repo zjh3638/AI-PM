@@ -35,7 +35,7 @@ async def _require_manage(pc: PermissionChecker, group, user: User):
         raise AppException(403, "无权管理此项目群", 403)
 
 
-@router.get("", response_model=APIResponse)
+@router.get("")
 async def list_groups(
     keyword: Optional[str] = Query(default=None),
     page: int = Query(default=1, ge=1),
