@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Modal, Form, Input, Select, message, Tag } from 'antd';
+import { Modal, Form, Input, Select, message } from 'antd';
 import { useProjectGroupStore } from '../../stores/projectGroupStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useAuthStore } from '../../stores/authStore';
-import type { ProjectGroupTask } from '../../types';
+import OverviewTab from './tabs/OverviewTab';
+import TasksTab from './tabs/TasksTab';
+import MilestonesTab from './tabs/MilestonesTab';
+import MembersTab from './tabs/MembersTab';
+import ActivityTab from './tabs/ActivityTab';
+import SettingsTab from './tabs/SettingsTab';
 
 type TabKey = 'overview' | 'tasks' | 'milestones' | 'members' | 'activity' | 'settings';
+
+const TAB_LABELS: Record<TabKey, string> = {
+  overview: '概览', tasks: '任务', milestones: '里程碑',
+  members: '成员', activity: '动态', settings: '设置',
+};
 
 export default function ProjectGroupDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -43,12 +53,7 @@ export default function ProjectGroupDetailPage() {
 
   if (!current) return <div className="empty-state"><div>加载中...</div></div>;
 
-  const tabLabels: Record<TabKey, string> = {
-    overview: '概览', tasks: '任务', milestones: '里程碑',
-    members: '成员', activity: '动态', settings: '设置',
-  };
-
-  const handleDelete = async () => {
+  const handleDelete = () => {
     Modal.confirm({
       title: '确认删除项目群',
       content: '删除后不可恢复，子项目不受影响。',
@@ -78,6 +83,10 @@ export default function ProjectGroupDetailPage() {
     message.success('已添加');
   };
 
+  const handleRemoveWs = async (workspaceId: string) => {
+    await removeWorkspace(current.id, workspaceId);
+  };
+
   return (
     <div>
       <div className="stream-header">
@@ -93,7 +102,7 @@ export default function ProjectGroupDetailPage() {
 
       {/* Tabs */}
       <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid var(--border-light)', marginBottom: 18 }}>
-        {(Object.keys(tabLabels) as TabKey[]).map((k) => (
+        {(Object.keys(TAB_LABELS) as TabKey[]).map((k) => (
           <button
             key={k}
             className={`btn ${tab === k ? 'btn-primary' : 'btn-ghost'}`}
@@ -101,174 +110,25 @@ export default function ProjectGroupDetailPage() {
             onClick={() => setTab(k)}
             disabled={k === 'settings' && !canManage}
           >
-            {tabLabels[k]}
+            {TAB_LABELS[k]}
           </button>
         ))}
       </div>
 
-      {/* Overview */}
-      {tab === 'overview' && (
-        <div className="stream-grid">
-          {stats.map((s) => (
-            <div key={s.workspace_id} className="ws-card"
-                 onClick={() => navigate(`/workspaces/${s.workspace_id}`)}>
-              <div className="ws-head">
-                <span className="ws-name">{s.workspace_name}</span>
-                <Tag color={s.completion >= 80 ? 'green' : s.completion >= 50 ? 'blue' : 'orange'}>
-                  {s.completion}%
-                </Tag>
-              </div>
-              <div className="ws-stats">
-                <span>任务 <span className="sv">{s.total}</span></span>
-                <span>完成 <span className="sv">{s.done}</span></span>
-                <span style={{ color: s.overdue > 0 ? 'var(--red-500)' : undefined }}>
-                  逾期 <span className="sv">{s.overdue}</span>
-                </span>
-              </div>
-              <div className="health-bar" style={{ marginTop: 8 }}>
-                <span className="fill good" style={{ width: `${s.completion}%` }} />
-              </div>
-            </div>
-          ))}
-          {stats.length === 0 && <div className="empty-state">暂无子项目，请到「设置」添加</div>}
-        </div>
-      )}
-
-      {/* Tasks */}
-      {tab === 'tasks' && (
-        <div>
-          <div style={{ marginBottom: 12, fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-            共 {tasks.length} 个任务
-          </div>
-          {tasks.length === 0 ? <div className="empty-state">暂无任务</div> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {tasks.map((t: ProjectGroupTask) => (
-                <div key={t.id} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-                  background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
-                  borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                }} onClick={() => navigate(`/workspaces/${t.workspace_id}`)}>
-                  <Tag>{t.workspace_name}</Tag>
-                  <span style={{ flex: 1, fontWeight: 600 }}>{t.title}</span>
-                  <Tag color={t.status === 'DONE' ? 'green' : t.status === 'IN_PROGRESS' ? 'blue' : 'default'}>
-                    {t.status}
-                  </Tag>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{t.priority}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Milestones */}
-      {tab === 'milestones' && (
-        <div>
-          {milestones.length === 0 ? <div className="empty-state">暂无里程碑或迭代</div> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {milestones.map((m) => (
-                <div key={`${m.type}-${m.id}`} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-                  background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
-                  borderRadius: 'var(--radius-md)',
-                }}>
-                  <Tag color={m.type === 'milestone' ? 'purple' : 'cyan'}>
-                    {m.type === 'milestone' ? '里程碑' : '迭代'}
-                  </Tag>
-                  <Tag>{m.workspace_name}</Tag>
-                  <span style={{ flex: 1, fontWeight: 600 }}>{m.name}</span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                    {m.due_date || m.end_date || ''}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Members */}
-      {tab === 'members' && (
-        <div>
-          {members.length === 0 ? <div className="empty-state">暂无成员</div> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {members.map((m) => (
-                <div key={m.user_id} style={{
-                  display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-                  background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
-                  borderRadius: 'var(--radius-md)',
-                }}>
-                  <span style={{ fontWeight: 600 }}>{m.display_name}</span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>
-                    参与 {m.project_count} 个项目
-                  </span>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                    {m.projects.map((p) => <Tag key={p.workspace_id}>{p.workspace_name}</Tag>)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Activity */}
-      {tab === 'activity' && (
-        <div>
-          {activity.length === 0 ? <div className="empty-state">暂无动态</div> : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {activity.map((a) => (
-                <div key={a.id} style={{
-                  padding: '10px 16px', background: 'var(--bg-surface)',
-                  border: '1px solid var(--border-light)', borderRadius: 'var(--radius-md)',
-                  fontSize: '0.82rem',
-                }}>
-                  <Tag>{a.workspace_name}</Tag>
-                  <strong>{a.user_name}</strong>
-                  <span style={{ marginLeft: 8, color: 'var(--text-muted)' }}>
-                    {a.action_type}
-                    {a.field_name ? ` · ${a.field_name}` : ''}
-                    {a.new_value ? ` → ${a.new_value}` : ''}
-                  </span>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                    {a.created_at}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Settings */}
-      {tab === 'settings' && canManage && (
-        <div>
-          <div style={{ marginBottom: 16 }}>
-            <button className="btn btn-primary" onClick={() => setEditModalOpen(true)}>编辑项目群</button>
-            <button className="btn btn-ghost" style={{ marginLeft: 8 }} onClick={handleDelete}>删除项目群</button>
-          </div>
-
-          <h3 style={{ marginBottom: 12 }}>子项目管理</h3>
-          <div style={{ marginBottom: 12 }}>
-            <button className="btn btn-primary btn-sm" onClick={() => setAddWsModalOpen(true)}>+ 添加项目</button>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {current.workspaces.map((w) => (
-              <div key={w.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
-                background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
-                borderRadius: 'var(--radius-md)',
-              }}>
-                <span style={{ flex: 1, fontWeight: 600 }}>{w.name}</span>
-                {w.key && <Tag>{w.key}</Tag>}
-                <button className="btn btn-ghost btn-sm" onClick={() => removeWorkspace(current.id, w.id)}>
-                  移除
-                </button>
-              </div>
-            ))}
-            {current.workspaces.length === 0 && <div className="empty-state">尚未添加子项目</div>}
-          </div>
-        </div>
+      {tab === 'overview' && <OverviewTab stats={stats} />}
+      {tab === 'tasks' && <TasksTab tasks={tasks} />}
+      {tab === 'milestones' && <MilestonesTab milestones={milestones} />}
+      {tab === 'members' && <MembersTab members={members} />}
+      {tab === 'activity' && <ActivityTab activity={activity} />}
+      {tab === 'settings' && (
+        <SettingsTab
+          group={current}
+          canManage={!!canManage}
+          onEdit={() => setEditModalOpen(true)}
+          onDelete={handleDelete}
+          onAddWorkspace={() => setAddWsModalOpen(true)}
+          onRemoveWorkspace={handleRemoveWs}
+        />
       )}
 
       {/* Edit Modal */}
