@@ -28,6 +28,59 @@ export interface Workspace {
   updated_at: string;
 }
 
+export interface ProjectGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  creator_id: string;
+  creator_name: string | null;
+  workspace_count: number;
+  workspaces: { id: string; name: string; key?: string }[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectGroupStats {
+  workspace_id: string;
+  workspace_name: string;
+  total: number;
+  done: number;
+  overdue: number;
+  completion: number;
+}
+
+export interface ProjectGroupMember {
+  user_id: string;
+  display_name: string;
+  avatar_url: string | null;
+  project_count: number;
+  projects: { workspace_id: string; workspace_name: string }[];
+}
+
+export interface ProjectGroupActivity {
+  id: string;
+  task_id: string;
+  user_name: string;
+  workspace_name: string;
+  action_type: string;
+  field_name: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  created_at: string;
+}
+
+export interface ProjectGroupMilestone {
+  type: 'milestone' | 'iteration';
+  id: string;
+  name: string;
+  workspace_id: string;
+  workspace_name: string;
+  due_date?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  status: string | null;
+}
+
 export interface WorkspaceMember {
   id: string;
   user_id: string | null;
