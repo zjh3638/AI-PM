@@ -14,7 +14,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Preview prototypes locally
 node scripts/serve-prototypes.js    # Serves prototypes/ on port 3456
 # Or via .claude/launch.json → preview_start("prototype")
+
+# Database migrations (run from server/)
+cd server
+uv run alembic upgrade head          # Apply all migrations to current DB
+uv run alembic revision --autogenerate -m "<change>"   # Generate migration after model edits
+uv run alembic current               # Show current revision
+uv run alembic history               # Show migration chain
+# Note: alembic/ env.py reads AI_PM_DATABASE_URL from .env, dev = SQLite, prod = MySQL
 ```
+
+Schema is now managed by Alembic (baseline = `9d84d66c2f9b`). `Base.metadata.create_all` has been removed from `app/main.py` — every schema change must go through a migration.
 
 ## Key Files
 
