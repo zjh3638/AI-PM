@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Form, Input, Select, Row, Col, Modal, message } from 'antd';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import ProjectGroupListPage from '../project-group-list/ProjectGroupListPage';
 import api from '../../api/client';
 
 const typeLabels: Record<string, { label: string; cls: string }> = {
@@ -23,6 +24,7 @@ function getHealthPct(idx: number): number {
 export default function WorkspaceListPage() {
   const navigate = useNavigate();
   const { workspaces, total, loading, fetchList, create } = useWorkspaceStore();
+  const [view, setView] = useState<'workspaces' | 'groups'>('workspaces');
   const [modalOpen, setModalOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
   const [filterType, setFilterType] = useState('');
@@ -69,6 +71,27 @@ export default function WorkspaceListPage() {
 
   return (
     <div>
+      {/* View Tabs */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 16, borderBottom: '1px solid var(--border-light)' }}>
+        <button
+          className={`btn ${view === 'workspaces' ? 'btn-primary' : 'btn-ghost'}`}
+          style={{ borderRadius: '0', borderBottom: view === 'workspaces' ? '2px solid var(--blue-500)' : '2px solid transparent' }}
+          onClick={() => setView('workspaces')}
+        >
+          我的项目
+        </button>
+        <button
+          className={`btn ${view === 'groups' ? 'btn-primary' : 'btn-ghost'}`}
+          style={{ borderRadius: '0', borderBottom: view === 'groups' ? '2px solid var(--blue-500)' : '2px solid transparent' }}
+          onClick={() => setView('groups')}
+        >
+          项目群
+        </button>
+      </div>
+
+      {view === 'groups' && <ProjectGroupListPage />}
+      {view === 'workspaces' && (
+      <>
       {/* Header */}
       <div className="stream-header">
         <h2>工作空间</h2>
@@ -240,6 +263,8 @@ export default function WorkspaceListPage() {
           </Form.Item>
         </Form>
       </Modal>
+      </>
+      )}
     </div>
   );
 }
