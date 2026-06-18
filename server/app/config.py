@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     wecom_secret: str = ""
 
     # Git 知识库
-    git_repos_path: str = "/data/ai-pm/repos"
+    git_repos_path: str = "./repos"
 
     # 密码策略
     password_min_length: int = 8

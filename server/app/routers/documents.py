@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 from typing import Optional
@@ -8,6 +8,7 @@ from app.deps import get_current_user
 from app.models.user import User
 from app.schemas.common import APIResponse, PaginatedResponse
 from app.services import document_svc
+from app.services.git_storage import git_store
 from app.services.permission import PermissionChecker, get_permission_checker
 from app.exceptions import AppException
 
@@ -40,6 +41,8 @@ async def create_doc(
     path = req.path or req.title
     doc = await document_svc.create_doc(
         db, workspace_id, user.id,
+        author_name=user.display_name,
+        author_email=user.email,
         title=req.title, content=req.content,
         doc_type=req.doc_type, path=path, tags=req.tags,
     )
@@ -93,7 +96,10 @@ async def update_doc(
     if doc is None or doc.workspace_id != workspace_id:
         raise AppException(404, "文档不存在", 404)
     doc = await document_svc.update_doc(
-        db, doc, title=req.title, content=req.content, tags=req.tags,
+        db, doc,
+        author_name=user.display_name,
+        author_email=user.email,
+        title=req.title, content=req.content, tags=req.tags,
     )
     return {"code": 0, "message": "ok", "data": document_svc._doc_to_dict(doc)}
 
@@ -103,12 +109,81 @@ async def delete_doc(
     workspace_id: str,
     doc_id: str,
     db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
     pc: PermissionChecker = Depends(get_permission_checker),
 ):
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     doc = await document_svc.get_doc(db, doc_id)
     if doc is None or doc.workspace_id != workspace_id:
         raise AppException(404, "文档不存在", 404)
-    await db.delete(doc)
-    await db.commit()
+    await document_svc.delete_doc(db, doc, author_name=user.display_name)
     return {"code": 0, "message": "ok", "data": None}
+
+
+# --- Version history endpoints (Git-backed) ---
+
+@router.get("/{doc_id}/versions", response_model=APIResponse)
+async def list_versions(
+    workspace_id: str,
+    doc_id: str,
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
+    history = await git_store.get_version_history(workspace_id, doc_id)
+    return {"code": 0, "message": "ok", "data": history}
+
+
+@router.get("/{doc_id}/versions/{commit_hash}", response_model=APIResponse)
+async def get_version(
+    workspace_id: str,
+    doc_id: str,
+    commit_hash: str,
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
+    content = await git_store.get_version_content(workspace_id, doc_id, commit_hash)
+    if content is None:
+        raise AppException(404, "版本不存在", 404)
+    return {"code": 0, "message": "ok", "data": {"commit_hash": commit_hash, "content": content}}
+
+
+@router.post("/{doc_id}/revert/{commit_hash}", response_model=APIResponse)
+async def revert_to_version(
+    workspace_id: str,
+    doc_id: str,
+    commit_hash: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    doc = await document_svc.get_doc(db, doc_id)
+    if doc is None or doc.workspace_id != workspace_id:
+        raise AppException(404, "文档不存在", 404)
+    try:
+        commit = await git_store.revert_to_version(
+            workspace_id, doc_id, commit_hash,
+            author_name=user.display_name,
+            author_email=user.email,
+        )
+    except ValueError:
+        raise AppException(404, "版本不存在", 404)
+    # Sync DB content + bump version counter
+    doc.content = await git_store.get_version_content(workspace_id, doc_id, commit["hash"])
+    doc.version = (doc.version or 0) + 1
+    await db.commit()
+    await db.refresh(doc)
+    return {"code": 0, "message": "ok", "data": {"doc": document_svc._doc_to_dict(doc), "commit": commit}}
+
+
+@router.get("/{doc_id}/diff", response_model=APIResponse)
+async def diff_versions(
+    workspace_id: str,
+    doc_id: str,
+    v1: str = Query(..., description="older commit hash"),
+    v2: str = Query(..., description="newer commit hash"),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
+    diff = await git_store.diff_versions(workspace_id, doc_id, v1, v2)
+    return {"code": 0, "message": "ok", "data": {"diff": diff}}

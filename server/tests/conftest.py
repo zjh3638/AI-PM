@@ -1,4 +1,6 @@
 import asyncio
+import tempfile
+from pathlib import Path
 from typing import AsyncGenerator
 
 import pytest
@@ -9,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 from app.database import Base, get_db
 from app.models import *  # noqa: F401,F403
 from app.security import hash_password, create_access_token
+from app.services import git_storage
 
 # Use StaticPool so all connections share the same in-memory database
 TEST_DATABASE_URL = "sqlite+aiosqlite://"
@@ -29,10 +32,15 @@ def event_loop():
 
 
 @pytest.fixture(autouse=True)
-async def setup_db():
+async def setup_db(tmp_path_factory):
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    # Redirect git_store to a per-test tmp dir so commits don't pollute the repo
+    tmp_repos = tmp_path_factory.mktemp("git_repos")
+    original_repos_path = git_storage.git_store.repos_path
+    git_storage.git_store.repos_path = tmp_repos
     yield
+    git_storage.git_store.repos_path = original_repos_path
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
