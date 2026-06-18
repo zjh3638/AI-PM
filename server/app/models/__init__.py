@@ -17,6 +17,7 @@ from app.models.activity_log import ActivityLog
 from app.models.attachment import Attachment
 from app.models.risk import Risk
 from app.models.task_progress import TaskProgress
+from app.models.project_group import ProjectGroup, ProjectGroupItem
 
 __all__ = [
     "UUIDMixin",
@@ -41,4 +42,6 @@ __all__ = [
     "Attachment",
     "Risk",
     "TaskProgress",
+    "ProjectGroup",
+    "ProjectGroupItem",
 ]
