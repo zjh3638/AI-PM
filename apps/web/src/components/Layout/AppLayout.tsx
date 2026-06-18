@@ -8,6 +8,7 @@ import PersonalCenterPage from '../../pages/personal/PersonalCenterPage';
 import PlaceholderPage from '../../pages/placeholder/PlaceholderPage';
 import BigScreenPage from '../../pages/bigscreen/BigScreenPage';
 import AdminPage from '../../pages/admin/AdminPage';
+import ProjectGroupDetailPage from '../../pages/project-group-detail/ProjectGroupDetailPage';
 import SearchBar from '../search/SearchBar';
 import AiDrawer from './AiDrawer';
 
@@ -123,6 +124,7 @@ export default function AppLayout() {
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/workspaces" element={<WorkspaceListPage />} />
           <Route path="/workspaces/:id/*" element={<WorkspaceDetailPage />} />
+          <Route path="/project-groups/:id" element={<ProjectGroupDetailPage />} />
           <Route path="/bigscreen" element={<BigScreenPage />} />
           <Route path="/personal" element={<PersonalCenterPage />} />
           <Route path="/settings" element={<AdminPage />} />
