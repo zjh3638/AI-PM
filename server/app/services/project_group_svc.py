@@ -34,7 +34,8 @@ async def list_groups(
 ) -> tuple[list[ProjectGroup], int]:
     query = select(ProjectGroup).order_by(ProjectGroup.created_at.desc())
     if keyword:
-        query = query.where(ProjectGroup.name.ilike(f"%{keyword}%"))
+        escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        query = query.where(ProjectGroup.name.ilike(f"%{escaped}%", escape="\\"))
 
     count_q = select(func.count()).select_from(query.subquery())
     total = (await db.execute(count_q)).scalar() or 0
@@ -159,35 +160,49 @@ async def aggregate_tasks(
 
 
 async def aggregate_stats(db: AsyncSession, group_id: str) -> list[dict]:
-    """按子项目统计任务数/完成数/逾期数。"""
-    workspaces = await get_group_workspaces(db, group_id)
-    stats = []
-    for ws in workspaces:
-        total_r = await db.execute(
-            select(func.count(Task.id)).where(Task.workspace_id == ws.id)
+    """按子项目统计任务数/完成数/逾期数（单条 GROUP BY 查询）。"""
+    from sqlalchemy import case, and_
+
+    today = date.today()
+    result = await db.execute(
+        select(
+            Task.workspace_id,
+            Workspace.name.label("workspace_name"),
+            func.count(Task.id).label("total"),
+            func.sum(case((Task.status == "DONE", 1), else_=0)).label("done"),
+            func.sum(case((and_(Task.status != "DONE", Task.due_date < today), 1), else_=0)).label("overdue"),
         )
-        total = total_r.scalar() or 0
-        done_r = await db.execute(
-            select(func.count(Task.id)).where(
-                Task.workspace_id == ws.id, Task.status == "DONE"
-            )
-        )
-        done = done_r.scalar() or 0
-        overdue_r = await db.execute(
-            select(func.count(Task.id)).where(
-                Task.workspace_id == ws.id,
-                Task.status != "DONE",
-                Task.due_date < date.today(),
-            )
-        )
-        overdue = overdue_r.scalar() or 0
-        completion = round(done / total * 100, 1) if total else 0.0
-        stats.append({
-            "workspace_id": ws.id, "workspace_name": ws.name,
-            "total": total, "done": done, "overdue": overdue,
-            "completion": completion,
-        })
-    return stats
+        .join(ProjectGroupItem, ProjectGroupItem.workspace_id == Task.workspace_id)
+        .join(Workspace, Workspace.id == Task.workspace_id)
+        .where(ProjectGroupItem.group_id == group_id)
+        .group_by(Task.workspace_id, Workspace.name)
+        .order_by(Workspace.name)
+    )
+    rows = result.all()
+
+    ws_with_tasks = {r.workspace_id for r in rows}
+    all_workspaces = await get_group_workspaces(db, group_id)
+    stats_map = {
+        r.workspace_id: {
+            "workspace_id": r.workspace_id,
+            "workspace_name": r.workspace_name,
+            "total": int(r.total or 0),
+            "done": int(r.done or 0),
+            "overdue": int(r.overdue or 0),
+        }
+        for r in rows
+    }
+    for ws in all_workspaces:
+        if ws.id not in ws_with_tasks:
+            stats_map[ws.id] = {
+                "workspace_id": ws.id,
+                "workspace_name": ws.name,
+                "total": 0, "done": 0, "overdue": 0,
+            }
+    return [
+        {**v, "completion": round(v["done"] / v["total"] * 100, 1) if v["total"] else 0.0}
+        for v in stats_map.values()
+    ]
 
 
 async def aggregate_members(db: AsyncSession, group_id: str) -> list[dict]:

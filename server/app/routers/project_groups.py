@@ -1,10 +1,13 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
+from app.models.project_group import ProjectGroupItem
+from app.models.workspace import Workspace
 from app.schemas.common import APIResponse
 from app.schemas.project_group import (
     ProjectGroupCreate, ProjectGroupUpdate, ProjectGroupItemAdd,
@@ -44,15 +47,37 @@ async def list_groups(
     user: User = Depends(get_current_user),
 ):
     groups, total = await svc.list_groups(db, keyword=keyword, page=page, page_size=page_size)
-    data = []
-    for g in groups:
-        ws_list = await svc.get_group_workspaces(db, g.id)
-        creator_name = await svc.get_creator_name(db, g.creator_id)
-        data.append(_group_to_dict(
-            g, creator_name=creator_name,
-            workspaces=[{"id": w.id, "name": w.name} for w in ws_list],
-            workspace_count=len(ws_list),
-        ))
+    if not groups:
+        return {"code": 0, "message": "ok", "data": [], "total": total}
+
+    group_ids = [g.id for g in groups]
+    creator_ids = list({g.creator_id for g in groups})
+
+    # 批量查询每个群的工作空间
+    ws_rows = (await db.execute(
+        select(ProjectGroupItem.group_id, Workspace.id, Workspace.name)
+        .join(Workspace, Workspace.id == ProjectGroupItem.workspace_id)
+        .where(ProjectGroupItem.group_id.in_(group_ids))
+    )).all()
+    ws_by_group: dict[str, list[dict]] = {gid: [] for gid in group_ids}
+    for gid, ws_id, ws_name in ws_rows:
+        ws_by_group.setdefault(gid, []).append({"id": ws_id, "name": ws_name})
+
+    # 批量查询创建者名称
+    creator_rows = (await db.execute(
+        select(User.id, User.display_name).where(User.id.in_(creator_ids))
+    )).all()
+    creator_map = {uid: name for uid, name in creator_rows}
+
+    data = [
+        _group_to_dict(
+            g,
+            creator_name=creator_map.get(g.creator_id),
+            workspaces=ws_by_group.get(g.id, []),
+            workspace_count=len(ws_by_group.get(g.id, [])),
+        )
+        for g in groups
+    ]
     return {"code": 0, "message": "ok", "data": data, "total": total}
 
 
