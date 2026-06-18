@@ -80,7 +80,7 @@ async def update_milestone(
         name=req.name, description=req.description, plan=req.plan,
         owner_id=req.owner_id,
         start_date=req.start_date, end_date=req.end_date,
-        status=req.status, phase=req.phase, sort_order=req.sort_order, color=req.color,
+        phase=req.phase, sort_order=req.sort_order, color=req.color,
         depends_on_id=req.depends_on_id,
     )
     data_list = await ms_service.list_milestones(db, workspace_id)
