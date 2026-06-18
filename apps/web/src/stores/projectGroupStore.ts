@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type {
   ProjectGroup, ProjectGroupStats, ProjectGroupMember,
-  ProjectGroupActivity, ProjectGroupMilestone, Task,
+  ProjectGroupActivity, ProjectGroupMilestone, ProjectGroupTask,
 } from '../types';
 import api from '../api/client';
 
@@ -14,7 +14,7 @@ interface ProjectGroupState {
   members: ProjectGroupMember[];
   milestones: ProjectGroupMilestone[];
   activity: ProjectGroupActivity[];
-  tasks: Task[];
+  tasks: ProjectGroupTask[];
 
   fetchList: (params?: Record<string, any>) => Promise<void>;
   fetchDetail: (id: string) => Promise<void>;

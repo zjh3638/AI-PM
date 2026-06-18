@@ -16,13 +16,3 @@ class ProjectGroupItemAdd(BaseModel):
     workspace_id: str
 
 
-class ProjectGroupResponse(BaseModel):
-    id: str
-    name: str
-    description: Optional[str] = None
-    creator_id: str
-    creator_name: Optional[str] = None
-    workspace_count: int = 0
-    workspaces: list[dict] = []
-    created_at: str
-    updated_at: str

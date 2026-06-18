@@ -81,6 +81,20 @@ export interface ProjectGroupMilestone {
   status: string | null;
 }
 
+export interface ProjectGroupTask {
+  id: string;
+  title: string;
+  status: string;
+  phase: string;
+  priority: string;
+  task_type: string;
+  workspace_id: string;
+  workspace_name: string;
+  assignee_id: string | null;
+  due_date: string | null;
+  created_at: string;
+}
+
 export interface WorkspaceMember {
   id: string;
   user_id: string | null;

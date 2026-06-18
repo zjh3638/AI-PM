@@ -4,6 +4,7 @@ import { Modal, Form, Input, Select, message, Tag } from 'antd';
 import { useProjectGroupStore } from '../../stores/projectGroupStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useAuthStore } from '../../stores/authStore';
+import type { ProjectGroupTask } from '../../types';
 
 type TabKey = 'overview' | 'tasks' | 'milestones' | 'members' | 'activity' | 'settings';
 
@@ -141,7 +142,7 @@ export default function ProjectGroupDetailPage() {
           </div>
           {tasks.length === 0 ? <div className="empty-state">暂无任务</div> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {tasks.map((t: any) => (
+              {tasks.map((t: ProjectGroupTask) => (
                 <div key={t.id} style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px',
                   background: 'var(--bg-surface)', border: '1px solid var(--border-light)',
