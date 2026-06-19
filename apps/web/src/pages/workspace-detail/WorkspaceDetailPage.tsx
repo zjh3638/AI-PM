@@ -62,6 +62,7 @@ export default function WorkspaceDetailPage() {
   const [stories, setStories] = useState<Task[]>([]);
   const [taskSubmitting, setTaskSubmitting] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState('');
   const [commentSubmitting, setCommentSubmitting] = useState(false);
@@ -825,7 +826,7 @@ export default function WorkspaceDetailPage() {
           </div>
         )}
 
-        {/* ─── COMMON FIELDS ─── */}
+        {/* ─── COMMON FIELDS (5 defaults: title / description / priority / due_date / assignee) ─── */}
         <div className="form-group">
           <label>{taskForm.task_type === 'STORY' ? '需求名称' : '任务名称'}</label>
           <input type="text" placeholder={taskForm.task_type === 'STORY' ? '输入需求名称' : '输入任务名称'}
@@ -845,73 +846,98 @@ export default function WorkspaceDetailPage() {
           <div className="form-group"><label>计划完成</label>
             <input type="date" value={taskForm.due_date || ''} onChange={(e) => setTaskForm((f) => ({ ...f, due_date: e.target.value }))} />
           </div>
-          {isFull && (
-            <div className="form-group"><label>所属迭代</label>
-              <select style={{ width:'100%' }} value={taskForm.iteration_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, iteration_id: e.target.value||undefined }))}>
-                <option value="">不关联迭代</option>
-                {allIterations.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
-              </select>
-            </div>
-          )}
-          {!isFull && (
-            <div className="form-group"><label>关联里程碑</label>
-              <select style={{ width:'100%' }} value={taskForm.milestone_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, milestone_id: e.target.value||undefined }))}>
-                <option value="">不关联</option>
-                {allMilestones.map((ms) => <option key={ms.id} value={ms.id}>{ms.name}</option>)}
-              </select>
-            </div>
-          )}
+          <div className="form-group"><label>负责人</label>
+            <select style={{ width:'100%' }} value={taskForm.assignee_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, assignee_id: e.target.value||undefined }))}>
+              <option value="">未指定</option>
+              {allMembers.map((m: any) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+            </select>
+          </div>
         </div>
 
-        {/* ─── ROLE CARD — unified person assignment per phase/type ─── */}
-        {(() => {
-          const roles: { key: string; label: string; hint: string; value: string }[] = [];
-          if (taskForm.task_type === 'BUG') {
-            roles.push({ key: 'proposer_id', label: '发现人', hint: '', value: taskForm.proposer_id||'' });
-            roles.push({ key: 'verifier_id', label: '验证人', hint: '', value: taskForm.verifier_id||'' });
-          } else if (taskForm.task_type === 'TASK' || taskForm.task_type === 'SUB_TASK') {
-            roles.push({ key: 'assignee_id', label: '负责人', hint: '', value: taskForm.assignee_id||'' });
-          } else if (editingTask && isFull && editingTask.task_type === 'STORY') {
-            if (editingTask.phase === 'BACKLOG') {
-              roles.push({ key: 'proposer_id', label: '需求提出人', hint: '谁提的需求', value: taskForm.proposer_id||'' });
-              roles.push({ key: 'analyst_id', label: '需求负责人', hint: 'PM指定', value: taskForm.analyst_id||'' });
-            } else if (editingTask.phase === 'PLAN') {
-              roles.push({ key: 'analyst_id', label: '需求负责人', hint: '编写PRD', value: taskForm.analyst_id||'' });
-              roles.push({ key: 'reviewer_id', label: 'PM', hint: '审核PRD', value: taskForm.reviewer_id||'' });
-            } else if (editingTask.phase === 'DESIGN') {
-              roles.push({ key: 'analyst_id', label: '需求负责人', hint: '编写方案文档', value: taskForm.analyst_id||'' });
-              roles.push({ key: 'reviewer_id', label: 'PM(评审人)', hint: '组织评审并决定通过/驳回', value: taskForm.reviewer_id||'' });
-            } else if (editingTask.phase === 'DEVELOPMENT') {
-              roles.push({ key: 'analyst_id', label: '需求负责人', hint: '拆分任务、推进开发', value: taskForm.analyst_id||'' });
-              roles.push({ key: 'reviewer_id', label: 'PM', hint: '', value: taskForm.reviewer_id||'' });
-            } else if (editingTask.phase === 'TESTING') {
-              roles.push({ key: 'qa_owner_id', label: '测试负责人', hint: '默认=需求提出人，执行测试', value: taskForm.qa_owner_id||'' });
-              roles.push({ key: 'reviewer_id', label: 'PM', hint: '', value: taskForm.reviewer_id||'' });
-            } else if (editingTask.phase === 'RELEASE') {
-              roles.push({ key: 'acceptance_owner_id', label: '验收负责人', hint: '默认=需求提出人', value: taskForm.acceptance_owner_id||'' });
-              roles.push({ key: 'reviewer_id', label: 'PM', hint: '', value: taskForm.reviewer_id||'' });
-            }
-          } else if (taskForm.parent_id && !editingTask) {
-            roles.push({ key: 'assignee_id', label: '指派给', hint: '执行该任务的开发者', value: taskForm.assignee_id||'' });
-          }
-          if (roles.length === 0) return null;
-          return (
-            <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', border: '1px solid var(--border-light)' }}>
-              <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', fontWeight:600, marginBottom:8, textTransform:'uppercase', letterSpacing:'0.05em' }}>👤 人员</div>
-              <div style={{ display:'flex', gap: 10, flexWrap:'wrap' }}>
-                {roles.map((r) => (
-                  <div key={r.key} style={{ flex: roles.length <= 2 ? 1 : '1 1 calc(50% - 5px)', minWidth: 120 }}>
-                    <label style={{ fontSize:'0.7rem', fontWeight:500, display:'block', marginBottom:3 }}>{r.label}{r.hint ? <span style={{ fontSize:'0.58rem',color:'var(--text-muted)',fontWeight:400 }}> · {r.hint}</span> : ''}</label>
-                    <select style={{ width:'100%' }} value={r.value} onChange={(e) => setTaskForm((f) => ({...f, [r.key]: e.target.value||undefined }))}>
-                      <option value="">{r.key === 'reviewer_id' ? '由负责人审核' : '未指定'}</option>
-                      {(r.key === 'reviewer_id' ? allReviewers : allMembers).map((m: any) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
-                    </select>
-                  </div>
-                ))}
-              </div>
+        {/* ─── Advanced toggle ─── */}
+        <button
+          type="button"
+          onClick={() => setShowAdvanced(!showAdvanced)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: 'var(--blue-600)', fontSize: '0.78rem', fontWeight: 500,
+            padding: '6px 0', marginTop: 4,
+          }}
+        >
+          <span style={{ transition: 'transform 0.15s', transform: showAdvanced ? 'rotate(90deg)' : '', display: 'inline-block' }}>▸</span>
+          {showAdvanced ? '收起高级设置' : '更多设置'}
+        </button>
+
+        {showAdvanced && (
+          <>
+            {/* iteration / milestone — auto-set from sidebar but user can override */}
+            <div className="form-row">
+              {isFull && (
+                <div className="form-group"><label>所属迭代</label>
+                  <select style={{ width:'100%' }} value={taskForm.iteration_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, iteration_id: e.target.value||undefined }))}>
+                    <option value="">不关联迭代</option>
+                    {allIterations.map((it) => <option key={it.id} value={it.id}>{it.name}</option>)}
+                  </select>
+                </div>
+              )}
+              {!isFull && (
+                <div className="form-group"><label>关联里程碑</label>
+                  <select style={{ width:'100%' }} value={taskForm.milestone_id||''} onChange={(e) => setTaskForm((f:any) => ({...f, milestone_id: e.target.value||undefined }))}>
+                    <option value="">不关联</option>
+                    {allMilestones.map((ms) => <option key={ms.id} value={ms.id}>{ms.name}</option>)}
+                  </select>
+                </div>
+              )}
             </div>
-          );
-        })()}
+
+            {/* ─── ROLE CARD — phase/type-specific person assignment ─── */}
+            {(() => {
+              const roles: { key: string; label: string; hint: string; value: string }[] = [];
+              if (taskForm.task_type === 'BUG') {
+                roles.push({ key: 'proposer_id', label: '发现人', hint: '', value: taskForm.proposer_id||'' });
+                roles.push({ key: 'verifier_id', label: '验证人', hint: '', value: taskForm.verifier_id||'' });
+              } else if (editingTask && isFull && editingTask.task_type === 'STORY') {
+                if (editingTask.phase === 'BACKLOG') {
+                  roles.push({ key: 'proposer_id', label: '需求提出人', hint: '谁提的需求', value: taskForm.proposer_id||'' });
+                  roles.push({ key: 'analyst_id', label: '需求负责人', hint: 'PM指定', value: taskForm.analyst_id||'' });
+                } else if (editingTask.phase === 'PLAN') {
+                  roles.push({ key: 'analyst_id', label: '需求负责人', hint: '编写PRD', value: taskForm.analyst_id||'' });
+                  roles.push({ key: 'reviewer_id', label: 'PM', hint: '审核PRD', value: taskForm.reviewer_id||'' });
+                } else if (editingTask.phase === 'DESIGN') {
+                  roles.push({ key: 'analyst_id', label: '需求负责人', hint: '编写方案文档', value: taskForm.analyst_id||'' });
+                  roles.push({ key: 'reviewer_id', label: 'PM(评审人)', hint: '组织评审并决定通过/驳回', value: taskForm.reviewer_id||'' });
+                } else if (editingTask.phase === 'DEVELOPMENT') {
+                  roles.push({ key: 'analyst_id', label: '需求负责人', hint: '拆分任务、推进开发', value: taskForm.analyst_id||'' });
+                  roles.push({ key: 'reviewer_id', label: 'PM', hint: '', value: taskForm.reviewer_id||'' });
+                } else if (editingTask.phase === 'TESTING') {
+                  roles.push({ key: 'qa_owner_id', label: '测试负责人', hint: '默认=需求提出人，执行测试', value: taskForm.qa_owner_id||'' });
+                  roles.push({ key: 'reviewer_id', label: 'PM', hint: '', value: taskForm.reviewer_id||'' });
+                } else if (editingTask.phase === 'RELEASE') {
+                  roles.push({ key: 'acceptance_owner_id', label: '验收负责人', hint: '默认=需求提出人', value: taskForm.acceptance_owner_id||'' });
+                  roles.push({ key: 'reviewer_id', label: 'PM', hint: '', value: taskForm.reviewer_id||'' });
+                }
+              }
+              if (roles.length === 0) return null;
+              return (
+                <div style={{ marginTop: 12, padding: '10px 12px', borderRadius: 'var(--radius-md)', background: 'var(--bg-surface)', border: '1px solid var(--border-light)' }}>
+                  <div style={{ fontSize:'0.68rem', color:'var(--text-muted)', fontWeight:600, marginBottom:8, textTransform:'uppercase', letterSpacing:'0.05em' }}>👤 阶段角色</div>
+                  <div style={{ display:'flex', gap: 10, flexWrap:'wrap' }}>
+                    {roles.map((r) => (
+                      <div key={r.key} style={{ flex: roles.length <= 2 ? 1 : '1 1 calc(50% - 5px)', minWidth: 120 }}>
+                        <label style={{ fontSize:'0.7rem', fontWeight:500, display:'block', marginBottom:3 }}>{r.label}{r.hint ? <span style={{ fontSize:'0.58rem',color:'var(--text-muted)',fontWeight:400 }}> · {r.hint}</span> : ''}</label>
+                        <select style={{ width:'100%' }} value={r.value} onChange={(e) => setTaskForm((f) => ({...f, [r.key]: e.target.value||undefined }))}>
+                          <option value="">{r.key === 'reviewer_id' ? '由负责人审核' : '未指定'}</option>
+                          {(r.key === 'reviewer_id' ? allReviewers : allMembers).map((m: any) => <option key={m.user_id||m.id} value={m.user_id||m.id}>{m.user_name||m.user_id}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </>
+        )}
 
         {/* ─── Document Tabs — STORY only, always visible ─── */}
         {editingTask && isFull && editingTask.task_type === 'STORY' && (() => {

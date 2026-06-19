@@ -23,7 +23,7 @@ export default function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFu
 
   const [kanban, setKanban] = useState<Record<string, Task[]>>({});
   const [loading, setLoading] = useState(false);
-  const [viewMode, setViewMode] = useState<'phase' | 'status'>('phase');
+  const [viewMode, setViewMode] = useState<'phase' | 'status'>('status');
   const groupBy = milestoneMode ? 'milestone' : (isFull ? viewMode : 'status');
 
   const fetchKanbanData = useCallback(async (wsId: string, groupBy: string) => {

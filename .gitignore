@@ -22,3 +22,9 @@ task_plan.md
 apps/web/e2e/.auth/
 *.bak
 *.bak2
+
+# Session artifacts
+.DS_Store
+.claude/
+.superpowers/
+package-lock.json
