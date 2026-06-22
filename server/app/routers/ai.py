@@ -1,9 +1,11 @@
+import asyncio
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,7 +15,8 @@ from app.deps import get_current_user
 from app.models.user import User
 from app.models.chat_history import ChatHistory
 from app.schemas.common import APIResponse
-from app.services.ai_service import chat, encrypt_api_key, decrypt_api_key, get_gateway_url
+from app.services.ai_chat_stream import chat_stream
+from app.services.ai_service import encrypt_api_key, decrypt_api_key, get_gateway_url
 from app.config import settings
 
 SETTINGS_FILE = Path(__file__).parent.parent.parent / "settings.json"
@@ -21,11 +24,12 @@ SETTINGS_FILE = Path(__file__).parent.parent.parent / "settings.json"
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 
-class ChatRequest(BaseModel):
+class ChatStreamRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     agent: str = "项目经理"
     workspace_id: Optional[str] = None
-    conversation_history: Optional[list[dict]] = None
+    conversation_id: Optional[str] = None
+    route_context: Optional[dict] = None
 
 
 class LLMConfigRequest(BaseModel):
@@ -33,40 +37,35 @@ class LLMConfigRequest(BaseModel):
     model: Optional[str] = Field(default=None, max_length=100)
 
 
-@router.post("/chat", response_model=APIResponse)
-async def ai_chat(
-    req: ChatRequest,
+@router.post("/chat-stream")
+async def ai_chat_stream(
+    req: ChatStreamRequest,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    # Save user message
-    db.add(ChatHistory(
-        user_id=user.id,
-        role="user",
-        content=req.message,
-        agent=req.agent,
-    ))
+    async def event_source():
+        try:
+            async for frame in chat_stream(
+                db=db, user=user,
+                message=req.message, agent=req.agent,
+                workspace_id=req.workspace_id,
+                route_context=req.route_context,
+                conversation_id=req.conversation_id,
+            ):
+                yield frame
+        except asyncio.CancelledError:
+            # Client disconnected mid-stream — chat_stream already wrote what it had.
+            raise
+        except Exception as exc:
+            yield (
+                f'event: error\ndata: {{"message": {json.dumps(str(exc), ensure_ascii=False)}}}\n\n'
+            )
 
-    result = await chat(
-        db=db,
-        user=user,
-        message=req.message,
-        agent=req.agent,
-        workspace_id=req.workspace_id,
-        conversation_history=req.conversation_history,
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
     )
-
-    # Save AI reply
-    db.add(ChatHistory(
-        user_id=user.id,
-        role="assistant",
-        content=result["reply"],
-        agent=req.agent,
-        tool_actions=result.get("actions") or None,
-    ))
-    await db.commit()
-
-    return {"code": 0, "message": "ok", "data": result}
 
 
 @router.get("/chat-history", response_model=APIResponse)
