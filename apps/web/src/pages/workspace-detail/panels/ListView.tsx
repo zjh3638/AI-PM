@@ -3,11 +3,11 @@ import { useParams } from 'react-router-dom';
 import { useTaskStore } from '../../../stores/taskStore';
 import type { Task } from '../../../types';
 
-export default function ListView({ onEditTask, scopeFilter, isFull }: { onEditTask: (task: Task) => void; scopeFilter: string; isFull: boolean }) {
+export default function ListView({ onEditTask, scopeFilter, trackKey }: { onEditTask: (task: Task) => void; scopeFilter: string; trackKey: 'iteration_id' | 'milestone_id' }) {
   const { id: wsId } = useParams<{ id: string }>();
   const { tasks, fetchList } = useTaskStore();
 
-  useEffect(() => { if (wsId) fetchList(wsId, { [isFull ? 'iteration_id' : 'milestone_id']: scopeFilter || undefined }); }, [wsId, scopeFilter]);
+  useEffect(() => { if (wsId) fetchList(wsId, { [trackKey]: scopeFilter || undefined }); }, [wsId, scopeFilter]);
 
   const statusLabels: Record<string, string> = {
     TODO: '待办', IN_PROGRESS: '进行中', IN_REVIEW: '待 Review', DONE: '已完成',

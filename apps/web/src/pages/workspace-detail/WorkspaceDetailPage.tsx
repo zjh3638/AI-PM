@@ -10,8 +10,8 @@ import { useMilestoneStore } from '../../stores/milestoneStore';
 import SlidePanel from '../../components/common/SlidePanel';
 import api from '../../api/client';
 
-import MilestoneSidebar from './sidebar/MilestoneSidebar';
-import IterationSidebar from './sidebar/IterationSidebar';
+import TrackSidebar from './sidebar/TrackSidebar';
+import { useWorkspaceMode } from './hooks/useWorkspaceMode';
 import FocusStrip from './components/FocusStrip';
 import KpiRow from './components/KpiRow';
 import PulseChat from './components/PulseChat';
@@ -41,12 +41,10 @@ export default function WorkspaceDetailPage() {
   const [activeView, setActiveView] = useState('kanban');
   const [taskPanelOpen, setTaskPanelOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [selectedMilestone, setSelectedMilestone] = useState<string>('');
-  const [selectedIteration, setSelectedIteration] = useState<string>('');
   const [msEditOpen, setMsEditOpen] = useState(false);
   const [msEditForm, setMsEditForm] = useState<{ id: string; name: string; description: string; plan: string; owner_id: string; phase: string; start_date: string; end_date: string; depends_on_id: string | null }>({ id: '', name: '', description: '', plan: '', owner_id: '', phase: 'PLANNING', start_date: '', end_date: '', depends_on_id: null });
-  const wsType = current?.type || 'PROJECT';
-  const isFull = wsType === 'PROJECT';
+  const mode = useWorkspaceMode();
+  const isFull = mode.isFull;
   const allMilestones = useMilestoneStore((s) => s.milestones);
   const allIterations = useIterationStore((s) => s.iterations);
   const membersRaw = useWorkspaceStore((s) => s.members);
@@ -211,10 +209,10 @@ export default function WorkspaceDetailPage() {
   const milestones = useMilestoneStore((s) => s.milestones);
 
   const openTaskPanel = async (status?: string, task?: Task, parentStoryId?: string, defaultPhase?: string, defaultType?: string) => {
-    const scopeId = isFull ? selectedIteration : selectedMilestone;
+    const scopeId = mode.selectedTrackId;
     // Fetch available stories for parent selection
     if (id && scopeId) {
-      await useTaskStore.getState().fetchList(id, { [isFull ? 'iteration_id' : 'milestone_id']: scopeId, task_type: 'STORY', page_size: 100 });
+      await useTaskStore.getState().fetchList(id, { [mode.trackKey]: scopeId, task_type: 'STORY', page_size: 100 });
       const allTasks = useTaskStore.getState().tasks;
       setStories(allTasks);
     }
@@ -238,8 +236,8 @@ export default function WorkspaceDetailPage() {
         priority: 'MEDIUM',
         status: isStory ? 'DONE' : (status || 'TODO'),
         phase: getDefaultPhase(newType),
-        iteration_id: isStory ? undefined : (isFull ? selectedIteration || undefined : undefined),
-        milestone_id: isFull ? '' : selectedMilestone,
+        iteration_id: isStory ? undefined : (isFull ? mode.selectedTrackId || undefined : undefined),
+        milestone_id: isFull ? '' : mode.selectedTrackId,
         assignee_id: undefined, reviewer_id: undefined,
         proposer_id: isStory && user ? user.id : undefined,
         analyst_id: undefined,
@@ -309,7 +307,7 @@ export default function WorkspaceDetailPage() {
     if (!id) return;
     await useMilestoneStore.getState().remove(id, msEditForm.id);
     setMsEditOpen(false);
-    if (selectedMilestone === msEditForm.id) { const ms = milestones.find((m) => m.id !== msEditForm.id); setSelectedMilestone(ms?.id || ''); }
+    if (mode.selectedTrackId === msEditForm.id && !isFull) { const ms = milestones.find((m) => m.id !== msEditForm.id); mode.setSelectedTrackId(ms?.id || ''); }
   };
 
   const submitTask = async () => {
@@ -344,22 +342,7 @@ export default function WorkspaceDetailPage() {
     return <div style={{ textAlign: 'center', padding: 100, color: 'var(--text-muted)' }}>加载中...</div>;
   }
 
-  const tabs = isFull
-    ? [
-        { key: 'backlog', label: '需求池' },
-        { key: 'tasks', label: '任务看板' },
-        { key: 'kb', label: '知识库' },
-        { key: 'iterations', label: '迭代' },
-        { key: 'members', label: '成员' },
-        { key: 'risks', label: '风险管理' },
-        { key: 'reports', label: '报表' },
-      ]
-    : [
-        { key: 'tasks', label: '任务看板' },
-        { key: 'kb', label: '知识库' },
-        { key: 'members', label: '成员' },
-        { key: 'risks', label: '风险管理' },
-      ];
+  const tabs = mode.tabs;
 
   return (
     <div style={{ maxWidth: 'none', padding: '16px 20px 40px' }} data-ws-type={current.type}>
@@ -406,18 +389,7 @@ export default function WorkspaceDetailPage() {
 
       {/* 3-Column Layout */}
       <div className="pulse-layout">
-        {isFull ? (
-          <IterationSidebar
-            selectedId={selectedIteration}
-            onSelect={(id) => setSelectedIteration(id)}
-          />
-        ) : (
-          <MilestoneSidebar
-            selectedId={selectedMilestone}
-            onSelect={(id) => setSelectedMilestone(id)}
-            onEdit={openMilestoneEdit}
-          />
-        )}
+        <TrackSidebar mode={mode} onEditMilestone={openMilestoneEdit} />
 
         {/* Main Content */}
         <div className="pulse-main">
@@ -438,7 +410,7 @@ export default function WorkspaceDetailPage() {
           <div>
             {activeTab === 'ideas' && (
               <div className="ws-panel active" id="ws-panel-ideas" style={{ padding: '16px 20px' }}>
-                <IdeaPool selectedMilestone={selectedMilestone} />
+                <IdeaPool selectedMilestone={mode.selectedTrackId} />
               </div>
             )}
 
@@ -447,7 +419,7 @@ export default function WorkspaceDetailPage() {
                 <BacklogPanel
                   onEditStory={(story) => openTaskPanel(undefined, story)}
                   onCreateStory={() => openTaskPanel('TODO', undefined, undefined, 'BACKLOG', 'STORY')}
-                  selectedIteration={selectedIteration}
+                  selectedIteration={mode.selectedTrackId}
                 />
               </div>
             )}
@@ -455,10 +427,7 @@ export default function WorkspaceDetailPage() {
             {activeTab === 'tasks' && (
               <div className="ws-panel active" id="ws-panel-tasks">
                 <div className="view-switcher">
-                  {(isFull
-                    ? [{ key: 'kanban', label: '看板' }, { key: 'list', label: '列表' }]
-                    : [{ key: 'kanban', label: '看板(状态)' }, { key: 'kanban-ms', label: '看板(里程碑)' }, { key: 'list', label: '列表' }]
-                  ).map((v: any) => (
+                  {mode.views.map((v) => (
                     <button
                       key={v.key}
                       className={`view-switch${v.key === activeView ? ' active' : ''}`}
@@ -468,9 +437,9 @@ export default function WorkspaceDetailPage() {
                     </button>
                   ))}
                 </div>
-                {activeView === 'kanban' && <KanbanView onCreateTask={(status, phase, parentId) => openTaskPanel(status, undefined, parentId, phase)} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
-                {activeView === 'kanban-ms' && <KanbanView onCreateTask={() => {}} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={selectedMilestone} isFull={false} milestoneMode={true} />}
-                {activeView === 'list' && <ListView onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={isFull ? selectedIteration : selectedMilestone} isFull={isFull} />}
+                {activeView === 'kanban' && <KanbanView onCreateTask={(status, phase, parentId) => openTaskPanel(status, undefined, parentId, phase)} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={mode.selectedTrackId} isFull={isFull} />}
+                {activeView === 'kanban-ms' && <KanbanView onCreateTask={() => {}} onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={mode.selectedTrackId} isFull={false} milestoneMode={true} />}
+                {activeView === 'list' && <ListView onEditTask={(task) => openTaskPanel(undefined, task)} scopeFilter={mode.selectedTrackId} trackKey={mode.trackKey} />}
               </div>
             )}
 
