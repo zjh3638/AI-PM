@@ -27,17 +27,31 @@ RESULT_SUMMARY_LIMIT = 200
 
 
 async def _load_history(db: AsyncSession, user_id: str,
-                        conversation_id: Optional[str]) -> tuple[Optional[str], list[dict]]:
-    """Return (conversation_id, openai-format messages list)."""
+                        conversation_id: Optional[str],
+                        workspace_id: Optional[str] = None,
+                        ) -> tuple[Optional[str], list[dict]]:
+    """Return (conversation_id, openai-format messages list).
+
+    When `conversation_id` is given, load exactly that conversation. Otherwise
+    pick the user's most recent conversation *within the given workspace
+    scope* (workspace_id NULL means the global / non-workspace scope, e.g.
+    chat opened from the dashboard).
+    """
     q = select(ChatHistory).where(ChatHistory.user_id == user_id)
     if conversation_id:
         q = q.where(ChatHistory.conversation_id == conversation_id)
     else:
-        # latest conversation: pick the most recent conversation_id
-        latest = (await db.execute(
+        latest_q = (
             select(ChatHistory.conversation_id)
-            .where(ChatHistory.user_id == user_id, ChatHistory.conversation_id.is_not(None))
-            .order_by(ChatHistory.created_at.desc()).limit(1)
+            .where(ChatHistory.user_id == user_id,
+                   ChatHistory.conversation_id.is_not(None))
+        )
+        if workspace_id is None:
+            latest_q = latest_q.where(ChatHistory.workspace_id.is_(None))
+        else:
+            latest_q = latest_q.where(ChatHistory.workspace_id == workspace_id)
+        latest = (await db.execute(
+            latest_q.order_by(ChatHistory.created_at.desc()).limit(1)
         )).scalar()
         if latest is None:
             return None, []
@@ -75,7 +89,7 @@ async def chat_stream(
 
     api_key = decrypt_api_key(user.llm_api_key)
     model = user.llm_model or "deepseek-chat"
-    conv_id, history = await _load_history(db, user.id, conversation_id)
+    conv_id, history = await _load_history(db, user.id, conversation_id, workspace_id)
     if not conv_id:
         conv_id = str(uuid.uuid4())
 
@@ -84,7 +98,7 @@ async def chat_stream(
                 {"role": "user", "content": message}]
     new_rows: list[ChatHistory] = [ChatHistory(
         user_id=user.id, role="user", content=message, agent=agent,
-        conversation_id=conv_id,
+        conversation_id=conv_id, workspace_id=workspace_id,
     )]
     actions: list[dict] = []
     full_reply_parts: list[str] = []
@@ -120,14 +134,15 @@ async def chat_stream(
             full_reply_parts.append(content_acc)
             new_rows.append(ChatHistory(
                 user_id=user.id, role="assistant", content=content_acc,
-                agent=agent, conversation_id=conv_id,
+                agent=agent, conversation_id=conv_id, workspace_id=workspace_id,
             ))
             break
 
         tool_calls = [tool_acc[k] for k in sorted(tool_acc.keys())]
         new_rows.append(ChatHistory(
             user_id=user.id, role="assistant", content=content_acc or "",
-            agent=agent, conversation_id=conv_id, tool_calls=tool_calls,
+            agent=agent, conversation_id=conv_id, workspace_id=workspace_id,
+            tool_calls=tool_calls,
         ))
         messages.append({"role": "assistant", "content": content_acc or None,
                          "tool_calls": tool_calls})
@@ -149,7 +164,8 @@ async def chat_stream(
             result_json = json.dumps(result, ensure_ascii=False)
             new_rows.append(ChatHistory(
                 user_id=user.id, role="tool", content=result_json,
-                agent=agent, conversation_id=conv_id, tool_call_id=tc["id"],
+                agent=agent, conversation_id=conv_id, workspace_id=workspace_id,
+                tool_call_id=tc["id"],
             ))
             messages.append({"role": "tool", "tool_call_id": tc["id"],
                              "content": result_json})
@@ -160,7 +176,8 @@ async def chat_stream(
             yield ev
         new_rows.append(ChatHistory(
             user_id=user.id, role="assistant",
-            content="".join(full_reply_parts), agent=agent, conversation_id=conv_id,
+            content="".join(full_reply_parts), agent=agent,
+            conversation_id=conv_id, workspace_id=workspace_id,
         ))
 
     # Persist whatever we managed to capture (works for both normal and partial paths).

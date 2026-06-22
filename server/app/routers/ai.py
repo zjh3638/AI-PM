@@ -72,15 +72,27 @@ async def get_chat_history(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
     conversation_id: Optional[str] = Query(default=None),
+    workspace_id: Optional[str] = Query(default=None),
     limit: int = Query(default=50, le=100),
 ):
-    """Return one conversation's full message sequence (user/assistant/tool)."""
+    """Return one conversation's full message sequence (user/assistant/tool).
+
+    When `conversation_id` is omitted the latest conversation in the given
+    workspace scope is returned. `workspace_id=null` (omitted) means the
+    global / non-workspace scope.
+    """
     if conversation_id is None:
-        latest = (await db.execute(
+        latest_q = (
             select(ChatHistory.conversation_id)
             .where(ChatHistory.user_id == user.id,
                    ChatHistory.conversation_id.is_not(None))
-            .order_by(ChatHistory.created_at.desc()).limit(1)
+        )
+        if workspace_id is None:
+            latest_q = latest_q.where(ChatHistory.workspace_id.is_(None))
+        else:
+            latest_q = latest_q.where(ChatHistory.workspace_id == workspace_id)
+        latest = (await db.execute(
+            latest_q.order_by(ChatHistory.created_at.desc()).limit(1)
         )).scalar()
         conversation_id = latest
 
