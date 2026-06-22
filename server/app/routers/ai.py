@@ -1,13 +1,12 @@
 import asyncio
 import json
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -72,45 +71,50 @@ async def ai_chat_stream(
 async def get_chat_history(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
+    conversation_id: Optional[str] = Query(default=None),
     limit: int = Query(default=50, le=100),
 ):
-    """Return recent chat history for current user (retained for 3 days)."""
-    cutoff = datetime.utcnow() - timedelta(days=3)
+    """Return one conversation's full message sequence (user/assistant/tool)."""
+    if conversation_id is None:
+        latest = (await db.execute(
+            select(ChatHistory.conversation_id)
+            .where(ChatHistory.user_id == user.id,
+                   ChatHistory.conversation_id.is_not(None))
+            .order_by(ChatHistory.created_at.desc()).limit(1)
+        )).scalar()
+        conversation_id = latest
 
-    # Clean up old messages
-    await db.execute(
-        delete(ChatHistory).where(
-            ChatHistory.user_id == user.id,
-            ChatHistory.created_at < cutoff,
-        )
-    )
+    if conversation_id is None:
+        return {"code": 0, "message": "ok",
+                "data": {"conversation_id": None, "messages": []}}
 
-    # Load recent history
-    result = await db.execute(
+    rows = (await db.execute(
         select(ChatHistory)
-        .where(ChatHistory.user_id == user.id, ChatHistory.created_at >= cutoff)
-        .order_by(ChatHistory.created_at.asc())
-        .limit(limit)
-    )
-    messages = result.scalars().all()
+        .where(ChatHistory.user_id == user.id,
+               ChatHistory.conversation_id == conversation_id)
+        .order_by(ChatHistory.created_at.asc()).limit(limit)
+    )).scalars().all()
 
-    return {
-        "code": 0, "message": "ok",
-        "data": [
-            {
-                "id": m.id,
-                "role": m.role,
-                "content": m.content,
-                "agent": m.agent,
-                "actions": [
-                    {"tool": a["tool"], "label": tool_labels.get(a["tool"], a["tool"])}
-                    for a in (m.tool_actions or [])
-                ],
-                "created_at": m.created_at.isoformat(),
-            }
-            for m in messages
-        ],
-    }
+    messages = []
+    for r in rows:
+        m = {
+            "id": r.id, "role": r.role, "content": r.content,
+            "agent": r.agent, "created_at": r.created_at.isoformat(),
+        }
+        if r.tool_calls:
+            m["tool_calls"] = r.tool_calls
+        if r.tool_call_id:
+            m["tool_call_id"] = r.tool_call_id
+        if r.tool_actions:
+            m["actions"] = [
+                {"tool": a["tool"], "label": tool_labels.get(a["tool"], a["tool"]),
+                 "args": a.get("args"), "result": a.get("result")}
+                for a in r.tool_actions
+            ]
+        messages.append(m)
+
+    return {"code": 0, "message": "ok",
+            "data": {"conversation_id": conversation_id, "messages": messages}}
 
 
 tool_labels: dict[str, str] = {
