@@ -23,6 +23,7 @@ const TOOL_LABELS: Record<string, string> = {
   get_my_tasks: '查询待办',
   generate_report: '生成报告',
   scan_risks: '扫描风险',
+  decompose_requirement: '拆解需求',
 };
 
 export default function AiDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {

@@ -197,6 +197,50 @@ TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "decompose_requirement",
+            "description": (
+                "把一个需求/PRD 拆分成若干子任务并一次性批量创建。"
+                "可选择新建父任务（提供 parent_title）或挂到已有任务下"
+                "（提供 parent_id）。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "description": "工作空间ID"},
+                    "parent_title": {"type": "string",
+                                     "description": "新建父任务标题；与 parent_id 二选一"},
+                    "parent_id": {"type": "string",
+                                  "description": "已有父任务 ID；与 parent_title 二选一"},
+                    "parent_description": {"type": "string",
+                                           "description": "新建父任务时的描述（可选）"},
+                    "subtasks": {
+                        "type": "array",
+                        "description": "子任务列表，每项至少包含 title",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "priority": {"type": "string",
+                                             "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]},
+                                "assignee_id": {"type": "string"},
+                                "due_date": {"type": "string",
+                                             "description": "YYYY-MM-DD"},
+                                "phase": {"type": "string"},
+                                "task_type": {"type": "string",
+                                              "enum": ["TASK", "STORY", "BUG"]},
+                            },
+                            "required": ["title"],
+                        },
+                    },
+                },
+                "required": ["workspace_id", "subtasks"],
+            },
+        },
+    },
 ]
 
 
@@ -434,6 +478,7 @@ TOOL_EXECUTORS = {
 # PM-extension tools live in a separate module to keep this file focused.
 from app.services import ai_tools_pm  # noqa: E402
 TOOL_EXECUTORS["scan_risks"] = ai_tools_pm.scan_risks
+TOOL_EXECUTORS["decompose_requirement"] = ai_tools_pm.decompose_requirement
 
 
 # ── Settings helper ─────────────────────────────────────────────────

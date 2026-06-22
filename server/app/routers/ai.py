@@ -141,6 +141,7 @@ tool_labels: dict[str, str] = {
     "get_my_tasks": "查询待办",
     "generate_report": "生成报告",
     "scan_risks": "扫描风险",
+    "decompose_requirement": "拆解需求",
 }
 
 

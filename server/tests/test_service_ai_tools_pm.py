@@ -3,13 +3,14 @@ extract_action_items)."""
 from datetime import date, timedelta
 
 import pytest
+from sqlalchemy import select
 
 from app.models.task import Task
 from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.security import hash_password
-from app.services.ai_tools_pm import scan_risks
+from app.services.ai_tools_pm import scan_risks, decompose_requirement
 
 
 @pytest.fixture
@@ -101,3 +102,109 @@ async def test_scan_risks_via_execute_tool(db_session, ws_with_tasks):
     result = await execute_tool(db_session, ws_with_tasks["user"], tc, ws_id)
     assert "summary" in result
     assert result["summary"]["overdue"] == 1
+
+
+# ── decompose_requirement ──────────────────────────────────────────────
+
+@pytest.fixture
+async def ws_for_decompose(db_session):
+    u = User(username="zhao2", display_name="周二",
+             hashed_password=hash_password("pw"))
+    db_session.add(u)
+    await db_session.flush()
+    ws = Workspace(name="P2", key="P2K", type="PROJECT",
+                   status="ACTIVE", visibility="PRIVATE")
+    db_session.add(ws)
+    await db_session.flush()
+    db_session.add(WorkspaceMember(workspace_id=ws.id, user_id=u.id, role="OWNER"))
+    await db_session.commit()
+    return {"workspace": ws, "user": u}
+
+
+@pytest.mark.asyncio
+async def test_decompose_creates_parent_and_children(db_session, ws_for_decompose):
+    ws_id = ws_for_decompose["workspace"].id
+    uid = ws_for_decompose["user"].id
+    result = await decompose_requirement(
+        db=db_session, workspace_id=ws_id, parent_title="登录模块",
+        subtasks=[
+            {"title": "前端登录页", "priority": "HIGH", "assignee_id": uid},
+            {"title": "后端登录 API", "priority": "MEDIUM"},
+            {"title": "登录联调测试"},
+        ],
+    )
+    assert result["parent"]["title"] == "登录模块"
+    assert result["created_count"] == 3
+    assert [c["title"] for c in result["children"]] == [
+        "前端登录页", "后端登录 API", "登录联调测试",
+    ]
+    # All children point to the parent
+    parent_id = result["parent"]["id"]
+    children_q = await db_session.execute(
+        select(Task).where(Task.parent_id == parent_id)
+    )
+    children = children_q.scalars().all()
+    assert len(children) == 3
+    assert {c.priority for c in children} == {"HIGH", "MEDIUM", "MEDIUM"}
+
+
+@pytest.mark.asyncio
+async def test_decompose_uses_existing_parent(db_session, ws_for_decompose):
+    ws_id = ws_for_decompose["workspace"].id
+    # Pre-existing parent task
+    parent = Task(workspace_id=ws_id, title="支付模块", task_type="STORY")
+    db_session.add(parent)
+    await db_session.commit()
+    await db_session.refresh(parent)
+
+    result = await decompose_requirement(
+        db=db_session, workspace_id=ws_id, parent_id=parent.id,
+        subtasks=[{"title": "选择支付方式"}, {"title": "回调处理"}],
+    )
+    assert result["parent"]["id"] == parent.id
+    assert result["parent"]["title"] == "支付模块"
+    assert result["created_count"] == 2
+    # Did NOT create a new parent
+    all_titled = await db_session.execute(
+        select(Task).where(Task.workspace_id == ws_id, Task.title == "支付模块")
+    )
+    assert len(all_titled.scalars().all()) == 1
+
+
+@pytest.mark.asyncio
+async def test_decompose_requires_parent_or_title(db_session, ws_for_decompose):
+    ws_id = ws_for_decompose["workspace"].id
+    result = await decompose_requirement(
+        db=db_session, workspace_id=ws_id, subtasks=[{"title": "x"}],
+    )
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_decompose_skips_invalid_subtasks(db_session, ws_for_decompose):
+    """Subtasks without a title are skipped with an error entry but the rest still create."""
+    ws_id = ws_for_decompose["workspace"].id
+    result = await decompose_requirement(
+        db=db_session, workspace_id=ws_id, parent_title="导出功能",
+        subtasks=[
+            {"title": "选择导出范围"},
+            {"description": "没有标题"},  # invalid
+            {"title": "生成 CSV"},
+        ],
+    )
+    assert result["created_count"] == 2
+    assert len(result["errors"]) == 1
+    assert [c["title"] for c in result["children"]] == ["选择导出范围", "生成 CSV"]
+
+
+@pytest.mark.asyncio
+async def test_decompose_via_execute_tool(db_session, ws_for_decompose):
+    import json
+    from app.services.ai_service import execute_tool
+
+    ws_id = ws_for_decompose["workspace"].id
+    tc = {"id": "d1", "function": {"name": "decompose_requirement",
+        "arguments": json.dumps({"workspace_id": ws_id, "parent_title": "导入",
+                                 "subtasks": [{"title": "选文件"}, {"title": "校验"}]})}}
+    result = await execute_tool(db_session, ws_for_decompose["user"], tc, ws_id)
+    assert result["created_count"] == 2
