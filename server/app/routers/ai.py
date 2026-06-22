@@ -1,14 +1,17 @@
 import json
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
+from app.models.chat_history import ChatHistory
 from app.schemas.common import APIResponse
 from app.services.ai_service import chat, encrypt_api_key, decrypt_api_key, get_gateway_url
 from app.config import settings
@@ -36,6 +39,14 @@ async def ai_chat(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # Save user message
+    db.add(ChatHistory(
+        user_id=user.id,
+        role="user",
+        content=req.message,
+        agent=req.agent,
+    ))
+
     result = await chat(
         db=db,
         user=user,
@@ -44,7 +55,73 @@ async def ai_chat(
         workspace_id=req.workspace_id,
         conversation_history=req.conversation_history,
     )
+
+    # Save AI reply
+    db.add(ChatHistory(
+        user_id=user.id,
+        role="assistant",
+        content=result["reply"],
+        agent=req.agent,
+        tool_actions=result.get("actions") or None,
+    ))
+    await db.commit()
+
     return {"code": 0, "message": "ok", "data": result}
+
+
+@router.get("/chat-history", response_model=APIResponse)
+async def get_chat_history(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    limit: int = Query(default=50, le=100),
+):
+    """Return recent chat history for current user (retained for 3 days)."""
+    cutoff = datetime.utcnow() - timedelta(days=3)
+
+    # Clean up old messages
+    await db.execute(
+        delete(ChatHistory).where(
+            ChatHistory.user_id == user.id,
+            ChatHistory.created_at < cutoff,
+        )
+    )
+
+    # Load recent history
+    result = await db.execute(
+        select(ChatHistory)
+        .where(ChatHistory.user_id == user.id, ChatHistory.created_at >= cutoff)
+        .order_by(ChatHistory.created_at.asc())
+        .limit(limit)
+    )
+    messages = result.scalars().all()
+
+    return {
+        "code": 0, "message": "ok",
+        "data": [
+            {
+                "id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "agent": m.agent,
+                "actions": [
+                    {"tool": a["tool"], "label": tool_labels.get(a["tool"], a["tool"])}
+                    for a in (m.tool_actions or [])
+                ],
+                "created_at": m.created_at.isoformat(),
+            }
+            for m in messages
+        ],
+    }
+
+
+tool_labels: dict[str, str] = {
+    "get_workspace_context": "获取项目信息",
+    "create_task": "创建任务",
+    "update_task": "更新任务",
+    "search_tasks": "搜索任务",
+    "get_my_tasks": "查询待办",
+    "generate_report": "生成报告",
+}
 
 
 @router.patch("/me/llm-config", response_model=APIResponse)

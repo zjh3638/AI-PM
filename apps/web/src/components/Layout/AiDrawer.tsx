@@ -24,6 +24,7 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [needsConfig, setNeedsConfig] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const wsMatch = location.pathname.match(/\/workspaces\/([a-f0-9-]+)/);
@@ -34,9 +35,26 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
     if (!open || !user) return;
     (async () => {
       try {
-        const res = await api.get('/ai/me/llm-config');
-        setNeedsConfig(!res.data.has_api_key);
-      } catch { setNeedsConfig(true); }
+        const [cfgRes, histRes] = await Promise.all([
+          api.get('/ai/me/llm-config'),
+          api.get('/ai/chat-history'),
+        ]);
+        setNeedsConfig(!cfgRes.data.has_api_key);
+
+        if (histRes.data && Array.isArray(histRes.data)) {
+          const msgs: Message[] = histRes.data.map((m: any) => ({
+            role: m.role === 'assistant' ? 'ai' : 'user',
+            text: m.content,
+            agent: m.agent,
+            actions: m.actions,
+          }));
+          setMessages(msgs);
+        }
+        setLoaded(true);
+      } catch {
+        setNeedsConfig(true);
+        setLoaded(true);
+      }
     })();
   }, [open, user]);
 
@@ -44,11 +62,11 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  // Reset on close
+  // Reset loaded flag on close
   useEffect(() => {
     if (!open) {
-      setMessages([]);
       setInput('');
+      setLoaded(false);
     }
   }, [open]);
 
@@ -143,7 +161,7 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
           )}
 
           {/* Welcome */}
-          {messages.length === 0 && !needsConfig && (
+          {messages.length === 0 && loaded && !needsConfig && (
             <div className="chat-welcome">
               <div className="cw-icon">🤖</div>
               <div className="cw-title">有什么可以帮你的？</div>

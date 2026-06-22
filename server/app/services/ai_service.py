@@ -12,6 +12,7 @@ import httpx
 from cryptography.fernet import Fernet
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.config import settings
 from app.models.task import Task
@@ -185,7 +186,9 @@ async def _exec_get_workspace_context(db: AsyncSession, workspace_id: str) -> di
     """Fetch members and track info for a workspace."""
     # Members
     result = await db.execute(
-        select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
+        select(WorkspaceMember)
+        .options(selectinload(WorkspaceMember.user))
+        .where(WorkspaceMember.workspace_id == workspace_id)
     )
     members = result.scalars().all()
     member_list = [
@@ -268,7 +271,7 @@ async def _exec_update_task(db: AsyncSession, workspace_id: str, task_id: str,
 
 
 async def _exec_search_tasks(db: AsyncSession, workspace_id: str, **kwargs) -> dict:
-    query = select(Task).where(Task.workspace_id == workspace_id)
+    query = select(Task).options(selectinload(Task.assignee)).where(Task.workspace_id == workspace_id)
     if kwargs.get("status"):
         query = query.where(Task.status == kwargs["status"])
     if kwargs.get("assignee_id"):
@@ -346,7 +349,7 @@ async def _exec_generate_report(db: AsyncSession, workspace_id: str,
 
     # Active tasks
     active_result = await db.execute(
-        select(Task).where(
+        select(Task).options(selectinload(Task.assignee)).where(
             Task.workspace_id == workspace_id,
             Task.status.in_(["IN_PROGRESS", "IN_REVIEW"]),
         ).limit(15)
@@ -359,7 +362,7 @@ async def _exec_generate_report(db: AsyncSession, workspace_id: str,
 
     # Overdue
     overdue_result = await db.execute(
-        select(Task).where(
+        select(Task).options(selectinload(Task.assignee)).where(
             Task.workspace_id == workspace_id,
             Task.due_date < today,
             Task.status != "DONE",
@@ -477,47 +480,41 @@ async def chat(
 
         # If LLM wants to call a tool
         if msg.get("tool_calls"):
-            tool_call = msg["tool_calls"][0]
-            tool_name = tool_call["function"]["name"]
-            try:
-                tool_args = json.loads(tool_call["function"]["arguments"])
-            except json.JSONDecodeError:
-                tool_args = {}
+            # OpenAI-compatible protocol requires EVERY tool_call to be matched
+            # by a tool message with the same tool_call_id, in order.
+            messages.append(msg)  # assistant message with all tool_calls
 
-            executor = TOOL_EXECUTORS.get(tool_name)
-            if executor:
-                # Inject implicit context
-                tool_args.setdefault("workspace_id", workspace_id)
-                if tool_name in ("get_my_tasks",):
-                    # This tool doesn't take workspace_id
-                    pass
-                if "workspace_id" in tool_args and not tool_args["workspace_id"]:
-                    del tool_args["workspace_id"]
-
+            for tool_call in msg["tool_calls"]:
+                tool_name = tool_call["function"]["name"]
                 try:
-                    # Add user_id for get_my_tasks
-                    if tool_name == "get_my_tasks":
-                        result = await executor(db, user_id=user.id, **{k: v for k, v in tool_args.items() if k not in ("workspace_id",)})
-                    else:
-                        result = await executor(db, **tool_args)
-                except Exception as exc:
-                    result = {"error": str(exc)}
+                    tool_args = json.loads(tool_call["function"]["arguments"])
+                except json.JSONDecodeError:
+                    tool_args = {}
 
-                actions.append({"tool": tool_name, "args": tool_args, "result": result})
+                executor = TOOL_EXECUTORS.get(tool_name)
+                if executor:
+                    # Inject implicit context
+                    tool_args.setdefault("workspace_id", workspace_id)
+                    if "workspace_id" in tool_args and not tool_args["workspace_id"]:
+                        del tool_args["workspace_id"]
 
-                # Feed tool result back to LLM
-                messages.append(msg)  # assistant message with tool_calls
+                    try:
+                        if tool_name == "get_my_tasks":
+                            result = await executor(db, user_id=user.id, **{k: v for k, v in tool_args.items() if k != "workspace_id"})
+                        else:
+                            result = await executor(db, **tool_args)
+                    except Exception as exc:
+                        result = {"error": str(exc)}
+
+                    actions.append({"tool": tool_name, "args": tool_args, "result": result})
+                    tool_content = json.dumps(result, ensure_ascii=False)
+                else:
+                    tool_content = json.dumps({"error": f"未知工具: {tool_name}"})
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call["id"],
-                    "content": json.dumps(result, ensure_ascii=False),
-                })
-            else:
-                messages.append(msg)
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call["id"],
-                    "content": json.dumps({"error": f"未知工具: {tool_name}"}),
+                    "content": tool_content,
                 })
         else:
             # Final text reply
@@ -561,6 +558,9 @@ async def _call_llm(api_key: str, model: str, messages: list[dict],
             )
             resp.raise_for_status()
             return resp.json()
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text[:500] if exc.response else str(exc)
+            return {"error": detail}
         except httpx.HTTPError as exc:
             return {"error": str(exc)}
         except Exception as exc:
