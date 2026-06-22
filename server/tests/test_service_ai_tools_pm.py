@@ -10,7 +10,9 @@ from app.models.user import User
 from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.security import hash_password
-from app.services.ai_tools_pm import scan_risks, decompose_requirement
+from app.services.ai_tools_pm import (
+    scan_risks, decompose_requirement, extract_action_items,
+)
 
 
 @pytest.fixture
@@ -208,3 +210,58 @@ async def test_decompose_via_execute_tool(db_session, ws_for_decompose):
                                  "subtasks": [{"title": "选文件"}, {"title": "校验"}]})}}
     result = await execute_tool(db_session, ws_for_decompose["user"], tc, ws_id)
     assert result["created_count"] == 2
+
+
+# ── extract_action_items ───────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_extract_action_items_creates_orphan_tasks(db_session, ws_for_decompose):
+    """Without a parent, action items become top-level tasks with the meeting
+    footer appended to description."""
+    ws_id = ws_for_decompose["workspace"].id
+    uid = ws_for_decompose["user"].id
+    result = await extract_action_items(
+        db=db_session, workspace_id=ws_id,
+        meeting_title="2026-06-22 周会",
+        attendees=["周二", "李四"],
+        items=[
+            {"title": "联系运维确认上线时间", "assignee_id": uid,
+             "due_date": "2026-06-25"},
+            {"title": "梳理验收用例"},
+        ],
+    )
+    assert result["created_count"] == 2
+    titles = [t["title"] for t in result["items"]]
+    assert titles == ["联系运维确认上线时间", "梳理验收用例"]
+    # No parent linkage on extracted items
+    for item in result["items"]:
+        row = (await db_session.execute(
+            select(Task).where(Task.id == item["id"])
+        )).scalar_one()
+        assert row.parent_id is None
+        # Meeting context must end up in description (helps traceability)
+        assert "周会" in (row.description or "")
+        assert "周二" in (row.description or "")
+
+
+@pytest.mark.asyncio
+async def test_extract_action_items_empty_items_returns_error(db_session, ws_for_decompose):
+    result = await extract_action_items(
+        db=db_session, workspace_id=ws_for_decompose["workspace"].id,
+        meeting_title="空会", items=[],
+    )
+    assert "error" in result
+
+
+@pytest.mark.asyncio
+async def test_extract_action_items_via_execute_tool(db_session, ws_for_decompose):
+    import json
+    from app.services.ai_service import execute_tool
+    ws_id = ws_for_decompose["workspace"].id
+    tc = {"id": "e1", "function": {"name": "extract_action_items",
+        "arguments": json.dumps({
+            "workspace_id": ws_id, "meeting_title": "Standup",
+            "items": [{"title": "确认部署窗口"}],
+        })}}
+    result = await execute_tool(db_session, ws_for_decompose["user"], tc, ws_id)
+    assert result["created_count"] == 1

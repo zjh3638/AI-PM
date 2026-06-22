@@ -143,3 +143,65 @@ async def decompose_requirement(
                       "assignee_id": c.assignee_id} for c in children],
         "errors": errors,
     }
+
+
+async def extract_action_items(
+    db: AsyncSession,
+    workspace_id: str,
+    items: list[dict],
+    meeting_title: Optional[str] = None,
+    meeting_date: Optional[str] = None,
+    attendees: Optional[list[str]] = None,
+) -> dict:
+    """Create top-level tasks from a meeting's action items.
+
+    Each task's description gets a meeting footer appended (title / date /
+    attendees) so reviewers can trace back where the item came from. Unlike
+    decompose_requirement these are not children of any parent.
+    """
+    if not items:
+        return {"error": "items 不能为空"}
+
+    footer_parts = []
+    if meeting_title:
+        footer_parts.append(f"会议：{meeting_title}")
+    if meeting_date:
+        footer_parts.append(f"时间：{meeting_date}")
+    if attendees:
+        footer_parts.append(f"出席：{'、'.join(attendees)}")
+    footer = "\n\n---\n" + "\n".join(footer_parts) if footer_parts else ""
+
+    created: list[Task] = []
+    errors: list[dict] = []
+    for idx, raw in enumerate(items):
+        title = (raw or {}).get("title")
+        if not title:
+            errors.append({"index": idx, "reason": "missing title"})
+            continue
+        desc = (raw.get("description") or "").rstrip() + footer
+        task = Task(workspace_id=workspace_id, title=title,
+                    description=desc or None)
+        for field in ("priority", "assignee_id", "due_date", "phase",
+                      "iteration_id", "milestone_id"):
+            if field in raw and raw[field] is not None:
+                value = raw[field]
+                if field == "due_date":
+                    try:
+                        value = date.fromisoformat(value)
+                    except (ValueError, TypeError):
+                        continue
+                setattr(task, field, value)
+        db.add(task)
+        created.append(task)
+
+    await db.commit()
+    for t in created:
+        await db.refresh(t)
+
+    return {
+        "created_count": len(created),
+        "items": [{"id": t.id, "title": t.title, "assignee_id": t.assignee_id,
+                   "due_date": t.due_date.isoformat() if t.due_date else None}
+                  for t in created],
+        "errors": errors,
+    }

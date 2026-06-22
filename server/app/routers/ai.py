@@ -142,6 +142,7 @@ tool_labels: dict[str, str] = {
     "generate_report": "生成报告",
     "scan_risks": "扫描风险",
     "decompose_requirement": "拆解需求",
+    "extract_action_items": "提取会议待办",
 }
 
 

@@ -241,6 +241,48 @@ TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "extract_action_items",
+            "description": (
+                "从会议纪要中提取的待办事项一次性创建为顶层任务。"
+                "调用前 LLM 应已经把纪要文本解析成结构化的 items 列表。"
+                "会议元数据（meeting_title/date/attendees）会写入每个任务的"
+                "描述脚注，方便回溯来源。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "description": "工作空间ID"},
+                    "meeting_title": {"type": "string",
+                                      "description": "会议名称（可选，但建议填）"},
+                    "meeting_date": {"type": "string",
+                                     "description": "会议日期 YYYY-MM-DD（可选）"},
+                    "attendees": {"type": "array", "items": {"type": "string"},
+                                  "description": "出席人姓名列表（可选）"},
+                    "items": {
+                        "type": "array",
+                        "description": "待办事项列表，每项至少包含 title",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "priority": {"type": "string",
+                                             "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]},
+                                "assignee_id": {"type": "string"},
+                                "due_date": {"type": "string",
+                                             "description": "YYYY-MM-DD"},
+                            },
+                            "required": ["title"],
+                        },
+                    },
+                },
+                "required": ["workspace_id", "items"],
+            },
+        },
+    },
 ]
 
 
@@ -479,6 +521,7 @@ TOOL_EXECUTORS = {
 from app.services import ai_tools_pm  # noqa: E402
 TOOL_EXECUTORS["scan_risks"] = ai_tools_pm.scan_risks
 TOOL_EXECUTORS["decompose_requirement"] = ai_tools_pm.decompose_requirement
+TOOL_EXECUTORS["extract_action_items"] = ai_tools_pm.extract_action_items
 
 
 # ── Settings helper ─────────────────────────────────────────────────
