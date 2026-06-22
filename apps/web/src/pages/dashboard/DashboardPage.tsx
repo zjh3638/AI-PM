@@ -40,6 +40,10 @@ export default function DashboardPage() {
   const [activity, setActivity] = useState<any[]>([]);
   const [upcoming, setUpcoming] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
+  const [adminData, setAdminData] = useState<any>(null);
+
+  const isSuperAdmin = user?.system_role === 'SUPER_ADMIN';
+  const isAdmin = isSuperAdmin || user?.system_role === 'ADMIN';
 
   useEffect(() => { fetchWss({}); }, []);
 
@@ -58,6 +62,17 @@ export default function DashboardPage() {
       } catch { /* skip */ }
     })();
   }, []);
+
+  // SUPER_ADMIN: fetch admin-level stats
+  useEffect(() => {
+    if (!isSuperAdmin) return;
+    (async () => {
+      try {
+        const res = await api.get('/admin/stats');
+        setAdminData(res.data);
+      } catch { /* skip */ }
+    })();
+  }, [isSuperAdmin]);
 
   // Fetch kanban for each workspace for health display
   useEffect(() => {
@@ -105,9 +120,20 @@ export default function DashboardPage() {
     return { ws, pct, total: tasks.length, done, overdue };
   });
 
-  const priorityLabel: Record<string, string> = {
-    CRITICAL: '紧急', HIGH: '高', MEDIUM: '中', LOW: '低',
-  };
+  // KPI cards — role-aware
+  const kpiCards = isAdmin
+    ? [
+        { label: '我待办', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '我的任务' },
+        { label: '待审核', value: (inReviewTasks || stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
+        { label: '项目数', value: workspaces.length, color: '#3b82f6', sub: `${stats?.active_projects ?? 0} 活跃` },
+        { label: '已逾期', value: (overdueTasks || stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
+      ]
+    : [
+        { label: '我的任务', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '待处理' },
+        { label: '待审核', value: (inReviewTasks || stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
+        { label: '已逾期', value: (overdueTasks || stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
+        { label: '进行中项目', value: stats?.active_projects ?? workspaces.length, color: '#3b82f6', sub: '个' },
+      ];
 
   return (
     <div>
@@ -117,11 +143,16 @@ export default function DashboardPage() {
         <div className="date">{formatDate()}</div>
       </div>
 
-      {/* Quick Actions */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      {/* Quick Actions — role-aware */}
+      <div className="dash-actions">
         <button className="btn btn-primary btn-sm" onClick={() => navigate('/workspaces')}>
           📁 我的项目 ({workspaces.length})
         </button>
+        {isAdmin && (
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/admin')}>
+            ⚙️ 系统管理
+          </button>
+        )}
         <button className="btn btn-ghost btn-sm" onClick={() => navigate('/bigscreen')}>
           📊 会议大屏
         </button>
@@ -130,26 +161,34 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      {/* KPI Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-        {[
-          { label: '我的任务', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '待处理' },
-          { label: '待审核', value: (inReviewTasks || stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
-          { label: '已逾期', value: (overdueTasks || stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
-          { label: '进行中项目', value: stats?.active_projects ?? workspaces.length, color: '#3b82f6', sub: '个' },
-        ].map((kpi) => (
-          <div key={kpi.label}
-            style={{
-              background: 'var(--bg-surface)', border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-lg)', padding: '14px 16px',
-            }}
-          >
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginBottom: 4 }}>{kpi.label}</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 700, color: kpi.color }}>{kpi.value}</div>
-            <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{kpi.sub}</div>
+      {/* KPI Cards — role-aware */}
+      <div className="kpi-grid">
+        {kpiCards.map((kpi) => (
+          <div key={kpi.label} className="kpi-card">
+            <div className="kpi-label">{kpi.label}</div>
+            <div className="kpi-value" style={{ color: kpi.color }}>{kpi.value}</div>
+            <div className="kpi-sub">{kpi.sub}</div>
           </div>
         ))}
       </div>
+
+      {/* SUPER_ADMIN: System overview */}
+      {isSuperAdmin && adminData && (
+        <div className="briefing-box" style={{ marginBottom: 16 }}>
+          <div className="briefing-head">
+            <span className="head-left">
+              <span className="ai-badge">🛡️</span>
+              系统概览
+            </span>
+          </div>
+          <div className="briefing-body">
+            系统共 <strong>{adminData.total_users ?? '...'} 个用户</strong>，
+            <strong>{adminData.total_workspaces ?? workspaces.length} 个项目</strong>，
+            <strong>{adminData.total_tasks ?? totalTasks} 个任务</strong>。
+            {adminData.active_users != null && <> 近7天活跃用户 <strong>{adminData.active_users}</strong> 人。</>}
+          </div>
+        </div>
+      )}
 
       {/* Summary */}
       <div className={`briefing-box${briefingOpen ? '' : ' collapsed'}`}>
@@ -169,7 +208,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Main Grid: Need Attention + Project Health + Upcoming */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
+      <div className="main-grid">
         {/* Left — Need Focus */}
         <div>
           <div className="section-label">需要你关注</div>
@@ -208,10 +247,36 @@ export default function DashboardPage() {
               <div className="meta"><span>一切都在轨道上 🎉</span></div>
             </div>
           )}
+
+          {/* My Tasks */}
+          {myTasks.length > 0 && (
+            <div className="my-tasks-section">
+              <div className="section-label">我的任务</div>
+              {myTasks.map(({ wsName, wsId, tasks }) => (
+                <div key={wsId} className="task-ws-group">
+                  <div className="task-ws-header" onClick={() => navigate(`/workspaces/${wsId}`)}>
+                    📁 {wsName} ({tasks.length})
+                  </div>
+                  <div className="task-chip-list">
+                    {tasks.map((t: any) => (
+                      <div key={t.id} className="task-chip" onClick={() => navigate(`/workspaces/${wsId}`)}>
+                        <div className="task-chip-title">{t.title}</div>
+                        <div className="task-chip-meta">
+                          <span>{t.status === 'TODO' ? '待办' : t.status === 'IN_PROGRESS' ? '进行中' : t.status === 'IN_REVIEW' ? '审核中' : t.status}</span>
+                          {t.phase && <span>· {t.phase === 'PLAN' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : t.phase === 'RELEASE' ? '发布' : t.phase}</span>}
+                          {t.due_date && <span className={new Date(t.due_date) < new Date() ? 'text-red' : 'text-muted'}>📅 {t.due_date}</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Right — Project Health + Upcoming */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="right-col">
           <div>
             <div className="section-label">项目健康度</div>
             <div className="health-list">
@@ -221,13 +286,13 @@ export default function DashboardPage() {
                     <span className="hname">{ws.name}</span>
                     <span className="hstat">
                       <span className={`badge${pct < 50 ? ' badge-amber' : ' badge-green'}`}>{pct}%</span>
-                      {overdue > 0 ? <span style={{ color: 'var(--red-500)', fontSize: '0.72rem' }}>⚠ {overdue}逾期</span> : '✓ 正常'}
-                      <span style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>{done}/{total}</span>
+                      {overdue > 0 ? <span className="hstat-warn">⚠ {overdue}逾期</span> : '✓ 正常'}
+                      <span className="hstat-count">{done}/{total}</span>
                     </span>
                   </div>
                 ))
               ) : (
-                <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.78rem' }}>暂无项目</div>
+                <div className="empty-state" style={{ padding: 16 }}>暂无项目</div>
               )}
             </div>
           </div>
@@ -238,16 +303,9 @@ export default function DashboardPage() {
               <div className="section-label">最近动态</div>
               <div>
                 {activity.map((a: any) => (
-                  <div key={a.id}
-                    style={{
-                      padding: '8px 0', borderBottom: '1px solid var(--border-light)',
-                      display: 'flex', gap: 8, alignItems: 'flex-start',
-                    }}
-                  >
-                    <span style={{ fontSize: '0.65rem', fontWeight: 600, color: 'var(--blue-600)', minWidth: 44, textAlign: 'right', paddingTop: 1 }}>
-                      {timeAgo(a.created_at)}
-                    </span>
-                    <span style={{ fontSize: '0.75rem' }}>
+                  <div key={a.id} className="activity-item">
+                    <span className="activity-time">{timeAgo(a.created_at)}</span>
+                    <span className="activity-text">
                       <strong>{a.user_name}</strong> {a.action}
                     </span>
                   </div>
@@ -257,38 +315,6 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
-
-      {/* My Tasks */}
-      {myTasks.length > 0 && (
-        <div style={{ marginTop: 20 }}>
-          <div className="section-label" style={{ marginBottom: 10 }}>我的任务</div>
-          {myTasks.map(({ wsName, wsId, tasks }) => (
-            <div key={wsId} style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 6, cursor: 'pointer' }} onClick={() => navigate(`/workspaces/${wsId}`)}>
-                📁 {wsName} ({tasks.length})
-              </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {tasks.map((t: any) => (
-                  <div key={t.id}
-                    onClick={() => navigate(`/workspaces/${wsId}`)}
-                    style={{
-                      background: 'var(--bg-raised)', border: '1px solid var(--border-light)',
-                      borderRadius: 'var(--radius-sm)', padding: '6px 10px',
-                      fontSize: '0.74rem', cursor: 'pointer', maxWidth: 280,
-                    }}>
-                    <div style={{ fontWeight: 500, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</div>
-                    <div style={{ display: 'flex', gap: 8, fontSize: '0.64rem', color: 'var(--text-muted)' }}>
-                      <span>{t.status === 'TODO' ? '待办' : t.status === 'IN_PROGRESS' ? '进行中' : t.status === 'IN_REVIEW' ? '审核中' : t.status}</span>
-                      {t.phase && <span>· {t.phase === 'PLAN' ? '需求' : t.phase === 'DESIGN' ? '设计' : t.phase === 'DEVELOPMENT' ? '开发' : t.phase === 'TESTING' ? '测试' : t.phase === 'RELEASE' ? '发布' : t.phase}</span>}
-                      {t.due_date && <span style={{ color: new Date(t.due_date) < new Date() ? 'var(--red-500)' : 'var(--text-muted)' }}>📅 {t.due_date}</span>}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

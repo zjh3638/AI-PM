@@ -55,41 +55,41 @@ export default function KpiRow() {
     : (normalizedHealth >= 70 ? 'var(--green-600)' : normalizedHealth >= 40 ? 'var(--blue-600)' : 'var(--amber-600)');
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 14 }}>
-      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>任务完成</div>
-        <div style={{ fontSize: '1.8rem', fontWeight: 700 }}>{doneTasks}/{totalTasks}</div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{pct}% 完成</div>
+    <div className="ws-kpi-row">
+      <div className="ws-kpi-card">
+        <div className="kpi-head">任务完成</div>
+        <div className="kpi-count">{doneTasks}/{totalTasks}</div>
+        <div className="kpi-detail">{pct}% 完成</div>
       </div>
       {isFull ? (
-        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>{trackLabel}</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: 'var(--blue-600)' }}>{activeItems}</div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>{trackItems.length} 个{trackLabel} · {activeItems} 活跃</div>
+        <div className="ws-kpi-card">
+          <div className="kpi-head">{trackLabel}</div>
+          <div className="kpi-count" style={{ color: 'var(--blue-600)' }}>{activeItems}</div>
+          <div className="kpi-detail">{trackItems.length} 个{trackLabel} · {activeItems} 活跃</div>
         </div>
       ) : (
-        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-          <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>里程碑</div>
-          <div style={{ fontSize: '1.8rem', fontWeight: 700, color: overdueCount > 0 ? 'var(--red-500)' : 'var(--blue-600)' }}>
+        <div className="ws-kpi-card">
+          <div className="kpi-head">里程碑</div>
+          <div className="kpi-count" style={{ color: overdueCount > 0 ? 'var(--red-500)' : 'var(--blue-600)' }}>
             {completedMilestones}/{trackItems.length}
           </div>
-          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+          <div className="kpi-detail">
             {trackItems.length} 个里程碑 · {completedMilestones} 已完成
             {overdueCount > 0 && <span style={{ color: 'var(--red-500)', marginLeft: 4 }}>· {overdueCount} 个逾期</span>}
           </div>
         </div>
       )}
-      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>团队成员</div>
-        <div style={{ fontSize: '1.8rem', fontWeight: 700 }}>{humanMembers}</div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>人 · +{members.filter(m => m.role === 'AI_AGENT').length} AI Agent</div>
+      <div className="ws-kpi-card">
+        <div className="kpi-head">团队成员</div>
+        <div className="kpi-count">{humanMembers}</div>
+        <div className="kpi-detail">人 · +{members.filter(m => m.role === 'AI_AGENT').length} AI Agent</div>
       </div>
-      <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
-        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>项目健康度</div>
-        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: healthColor }}>
+      <div className="ws-kpi-card">
+        <div className="kpi-head">项目健康度</div>
+        <div className="kpi-count" style={{ color: healthColor }}>
           {healthLevel}
         </div>
-        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: 2 }}>
+        <div className="kpi-detail">
           {isFull
             ? `整体进度 ${pct}%`
             : `${completedMilestones}/${trackItems.length} 里程碑完成${overdueCount > 0 ? ` · ${overdueCount} 个逾期` : ''}`
