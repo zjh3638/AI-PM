@@ -1,73 +1,90 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import api from '../../api/client';
 
 const AGENTS = ['需求分析师', '设计师', '开发工程师', '项目经理'];
 
-const COMMANDS = [
-  { cmd: 'create', label: '创建任务', slash: '/创建任务' },
-  { cmd: 'status', label: '查询进度', slash: '/查询进度' },
-  { cmd: 'find', label: '查找文档', slash: '/查找文档' },
-  { cmd: 'report', label: '生成周报', slash: '/生成周报' },
-  { cmd: 'risk', label: '风险分析', slash: '/风险分析' },
+const SUGGESTIONS = [
+  '帮我看看有哪些逾期任务',
+  '创建任务：登录模块开发，给张三，高优先',
+  '生成本周周报',
+  '我的待办有哪些',
 ];
 
-type Message = { role: 'user' | 'ai'; text: string; agent?: string };
-
-const AI_RESPONSES: Record<string, string> = {
-  create:
-    '已创建任务「<strong>优化报表加载性能</strong>」<br><br>📋 详情：Story · 高优先级 · 指派给王五<br>📎 关联里程碑：M2 · 核心开发<br>🔗 位置：Q3 改版 → 待办列<br><br>任务已就绪。',
-  status:
-    '<strong>Q3 改版 · Sprint 5 进度总览</strong><br><br>📊 整体完成：<strong>24/36</strong>（67%）<br>📅 剩余 14 天<br><br>▸ M1 需求与设计：<span style="color:var(--green-600)">✓ 100%</span><br>▸ M2 核心开发：<span style="color:var(--blue-600)">◎ 60%</span><br>▸ M3 UI Review：<span style="color:var(--amber-600)">⚠ 40%</span><br>▸ M4 测试与修复：<span style="color:var(--text-muted)">○ 0%</span>',
-  find:
-    '在知识库中检索...<br><br>📄 <strong>找到 3 篇相关文档：</strong><br><br>1. 📄 <strong>数据安全规范 v2.3</strong>（PRD 目录）<br>2. 📊 <strong>数据导出功能需求分析</strong>（AI 草稿）<br>3. 📋 <strong>API 安全设计规范</strong>（技术方案）',
-  report:
-    '正在生成本周周报...<br><br><strong>本周周报草案：</strong><br><br>📋 <strong>本周完成：</strong><br>• 用户登录优化（王五）<br>• 消息推送模块（张三）<br>• 3 个后端 PR 已由 AI Agent 完成<br><br>⚠ <strong>风险与阻塞：</strong><br>• 前端首页重构延期 3 天<br><br>📅 <strong>下周计划：</strong><br>• UI Review 里程碑推进',
-  risk:
-    '🔍 已完成全项目风险扫描...<br><br><strong>风险报告（共 3 项）：</strong><br><br>🔴 <strong>高风险：前端首页重构延期</strong><br>影响 M3 UI Review 里程碑<br><br>🟡 <strong>中风险：李四负载 120%</strong><br>12 个活跃任务<br><br>🟡 <strong>中风险：运营中台状态停滞</strong><br>「用户模块重构」5 天无更新',
-};
+type Message = { role: 'user' | 'ai'; text: string; agent?: string; actions?: any[] };
 
 export default function AiDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuthStore();
+  const location = useLocation();
   const [agent, setAgent] = useState(AGENTS[0]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [needsConfig, setNeedsConfig] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const sendCommand = (cmd: string) => {
-    const userMsg: Message = { role: 'user', text: COMMANDS.find((c) => c.cmd === cmd)?.slash + ' ...' };
+  // Extract workspace_id from URL
+  const wsMatch = location.pathname.match(/\/workspaces\/([a-f0-9-]+)/);
+  const workspaceId = wsMatch ? wsMatch[1] : undefined;
+
+  // Check LLM config on open
+  useEffect(() => {
+    if (!open || !user) return;
+    (async () => {
+      try {
+        const res = await api.get('/ai/me/llm-config');
+        setNeedsConfig(!res.data.has_api_key);
+      } catch { setNeedsConfig(true); }
+    })();
+  }, [open, user]);
+
+  // Auto-scroll
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const sendMessage = async (text?: string) => {
+    const msg = text || input.trim();
+    if (!msg || loading) return;
+
+    const userMsg: Message = { role: 'user', text: msg };
     setMessages((m) => [...m, userMsg]);
+    setInput('');
+    setLoading(true);
 
-    const typingMsg: Message = { role: 'ai', text: '<em>处理中...</em>', agent };
-    setMessages((m) => [...m, typingMsg]);
+    // Build conversation history for context
+    const history = messages.map((m) => ({
+      role: m.role === 'ai' ? 'assistant' : 'user',
+      content: m.text,
+    })).slice(-10);
 
-    setTimeout(() => {
-      setMessages((m) => {
-        const updated = [...m];
-        updated[updated.length - 1] = { role: 'ai', text: AI_RESPONSES[cmd] || '收到。', agent };
-        return updated;
+    try {
+      const res = await api.post('/ai/chat', {
+        message: msg,
+        agent,
+        workspace_id: workspaceId,
+        conversation_history: history,
       });
-    }, 1200);
+
+      const data = res.data;
+      const aiMsg: Message = {
+        role: 'ai',
+        text: data.reply || '(无回复)',
+        agent,
+        actions: data.actions,
+      };
+      setMessages((m) => [...m, aiMsg]);
+    } catch (e: any) {
+      const errText = e?.response?.data?.detail || e?.message || '请求失败';
+      setMessages((m) => [...m, { role: 'ai', text: `❌ ${errText}`, agent }]);
+    }
+    setLoading(false);
   };
 
-  const sendMessage = () => {
-    if (!input.trim()) return;
-    const msg: Message = { role: 'user', text: input };
-    setMessages((m) => [...m, msg]);
-    setInput('');
-
-    const typingMsg: Message = { role: 'ai', text: '<em>处理中...</em>', agent };
-    setMessages((m) => [...m, typingMsg]);
-
-    setTimeout(() => {
-      setMessages((m) => {
-        const updated = [...m];
-        updated[updated.length - 1] = {
-          role: 'ai',
-          text: '收到你的消息。我作为 <strong>' + agent + '</strong> 正在处理中，请稍候。',
-          agent,
-        };
-        return updated;
-      });
-    }, 1200);
+  const sendSuggestion = (s: string) => {
+    setInput(s);
+    sendMessage(s);
   };
 
   return (
@@ -81,10 +98,8 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
               value={agent}
               onChange={(e) => setAgent(e.target.value)}
               style={{
-                fontSize: '0.7rem',
-                padding: '3px 8px',
-                border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.7rem', padding: '3px 8px',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
                 background: 'var(--bg-surface)',
               }}
             >
@@ -92,18 +107,36 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
                 <option key={a}>{a}</option>
               ))}
             </select>
-            <button className="drawer-close" onClick={onClose}>
-              ✕
-            </button>
+            <button className="drawer-close" onClick={onClose}>✕</button>
           </div>
         </div>
 
         <div className="drawer-body">
-          {messages.length === 0 && (
+          {needsConfig && messages.length === 0 && (
+            <div style={{
+              padding: 16, margin: '12px 0', borderRadius: 'var(--radius)',
+              background: 'var(--amber-50)', border: '1px solid var(--amber-100)',
+              fontSize: '0.78rem', color: 'var(--amber-600)', lineHeight: 1.6,
+            }}>
+              ⚠️ 你还没有配置 LLM API Key。<br />
+              请前往 <strong>个人中心 → AI 配置</strong> 设置你的 Key 和模型。
+            </div>
+          )}
+
+          {!needsConfig && messages.length === 0 && workspaceId && (
+            <div style={{
+              padding: '6px 12px', marginBottom: 8, fontSize: '0.68rem',
+              color: 'var(--text-muted)', textAlign: 'center',
+            }}>
+              当前工作空间: {workspaceId.slice(0, 8)}...
+            </div>
+          )}
+
+          {messages.length === 0 && !needsConfig && (
             <div className="chat-cmds">
-              {COMMANDS.map((c) => (
-                <button key={c.cmd} className="chat-cmd" onClick={() => sendCommand(c.cmd)}>
-                  <span className="cmd-slash">{c.slash}</span>
+              {SUGGESTIONS.map((s) => (
+                <button key={s} className="chat-cmd" onClick={() => sendSuggestion(s)}>
+                  {s}
                 </button>
               ))}
             </div>
@@ -114,21 +147,42 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
               <div key={i} className={`chat-msg ${m.role}`}>
                 {m.role === 'ai' && m.agent && <div className="msg-label">{m.agent}</div>}
                 {m.role === 'user' && <div className="msg-label">你</div>}
-                <div dangerouslySetInnerHTML={{ __html: m.text }} />
+                <div dangerouslySetInnerHTML={{ __html: m.text.replace(/\n/g, '<br>') }} />
+                {m.actions && m.actions.length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                    {m.actions.map((a: any, j: number) => (
+                      <span key={j} style={{
+                        display: 'inline-block', marginRight: 6,
+                        padding: '1px 6px', borderRadius: 4,
+                        background: 'var(--bg-raised)',
+                      }}>
+                        ✓ {a.tool}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
+            {loading && (
+              <div className="chat-msg ai">
+                <div className="msg-label">{agent}</div>
+                <em>思考中...</em>
+              </div>
+            )}
+            <div ref={bottomRef} />
           </div>
         </div>
 
         <div className="chat-input-area">
           <input
             type="text"
-            placeholder="@知识库 输入指令或问题..."
+            placeholder={workspaceId ? '描述你想做的事情...' : '输入指令或问题...'}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            disabled={loading || needsConfig}
           />
-          <button className="send-btn" onClick={sendMessage}>
+          <button className="send-btn" onClick={() => sendMessage()} disabled={loading || needsConfig}>
             ↑
           </button>
         </div>

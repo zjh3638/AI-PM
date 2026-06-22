@@ -35,6 +35,37 @@ export default function PersonalCenterPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // LLM config
+  const [llmCfg, setLlmCfg] = useState({ llm_model: '', api_key_masked: null as string | null, has_api_key: false, gateway_url: '' });
+  const [llmKey, setLlmKey] = useState('');
+  const [llmModel, setLlmModel] = useState('');
+  const [llmSaving, setLlmSaving] = useState(false);
+  const [llmMsg, setLlmMsg] = useState('');
+
+  useEffect(() => { fetchLLMConfig(); }, []);
+  const fetchLLMConfig = async () => {
+    try {
+      const res = await api.get('/ai/me/llm-config');
+      setLlmCfg(res.data);
+      setLlmModel(res.data.llm_model || '');
+    } catch { /* skip */ }
+  };
+  const saveLLMConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLlmSaving(true);
+    setLlmMsg('');
+    try {
+      const payload: Record<string, string> = {};
+      if (llmKey) payload.api_key = llmKey;
+      payload.model = llmModel || '';
+      await api.patch('/ai/me/llm-config', payload);
+      setLlmKey('');
+      setLlmMsg('保存成功');
+      fetchLLMConfig();
+    } catch { setLlmMsg('保存失败'); }
+    setLlmSaving(false);
+  };
+
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -111,6 +142,7 @@ export default function PersonalCenterPage() {
     { key: 'todos', label: '我的待办', count: myTasks.length },
     { key: 'reviews', label: '待 Review', count: reviewQueue.length },
     { key: 'messages', label: '动态', count: messages.length },
+    { key: 'llm', label: 'AI 配置', count: llmCfg.has_api_key ? 0 : 0, dot: !llmCfg.has_api_key },
   ];
 
   return (
@@ -140,6 +172,7 @@ export default function PersonalCenterPage() {
             onClick={() => setActiveTab(t.key)}
           >
             {t.label}
+            {t.dot && <span className="pt-dot" />}
             {t.count > 0 && <span className="pt-badge">{t.count}</span>}
           </button>
         ))}
@@ -232,6 +265,44 @@ export default function PersonalCenterPage() {
                 </div>
               ))
             )}
+          </div>
+
+          {/* LLM Config Panel */}
+          <div className={`personal-panel${activeTab === 'llm' ? ' active' : ''}`}>
+            <div className="llm-config-form">
+              <div className="llm-config-hint">
+                <p>配置你的 LLM API Key 以使用 AI 助手功能。网关地址由系统管理员统一配置，你只需要填写自己的 Key 和选择模型。</p>
+              </div>
+              <form onSubmit={saveLLMConfig} className="form-group" style={{ maxWidth: 480 }}>
+                <div className="form-group">
+                  <label>网关地址（系统统一）</label>
+                  <input type="text" value={llmCfg.gateway_url} disabled className="input-disabled" />
+                </div>
+                <div className="form-group">
+                  <label>API Key {llmCfg.has_api_key && <span className="badge badge-green" style={{ fontSize: '0.62rem' }}>已配置 ({llmCfg.api_key_masked})</span>}</label>
+                  <input type="password" value={llmKey} onChange={(e) => setLlmKey(e.target.value)} placeholder={llmCfg.has_api_key ? '留空则保持当前 Key' : '输入你的 API Key'} />
+                </div>
+                <div className="form-group">
+                  <label>模型</label>
+                  <select value={llmModel} onChange={(e) => setLlmModel(e.target.value)}>
+                    <option value="">选择模型...</option>
+                    <option value="deepseek-chat">DeepSeek Chat</option>
+                    <option value="deepseek-reasoner">DeepSeek Reasoner</option>
+                    <option value="qwen-max">Qwen Max</option>
+                    <option value="qwen-plus">Qwen Plus</option>
+                    <option value="qwen3.5-plus">Qwen 3.5 Plus</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
+                  </select>
+                </div>
+                <div className="form-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <button type="submit" className="btn btn-primary btn-sm" disabled={llmSaving}>
+                    {llmSaving ? '保存中...' : '保存配置'}
+                  </button>
+                  {llmMsg && <span style={{ fontSize: '0.78rem', color: llmMsg.includes('失败') ? 'var(--red-500)' : 'var(--green-500)' }}>{llmMsg}</span>}
+                </div>
+              </form>
+            </div>
           </div>
         </>
       )}

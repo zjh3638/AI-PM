@@ -24,8 +24,8 @@ class Settings(BaseSettings):
     # 密码策略
     password_min_length: int = 8
 
-    # Hermes Agent（延后至 Plan 3）
-    hermes_api_url: str = "http://localhost:8080"
+    # LLM 网关（系统统一配置，用户各自配 API Key）
+    llm_gateway_url: str = "https://llm-gateway.company.com/v1"
 
     # API 基础 URL（用于 Webhook 回调）
     api_base_url: str = "http://localhost:8000"

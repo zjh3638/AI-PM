@@ -4,7 +4,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.exceptions import AppException, app_exception_handler, global_exception_handler
 from app.middleware import request_logging_middleware
-from app.routers import auth, users, workspaces, tasks, iterations, comments, requirements, documents, workflows, search, dashboard, milestones, departments, attachments, signals, risks, task_progress, project_groups
+from app.routers import auth, users, workspaces, tasks, iterations, comments, requirements, documents, workflows, search, dashboard, milestones, departments, attachments, signals, risks, task_progress, project_groups, ai
 
 app = FastAPI(title="AI-PM API", version="0.0.1")
 
@@ -37,6 +37,7 @@ app.include_router(signals.router)
 app.include_router(risks.router)
 app.include_router(task_progress.router)
 app.include_router(project_groups.router)
+app.include_router(ai.router)
 
 # Serve uploaded files
 from pathlib import Path

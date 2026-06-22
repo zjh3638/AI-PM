@@ -219,3 +219,33 @@
 
 .ri-phase-badge { margin-right: var(--space-2); font-size: 0.62rem; }
 .ri-milestone-info { font-size: 0.64rem; color: var(--text-muted); margin-right: var(--space-2); }
+
+/* LLM Config */
+.llm-config-form { padding: 8px 0; }
+
+.llm-config-hint {
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  line-height: 1.7;
+  margin-bottom: var(--space-6);
+  padding: 14px 16px;
+  background: var(--blue-50);
+  border-radius: var(--radius);
+  border: 1px solid var(--blue-100);
+}
+
+.input-disabled {
+  background: var(--bg-raised) !important;
+  color: var(--text-muted) !important;
+  cursor: not-allowed;
+}
+
+.personal-tab .pt-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--red-500);
+  margin-left: 4px;
+  vertical-align: super;
+}

@@ -20,6 +20,10 @@ class User(Base, UUIDMixin, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), default="ACTIVE")
     source: Mapped[str] = mapped_column(String(20), default="LOCAL")
 
+    # LLM 个人配置
+    llm_api_key: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    llm_model: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
     department = relationship("Department", back_populates="users")
     user_roles: Mapped[list["UserRole"]] = relationship("UserRole", back_populates="user")
     workspace_members: Mapped[list["WorkspaceMember"]] = relationship("WorkspaceMember", back_populates="user")
