@@ -238,6 +238,7 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
 }
 
 function MessageView({ msg, userName }: { msg: ChatMsg; userName: string }) {
+  const routeCtx = useRouteContext();
   if (msg.role === 'user') {
     return (
       <div className="chat-msg user">
@@ -258,6 +259,11 @@ function MessageView({ msg, userName }: { msg: ChatMsg; userName: string }) {
       {msg.text && (
         <div className="msg-md">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+        </div>
+      )}
+      {msg.actions && msg.actions.length > 0 && (
+        <div className="action-cards">
+          {msg.actions.map((a, i) => <ActionCard key={`${a.tool}-${i}`} action={a} routeCtx={routeCtx} />)}
         </div>
       )}
       {msg.error && <div className="msg-error">⚠ {msg.error}</div>}
@@ -281,6 +287,73 @@ function ToolTraceCard({ trace }: { trace: ToolCallTrace }) {
           <div><strong>参数:</strong> <code>{JSON.stringify(trace.args)}</code></div>
           {trace.resultSummary && <div><strong>结果:</strong> <code>{trace.resultSummary}</code></div>}
           {trace.errorMsg && <div className="tool-trace-error"><strong>错误:</strong> {trace.errorMsg}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActionCard({ action, routeCtx }: {
+  action: { tool: string; args: Record<string, unknown>; result: Record<string, unknown> };
+  routeCtx: { workspace_id?: string; workspace_name?: string };
+}) {
+  const [open, setOpen] = useState(false);
+  const label = TOOL_LABELS[action.tool] || action.tool;
+  const result = action.result as Record<string, any>;
+  const err = result?.error as string | undefined;
+
+  // ── result-driven micro-summary ──────────────────────────────────
+  let summary: React.ReactNode = null;
+  let links: { label: string; href: string }[] = [];
+
+  if (action.tool === 'create_task' && !err) {
+    const tid = result?.id as string | undefined;
+    const title = result?.title as string || '';
+    summary = <>✅ 已创建任务：<strong>{title}</strong></>;
+    if (tid && routeCtx.workspace_id) {
+      links.push({ label: '打开任务',
+        href: `/workspace/${routeCtx.workspace_id}/backlog?task=${tid}` });
+    }
+  } else if (action.tool === 'decompose_requirement' && !err) {
+    const parentTitle = (result?.parent as any)?.title || '';
+    const count = result?.created_count ?? result?.children?.length ?? 0;
+    summary = <>✅ 父需求 <strong>{parentTitle}</strong> 下已创建 {count} 个子任务</>;
+  } else if (action.tool === 'extract_action_items' && !err) {
+    const count = result?.created_count ?? result?.items?.length ?? 0;
+    summary = <>✅ 已创建 {count} 个待办任务</>;
+  } else if (action.tool === 'scan_risks' && !err) {
+    const s = result?.summary as Record<string, number> | undefined;
+    if (s) {
+      summary = <>{s.overdue || 0} 个逾期 · {s.due_soon || 0} 个即将到期 · {s.unassigned || 0} 个无人认领</>;
+    }
+  } else if (action.tool === 'update_task' && !err) {
+    const fields = result?.updated_fields as string[] | undefined;
+    summary = fields?.length ? <>✅ 已更新: {fields.join('、')}</> : <>✅ 任务已更新</>;
+  }
+
+  return (
+    <div className={`action-card${err ? ' error' : ''}`}>
+      <div className="ac-head" onClick={() => setOpen(o => !o)}>
+        <span className="ac-icon">{err ? '✗' : '✓'}</span>
+        <span className="ac-label">{label}</span>
+        {summary && <span className="ac-summary">{summary}</span>}
+        <span className="ac-toggle">{open ? '▼' : '▸'}</span>
+      </div>
+      {open && (
+        <div className="ac-body">
+          {err && <div className="ac-error">{err}</div>}
+          {!err && result && (
+            <pre className="ac-json">{JSON.stringify(result, null, 2)}</pre>
+          )}
+          {links.length > 0 && (
+            <div className="ac-links">
+              {links.map(l => (
+                <a key={l.href} href={l.href}
+                  onClick={e => { e.preventDefault(); window.open(l.href, '_self'); }}
+                  className="ac-link-btn">{l.label}</a>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
