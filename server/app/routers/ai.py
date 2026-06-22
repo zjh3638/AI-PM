@@ -98,7 +98,8 @@ async def get_chat_history(
 
     if conversation_id is None:
         return {"code": 0, "message": "ok",
-                "data": {"conversation_id": None, "messages": []}}
+                "data": {"conversation_id": None, "conversation_title": None,
+                         "messages": []}}
 
     rows = (await db.execute(
         select(ChatHistory)
@@ -106,6 +107,8 @@ async def get_chat_history(
                ChatHistory.conversation_id == conversation_id)
         .order_by(ChatHistory.created_at.asc()).limit(limit)
     )).scalars().all()
+
+    title = next((r.conversation_title for r in rows if r.conversation_title), None)
 
     messages = []
     for r in rows:
@@ -126,7 +129,8 @@ async def get_chat_history(
         messages.append(m)
 
     return {"code": 0, "message": "ok",
-            "data": {"conversation_id": conversation_id, "messages": messages}}
+            "data": {"conversation_id": conversation_id,
+                     "conversation_title": title, "messages": messages}}
 
 
 tool_labels: dict[str, str] = {
