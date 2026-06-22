@@ -45,12 +45,16 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
   const [needsConfig, setNeedsConfig] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [conversationId, setConversationId] = useState<string | undefined>();
+  const [convTitle, setConvTitle] = useState<string>();
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // slash-command palette
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashIdx, setSlashIdx] = useState(0);
+  // multi-conversation switcher
+  const [convList, setConvList] = useState<{conversation_id:string;conversation_title:string}[]>([]);
+  const [convOpen, setConvOpen] = useState(false);
   const slashMatches = SLASH_COMMANDS.filter(
     c => c.trigger.startsWith(input) || c.label.includes(input.slice(1)),
   );
@@ -61,18 +65,23 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
     let cancelled = false;
     (async () => {
       try {
-        const [cfg, hist] = await Promise.all([
+        const params = ws ? { workspace_id: ws } : {};
+        const [cfg, hist, convs] = await Promise.all([
           api.get('/ai/me/llm-config'),
-          api.get('/ai/chat-history', { params: ws ? { workspace_id: ws } : {} }),
+          api.get('/ai/chat-history', { params }),
+          api.get('/ai/chat-conversations', { params }),
         ]);
         if (cancelled) return;
         setNeedsConfig(!cfg.data.has_api_key);
+        setConvList(convs.data?.conversations || []);
         const d = hist.data;
         if (d?.conversation_id) {
           setConversationId(d.conversation_id);
+          setConvTitle(d.conversation_title || undefined);
           setMessages(historyToMsgs(d.messages));
         } else {
           setConversationId(undefined);
+          setConvTitle(undefined);
           setMessages([]);
         }
         setLoaded(true);
@@ -90,6 +99,16 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
   useEffect(() => {
     if (!open) { setInput(''); setLoaded(false); abortRef.current?.abort(); }
   }, [open]);
+
+  // close conv dropdown on outside click
+  useEffect(() => {
+    if (!convOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.conv-switcher')) setConvOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [convOpen]);
 
   const closeSlash = () => { setSlashOpen(false); setSlashIdx(0); };
 
@@ -165,6 +184,27 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
   };
 
   const stopGeneration = () => abortRef.current?.abort();
+
+  const switchConversation = async (convId: string) => {
+    if (convId === conversationId) { setConvOpen(false); return; }
+    abortRef.current?.abort();
+    setConvOpen(false);
+    setLoading(true);
+    setMessages([]);
+    try {
+      const params = { conversation_id: convId,
+        ...(routeCtx.workspace_id ? { workspace_id: routeCtx.workspace_id } : {}) };
+      const hist = await api.get('/ai/chat-history', { params });
+      const d = hist.data;
+      setConversationId(d.conversation_id);
+      setConvTitle(d.conversation_title || undefined);
+      setMessages(d.messages ? historyToMsgs(d.messages) : []);
+    } catch {
+      // fallback: stay on current id
+    }
+    setLoading(false);
+  };
+
   const newConversation = () => {
     abortRef.current?.abort();
     setMessages([]);
@@ -176,7 +216,29 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
       <div className={`overlay${open ? ' open' : ''}`} onClick={onClose} />
       <div className={`drawer${open ? ' open' : ''}`}>
         <div className="drawer-head">
-          <div><h3>AI 助手</h3></div>
+          <div className="drawer-head-left">
+            <h3>AI 助手</h3>
+            {convTitle && conversationId && (
+              <div className="conv-switcher">
+                <button className="conv-switch-btn" onClick={() => setConvOpen(o => !o)} title="切换对话">
+                  <span className="conv-title-text">{convTitle}</span>
+                  <span className="conv-arrow">{convOpen ? '▴' : '▾'}</span>
+                </button>
+                {convOpen && (
+                  <div className="conv-dropdown">
+                    {convList.map(c => (
+                      <div key={c.conversation_id}
+                        className={`conv-item${c.conversation_id === conversationId ? ' active' : ''}`}
+                        onClick={() => switchConversation(c.conversation_id)}>
+                        <span className="conv-item-title">{c.conversation_title}</span>
+                        {c.conversation_id === conversationId && <span className="conv-check">✓</span>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           <div className="drawer-head-right">
             <button className="drawer-newchat" onClick={newConversation} title="新对话">＋</button>
             <select className="drawer-agent-select" value={agent} onChange={e => setAgent(e.target.value)}>

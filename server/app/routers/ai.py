@@ -133,6 +133,59 @@ async def get_chat_history(
                      "conversation_title": title, "messages": messages}}
 
 
+@router.get("/chat-conversations", response_model=APIResponse)
+async def get_chat_conversations(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+    workspace_id: Optional[str] = Query(default=None),
+    limit: int = Query(default=20, le=50),
+):
+    """Return recent conversations (title + first message) for the switcher dropdown."""
+    ws_filter = (
+        ChatHistory.workspace_id.is_(None) if workspace_id is None
+        else ChatHistory.workspace_id == workspace_id
+    )
+
+    rows = (await db.execute(
+        select(ChatHistory)
+        .where(ChatHistory.user_id == user.id,
+               ChatHistory.conversation_id.is_not(None),
+               ws_filter)
+        .order_by(ChatHistory.created_at.asc())
+    )).scalars().all()
+
+    # Aggregate in Python — small dataset, simple code
+    convs_map: dict[str, dict] = {}
+    for r in rows:
+        cid = r.conversation_id
+        if cid not in convs_map:
+            convs_map[cid] = {
+                "conversation_id": cid,
+                "conversation_title": None,
+                "first_message": r.content if r.role == "user" else None,
+                "created_at": r.created_at,
+            }
+        entry = convs_map[cid]
+        if r.conversation_title:
+            entry["conversation_title"] = r.conversation_title
+        if entry["first_message"] is None and r.role == "user":
+            entry["first_message"] = r.content
+        # track latest timestamp for ordering
+        if r.created_at > entry["created_at"]:
+            entry["created_at"] = r.created_at
+
+    # Sort by latest first, truncate
+    sorted_convs = sorted(
+        convs_map.values(), key=lambda c: c["created_at"], reverse=True
+    )[:limit]
+
+    for c in sorted_convs:
+        c["conversation_title"] = c["conversation_title"] or c["first_message"] or "对话"
+        c["created_at"] = c["created_at"].isoformat()
+
+    return {"code": 0, "message": "ok", "data": {"conversations": sorted_convs}}
+
+
 tool_labels: dict[str, str] = {
     "get_workspace_context": "获取项目信息",
     "create_task": "创建任务",
