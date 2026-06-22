@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import { useWorkspaceStore } from '../../stores/workspaceStore';
 import api from '../../api/client';
 
-const AGENTS = ['需求分析师', '设计师', '开发工程师', '项目经理'];
+const AGENTS = ['项目经理', '开发工程师', '需求分析师', '设计师'];
 
 const SUGGESTIONS = [
   '帮我看看有哪些逾期任务',
-  '创建任务：登录模块开发，给张三，高优先',
+  '创建任务：登录模块开发，高优先级',
   '生成本周周报',
   '我的待办有哪些',
 ];
@@ -17,6 +18,7 @@ type Message = { role: 'user' | 'ai'; text: string; agent?: string; actions?: an
 export default function AiDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { user } = useAuthStore();
   const location = useLocation();
+  const { current } = useWorkspaceStore();
   const [agent, setAgent] = useState(AGENTS[0]);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -24,11 +26,10 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
   const [needsConfig, setNeedsConfig] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Extract workspace_id from URL
   const wsMatch = location.pathname.match(/\/workspaces\/([a-f0-9-]+)/);
   const workspaceId = wsMatch ? wsMatch[1] : undefined;
+  const wsName = workspaceId ? (current?.name || '') : '';
 
-  // Check LLM config on open
   useEffect(() => {
     if (!open || !user) return;
     (async () => {
@@ -39,10 +40,17 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
     })();
   }, [open, user]);
 
-  // Auto-scroll
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, loading]);
+
+  // Reset on close
+  useEffect(() => {
+    if (!open) {
+      setMessages([]);
+      setInput('');
+    }
+  }, [open]);
 
   const sendMessage = async (text?: string) => {
     const msg = text || input.trim();
@@ -53,7 +61,6 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
     setInput('');
     setLoading(true);
 
-    // Build conversation history for context
     const history = messages.map((m) => ({
       role: m.role === 'ai' ? 'assistant' : 'user',
       content: m.text,
@@ -65,7 +72,7 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
         agent,
         workspace_id: workspaceId,
         conversation_history: history,
-      });
+      }, { timeout: 60000 });
 
       const data = res.data;
       const aiMsg: Message = {
@@ -77,86 +84,95 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
       setMessages((m) => [...m, aiMsg]);
     } catch (e: any) {
       const errText = e?.response?.data?.detail || e?.message || '请求失败';
-      setMessages((m) => [...m, { role: 'ai', text: `❌ ${errText}`, agent }]);
+      setMessages((m) => [...m, { role: 'ai', text: `请求失败：${errText}`, agent }]);
     }
     setLoading(false);
   };
 
   const sendSuggestion = (s: string) => {
-    setInput(s);
     sendMessage(s);
+  };
+
+  const toolLabel: Record<string, string> = {
+    get_workspace_context: '获取项目信息',
+    create_task: '创建任务',
+    update_task: '更新任务',
+    search_tasks: '搜索任务',
+    get_my_tasks: '查询待办',
+    generate_report: '生成报告',
   };
 
   return (
     <>
       <div className={`overlay${open ? ' open' : ''}`} onClick={onClose} />
       <div className={`drawer${open ? ' open' : ''}`}>
+        {/* Header */}
         <div className="drawer-head">
-          <h3>AI 对话</h3>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div>
+            <h3>AI 助手</h3>
+          </div>
+          <div className="drawer-head-right">
             <select
+              className="drawer-agent-select"
               value={agent}
               onChange={(e) => setAgent(e.target.value)}
-              style={{
-                fontSize: '0.7rem', padding: '3px 8px',
-                border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                background: 'var(--bg-surface)',
-              }}
             >
               {AGENTS.map((a) => (
-                <option key={a}>{a}</option>
+                <option key={a} value={a}>{a}</option>
               ))}
             </select>
             <button className="drawer-close" onClick={onClose}>✕</button>
           </div>
         </div>
 
+        {/* Body */}
         <div className="drawer-body">
-          {needsConfig && messages.length === 0 && (
-            <div style={{
-              padding: 16, margin: '12px 0', borderRadius: 'var(--radius)',
-              background: 'var(--amber-50)', border: '1px solid var(--amber-100)',
-              fontSize: '0.78rem', color: 'var(--amber-600)', lineHeight: 1.6,
-            }}>
-              ⚠️ 你还没有配置 LLM API Key。<br />
-              请前往 <strong>个人中心 → AI 配置</strong> 设置你的 Key 和模型。
+          {/* Config warning */}
+          {needsConfig && (
+            <div className="drawer-config-warn">
+              <strong>AI 助手未配置</strong><br />
+              请前往 <strong>个人中心 → AI 配置</strong> 设置你的 API Key 和模型。
             </div>
           )}
 
-          {!needsConfig && messages.length === 0 && workspaceId && (
-            <div style={{
-              padding: '6px 12px', marginBottom: 8, fontSize: '0.68rem',
-              color: 'var(--text-muted)', textAlign: 'center',
-            }}>
-              当前工作空间: {workspaceId.slice(0, 8)}...
+          {/* Workspace context */}
+          {!needsConfig && workspaceId && wsName && (
+            <div className="drawer-ctx-bar">
+              📁 当前项目：{wsName}
             </div>
           )}
 
+          {/* Welcome */}
           {messages.length === 0 && !needsConfig && (
-            <div className="chat-cmds">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} className="chat-cmd" onClick={() => sendSuggestion(s)}>
-                  {s}
-                </button>
-              ))}
+            <div className="chat-welcome">
+              <div className="cw-icon">🤖</div>
+              <div className="cw-title">有什么可以帮你的？</div>
+              <div className="cw-desc">
+                我是你的 {agent} 助手，可以帮你管理任务、生成报告、分析项目进度。
+              </div>
+              <div className="chat-cmds">
+                {SUGGESTIONS.map((s) => (
+                  <button key={s} className="chat-cmd" onClick={() => sendSuggestion(s)}>
+                    {s}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
+          {/* Messages */}
           <div className="chat-msgs">
             {messages.map((m, i) => (
               <div key={i} className={`chat-msg ${m.role}`}>
-                {m.role === 'ai' && m.agent && <div className="msg-label">{m.agent}</div>}
-                {m.role === 'user' && <div className="msg-label">你</div>}
+                <div className="msg-label">
+                  {m.role === 'ai' ? m.agent : (user?.display_name || '你')}
+                </div>
                 <div dangerouslySetInnerHTML={{ __html: m.text.replace(/\n/g, '<br>') }} />
                 {m.actions && m.actions.length > 0 && (
-                  <div style={{ marginTop: 6, fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                  <div className="msg-actions">
                     {m.actions.map((a: any, j: number) => (
-                      <span key={j} style={{
-                        display: 'inline-block', marginRight: 6,
-                        padding: '1px 6px', borderRadius: 4,
-                        background: 'var(--bg-raised)',
-                      }}>
-                        ✓ {a.tool}
+                      <span key={j} className="msg-action-chip">
+                        ✓ {toolLabel[a.tool] || a.tool}
                       </span>
                     ))}
                   </div>
@@ -164,19 +180,19 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
               </div>
             ))}
             {loading && (
-              <div className="chat-msg ai">
-                <div className="msg-label">{agent}</div>
-                <em>思考中...</em>
+              <div className="chat-thinking">
+                <span className="dot-pulse">{agent} 思考中</span>
               </div>
             )}
             <div ref={bottomRef} />
           </div>
         </div>
 
+        {/* Input */}
         <div className="chat-input-area">
           <input
             type="text"
-            placeholder={workspaceId ? '描述你想做的事情...' : '输入指令或问题...'}
+            placeholder={needsConfig ? '请先配置 AI Key...' : workspaceId ? '描述你想做的事情...' : '输入指令或问题，Enter 发送'}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}

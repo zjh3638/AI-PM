@@ -14,7 +14,7 @@ import TrackSidebar from './sidebar/TrackSidebar';
 import { useWorkspaceMode } from './hooks/useWorkspaceMode';
 import FocusStrip from './components/FocusStrip';
 import KpiRow from './components/KpiRow';
-import PulseChat from './components/PulseChat';
+
 import TaskProgressSection from './components/TaskProgressSection';
 import KanbanView from './panels/KanbanView';
 import ListView from './panels/ListView';
@@ -475,8 +475,6 @@ export default function WorkspaceDetailPage() {
           </div>
         </div>
 
-        {/* Inline Chat */}
-        <PulseChat />
       </div>
 
       {/* Task Create/Edit Panel */}

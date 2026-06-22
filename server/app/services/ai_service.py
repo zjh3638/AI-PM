@@ -548,9 +548,8 @@ async def _call_llm(api_key: str, model: str, messages: list[dict],
     }
     if tools:
         body["tools"] = tools
-        body["tool_choice"] = "auto"
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             resp = await client.post(
                 f"{get_gateway_url()}/chat/completions",
