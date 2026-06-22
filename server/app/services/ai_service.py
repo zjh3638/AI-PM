@@ -177,6 +177,26 @@ TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "scan_risks",
+            "description": (
+                "扫描工作空间风险：聚合所有活跃任务并按"
+                "「逾期 overdue / 即将到期 due_soon / 无人认领 unassigned」"
+                "三类分桶。用于风险盘点、晨会汇报。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "description": "工作空间ID"},
+                    "horizon_days": {"type": "integer",
+                                     "description": "「即将到期」的天数窗口，默认 3 天"},
+                },
+                "required": ["workspace_id"],
+            },
+        },
+    },
 ]
 
 
@@ -410,6 +430,10 @@ TOOL_EXECUTORS = {
     "get_my_tasks": _exec_get_my_tasks,
     "generate_report": _exec_generate_report,
 }
+
+# PM-extension tools live in a separate module to keep this file focused.
+from app.services import ai_tools_pm  # noqa: E402
+TOOL_EXECUTORS["scan_risks"] = ai_tools_pm.scan_risks
 
 
 # ── Settings helper ─────────────────────────────────────────────────
