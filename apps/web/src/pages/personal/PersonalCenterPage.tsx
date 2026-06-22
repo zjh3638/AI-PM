@@ -50,22 +50,6 @@ export default function PersonalCenterPage() {
       setLlmModel(res.data.llm_model || '');
     } catch { /* skip */ }
   };
-  const saveLLMConfig = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLlmSaving(true);
-    setLlmMsg('');
-    try {
-      const payload: Record<string, string> = {};
-      if (llmKey) payload.api_key = llmKey;
-      payload.model = llmModel || '';
-      await api.patch('/ai/me/llm-config', payload);
-      setLlmKey('');
-      setLlmMsg('保存成功');
-      fetchLLMConfig();
-    } catch { setLlmMsg('保存失败'); }
-    setLlmSaving(false);
-  };
-
   useEffect(() => {
     setLoading(true);
     Promise.all([
@@ -269,37 +253,88 @@ export default function PersonalCenterPage() {
 
           {/* LLM Config Panel */}
           <div className={`personal-panel${activeTab === 'llm' ? ' active' : ''}`}>
-            <div className="llm-config-form">
-              <div className="llm-config-hint">
-                <p>配置你的 LLM API Key 以使用 AI 助手功能。网关地址由系统管理员统一配置，你只需要填写自己的 Key 和选择模型。</p>
+            <div className="llm-config-page">
+              {/* Status card */}
+              <div className={`llm-status-card${llmCfg.has_api_key ? ' configured' : ''}`}>
+                <div className="llm-status-icon">
+                  {llmCfg.has_api_key ? '✅' : '⚠️'}
+                </div>
+                <div className="llm-status-text">
+                  <div className="llm-status-title">
+                    {llmCfg.has_api_key ? 'AI 助手已就绪' : 'AI 助手未配置'}
+                  </div>
+                  <div className="llm-status-desc">
+                    {llmCfg.has_api_key
+                      ? `模型: ${llmCfg.llm_model || '未选择'} · Key: ${llmCfg.api_key_masked}`
+                      : '配置你的 LLM API Key 后即可使用 AI 对话功能（Ctrl+K 唤起）'}
+                  </div>
+                </div>
               </div>
-              <form onSubmit={saveLLMConfig} className="form-group" style={{ maxWidth: 480 }}>
-                <div className="form-group">
-                  <label>网关地址（系统统一）</label>
-                  <input type="text" value={llmCfg.gateway_url} disabled className="input-disabled" />
+
+              {/* Gateway info */}
+              <div className="llm-gateway-card">
+                <div className="llm-gateway-label">网关地址</div>
+                <code className="llm-gateway-url">{llmCfg.gateway_url}</code>
+                <div className="llm-gateway-hint">由系统管理员统一配置，所有用户共用此网关</div>
+              </div>
+
+              {/* Config form */}
+              <form onSubmit={(e) => { e.preventDefault(); setLlmSaving(true); setLlmMsg('');
+                const payload: Record<string, string> = {};
+                if (llmKey) payload.api_key = llmKey;
+                payload.model = llmModel || '';
+                api.patch('/ai/me/llm-config', payload).then(() => { setLlmKey(''); setLlmMsg('配置已保存'); fetchLLMConfig(); }).catch(() => setLlmMsg('保存失败，请重试')).finally(() => setLlmSaving(false));
+              }} className="llm-form">
+                <div className="llm-form-group">
+                  <label className="llm-form-label">API Key</label>
+                  <div className="llm-key-input-wrap">
+                    <input
+                      type="password"
+                      value={llmKey}
+                      onChange={(e) => setLlmKey(e.target.value)}
+                      placeholder={llmCfg.has_api_key ? '留空则保持当前 Key' : '粘贴你的 API Key'}
+                      className="llm-key-input"
+                    />
+                  </div>
+                  {llmCfg.has_api_key && (
+                    <div className="llm-form-hint">
+                      已保存 · 输入新 Key 将覆盖旧 Key
+                    </div>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label>API Key {llmCfg.has_api_key && <span className="badge badge-green" style={{ fontSize: '0.62rem' }}>已配置 ({llmCfg.api_key_masked})</span>}</label>
-                  <input type="password" value={llmKey} onChange={(e) => setLlmKey(e.target.value)} placeholder={llmCfg.has_api_key ? '留空则保持当前 Key' : '输入你的 API Key'} />
+
+                <div className="llm-form-group">
+                  <label className="llm-form-label">选择模型</label>
+                  <div className="llm-model-grid">
+                    {[
+                      { id: 'deepseek-chat', name: 'DeepSeek Chat', desc: '通用对话' },
+                      { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', desc: '深度推理' },
+                      { id: 'qwen-max', name: 'Qwen Max', desc: '阿里通义千问' },
+                      { id: 'qwen3.5-plus', name: 'Qwen 3.5 Plus', desc: '新一代千问' },
+                      { id: 'gpt-4o', name: 'GPT-4o', desc: 'OpenAI 多模态' },
+                      { id: 'claude-3.5-sonnet', name: 'Claude 3.5', desc: 'Anthropic' },
+                    ].map((m) => (
+                      <div
+                        key={m.id}
+                        className={`llm-model-card${llmModel === m.id ? ' selected' : ''}`}
+                        onClick={() => setLlmModel(m.id)}
+                      >
+                        <div className="llm-model-name">{m.name}</div>
+                        <div className="llm-model-desc">{m.desc}</div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-                <div className="form-group">
-                  <label>模型</label>
-                  <select value={llmModel} onChange={(e) => setLlmModel(e.target.value)}>
-                    <option value="">选择模型...</option>
-                    <option value="deepseek-chat">DeepSeek Chat</option>
-                    <option value="deepseek-reasoner">DeepSeek Reasoner</option>
-                    <option value="qwen-max">Qwen Max</option>
-                    <option value="qwen-plus">Qwen Plus</option>
-                    <option value="qwen3.5-plus">Qwen 3.5 Plus</option>
-                    <option value="gpt-4o">GPT-4o</option>
-                    <option value="claude-3.5-sonnet">Claude 3.5 Sonnet</option>
-                  </select>
-                </div>
-                <div className="form-actions" style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+
+                <div className="llm-form-actions">
                   <button type="submit" className="btn btn-primary btn-sm" disabled={llmSaving}>
                     {llmSaving ? '保存中...' : '保存配置'}
                   </button>
-                  {llmMsg && <span style={{ fontSize: '0.78rem', color: llmMsg.includes('失败') ? 'var(--red-500)' : 'var(--green-500)' }}>{llmMsg}</span>}
+                  {llmMsg && (
+                    <span className={`llm-form-msg${llmMsg.includes('失败') ? ' error' : ''}`}>
+                      {llmMsg}
+                    </span>
+                  )}
                 </div>
               </form>
             </div>
