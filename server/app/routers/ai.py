@@ -10,7 +10,7 @@ from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
 from app.schemas.common import APIResponse
-from app.services.ai_service import chat, encrypt_api_key, decrypt_api_key
+from app.services.ai_service import chat, encrypt_api_key, decrypt_api_key, get_gateway_url
 from app.config import settings
 
 SETTINGS_FILE = Path(__file__).parent.parent.parent / "settings.json"
@@ -88,7 +88,7 @@ async def get_llm_config(
             "llm_model": user.llm_model,
             "api_key_masked": masked,
             "has_api_key": user.llm_api_key is not None,
-            "gateway_url": _load_settings().get("llm_gateway_url", settings.llm_gateway_url),
+            "gateway_url": get_gateway_url(),
         },
     }
 
@@ -120,7 +120,7 @@ async def get_system_settings(user: User = Depends(get_current_user)):
     return {
         "code": 0, "message": "ok",
         "data": {
-            "llm_gateway_url": s.get("llm_gateway_url", settings.llm_gateway_url),
+            "llm_gateway_url": get_gateway_url(),
         },
     }
 

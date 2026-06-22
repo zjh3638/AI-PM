@@ -409,6 +409,23 @@ TOOL_EXECUTORS = {
 }
 
 
+# ── Settings helper ─────────────────────────────────────────────────
+
+def get_gateway_url() -> str:
+    """Read gateway URL from settings.json (admin override) or config default."""
+    from pathlib import Path
+    import json
+    settings_file = Path(__file__).parent.parent.parent / "settings.json"
+    if settings_file.exists():
+        try:
+            data = json.loads(settings_file.read_text())
+            if data.get("llm_gateway_url"):
+                return data["llm_gateway_url"]
+        except (json.JSONDecodeError, OSError):
+            pass
+    return settings.llm_gateway_url
+
+
 # ── Main Chat Function ──────────────────────────────────────────────
 
 async def chat(
@@ -536,7 +553,7 @@ async def _call_llm(api_key: str, model: str, messages: list[dict],
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             resp = await client.post(
-                f"{settings.llm_gateway_url}/chat/completions",
+                f"{get_gateway_url()}/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
