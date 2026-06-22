@@ -1,6 +1,8 @@
+import json
+from pathlib import Path
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +12,8 @@ from app.models.user import User
 from app.schemas.common import APIResponse
 from app.services.ai_service import chat, encrypt_api_key, decrypt_api_key
 from app.config import settings
+
+SETTINGS_FILE = Path(__file__).parent.parent.parent / "settings.json"
 
 router = APIRouter(prefix="/api/ai", tags=["ai"])
 
@@ -84,6 +88,52 @@ async def get_llm_config(
             "llm_model": user.llm_model,
             "api_key_masked": masked,
             "has_api_key": user.llm_api_key is not None,
-            "gateway_url": settings.llm_gateway_url,
+            "gateway_url": _load_settings().get("llm_gateway_url", settings.llm_gateway_url),
         },
     }
+
+
+# ── System settings (admin) ─────────────────────────────────────────
+
+def _load_settings() -> dict:
+    if SETTINGS_FILE.exists():
+        try:
+            return json.loads(SETTINGS_FILE.read_text())
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def _save_settings(data: dict) -> None:
+    SETTINGS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2))
+
+
+class SystemSettingsRequest(BaseModel):
+    llm_gateway_url: Optional[str] = Field(default=None, max_length=500)
+
+
+@router.get("/admin/settings", response_model=APIResponse)
+async def get_system_settings(user: User = Depends(get_current_user)):
+    if user.system_role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    s = _load_settings()
+    return {
+        "code": 0, "message": "ok",
+        "data": {
+            "llm_gateway_url": s.get("llm_gateway_url", settings.llm_gateway_url),
+        },
+    }
+
+
+@router.patch("/admin/settings", response_model=APIResponse)
+async def update_system_settings(
+    req: SystemSettingsRequest,
+    user: User = Depends(get_current_user),
+):
+    if user.system_role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    s = _load_settings()
+    if req.llm_gateway_url is not None:
+        s["llm_gateway_url"] = req.llm_gateway_url
+    _save_settings(s)
+    return {"code": 0, "message": "ok", "data": s}

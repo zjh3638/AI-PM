@@ -170,12 +170,35 @@ export default function AdminPage() {
   // Fetch dept tree when tab opens
   useEffect(() => {
     if (activeTab === 'departments') fetchDeptTree();
+    if (activeTab === 'settings') fetchSettings();
   }, [activeTab]);
+
+  const [settingsTab, setSettingsTab] = useState<'gateway' | 'general'>('gateway');
+  const [gatewayUrl, setGatewayUrl] = useState('');
+  const [gwSaving, setGwSaving] = useState(false);
+  const [gwMsg, setGwMsg] = useState('');
+
+  const fetchSettings = async () => {
+    try {
+      const res = await api.get('/ai/admin/settings');
+      setGatewayUrl(res.data.llm_gateway_url || '');
+    } catch { /* skip */ }
+  };
+
+  const saveGateway = async () => {
+    setGwSaving(true);
+    setGwMsg('');
+    try {
+      await api.patch('/ai/admin/settings', { llm_gateway_url: gatewayUrl });
+      setGwMsg('已保存');
+    } catch { setGwMsg('保存失败'); }
+    setGwSaving(false);
+  };
 
   const adminTabs = [
     { key: 'users', label: '用户管理' },
     { key: 'departments', label: '部门管理' },
-    { key: 'models', label: '模型配置' },
+    { key: 'settings', label: '系统设置' },
     { key: 'agents', label: 'Agent 配置' },
   ];
 
@@ -295,6 +318,43 @@ export default function AdminPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {activeTab === 'settings' && (
+        <div style={{ maxWidth: 560 }}>
+          <div className="llm-status-card configured" style={{ marginBottom: 20 }}>
+            <div className="llm-status-icon">⚙️</div>
+            <div className="llm-status-text">
+              <div className="llm-status-title">系统设置</div>
+              <div className="llm-status-desc">配置 LLM 网关等全局参数，仅超级管理员可操作</div>
+            </div>
+          </div>
+
+          <div className="llm-form">
+            <div className="llm-form-group">
+              <label className="llm-form-label">LLM 网关地址</label>
+              <div className="llm-gateway-card">
+                <input
+                  type="text"
+                  value={gatewayUrl}
+                  onChange={(e) => setGatewayUrl(e.target.value)}
+                  placeholder="https://llm-gateway.company.com/v1"
+                  className="llm-key-input"
+                />
+                <div className="llm-gateway-hint">
+                  所有用户的 AI 请求通过此网关转发。支持 OpenAI 兼容 API（/v1/chat/completions）
+                </div>
+              </div>
+            </div>
+
+            <div className="llm-form-actions">
+              <button className="btn btn-primary btn-sm" onClick={saveGateway} disabled={gwSaving}>
+                {gwSaving ? '保存中...' : '保存'}
+              </button>
+              {gwMsg && <span className={`llm-form-msg${gwMsg.includes('失败') ? ' error' : ''}`}>{gwMsg}</span>}
+            </div>
+          </div>
         </div>
       )}
 
