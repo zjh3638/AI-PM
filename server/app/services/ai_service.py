@@ -565,3 +565,38 @@ async def _call_llm(api_key: str, model: str, messages: list[dict],
             return {"error": str(exc)}
         except Exception as exc:
             return {"error": f"LLM 服务不可用: {exc}"}
+
+
+async def execute_tool(db: AsyncSession, user: User, tool_call: dict,
+                      workspace_id: Optional[str]) -> dict:
+    """Dispatch one tool_call to its executor. Returns the result dict (or {error}).
+
+    Handles: arg JSON parsing, implicit workspace_id injection, user_id for
+    get_my_tasks, exception capture.
+    """
+    name = tool_call["function"]["name"]
+    raw_args = tool_call["function"].get("arguments") or "{}"
+    try:
+        args = json.loads(raw_args)
+    except json.JSONDecodeError:
+        args = {}
+
+    executor = TOOL_EXECUTORS.get(name)
+    if executor is None:
+        return {"error": f"未知工具: {name}"}
+
+    if workspace_id and "workspace_id" not in args:
+        args["workspace_id"] = workspace_id
+    if "workspace_id" in args and not args["workspace_id"]:
+        del args["workspace_id"]
+
+    try:
+        if name == "get_my_tasks":
+            return await executor(
+                db,
+                user_id=user.id,
+                **{k: v for k, v in args.items() if k != "workspace_id"},
+            )
+        return await executor(db, **args)
+    except Exception as exc:
+        return {"error": str(exc)}
