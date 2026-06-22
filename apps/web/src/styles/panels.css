@@ -176,6 +176,7 @@
 }
 
 .chat-input-area {
+  position: relative; /* anchor for slash-command palette */
   padding: 16px 24px;
   border-top: 1px solid var(--border);
   display: flex;

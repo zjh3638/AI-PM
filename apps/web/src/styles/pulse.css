@@ -921,3 +921,22 @@
 .msg-md th { background: rgba(255,255,255,0.04); font-weight: 600; }
 .msg-md hr { border: 0; border-top: 1px solid var(--border, #2a2f3a); margin: 0.8em 0; }
 .msg-md input[type="checkbox"] { margin-right: 4px; }
+
+/* Slash-command palette */
+.slash-palette {
+  position: absolute; bottom: 100%; left: 0; right: 0;
+  margin-bottom: 4px; background: var(--bg-elevated, #1e2231);
+  border: 1px solid var(--border, #2a2f3a); border-radius: 8px;
+  overflow: hidden; box-shadow: 0 -4px 16px rgba(0,0,0,0.35);
+  z-index: 10; max-height: 220px; overflow-y: auto;
+}
+.slash-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 12px; cursor: pointer; transition: background 0.1s;
+}
+.slash-item:hover, .slash-item.active { background: rgba(106,169,255,0.12); }
+.slash-item .slash-trigger {
+  font-family: monospace; font-size: 0.85em; color: #6aa9ff;
+  min-width: 48px;
+}
+.slash-item .slash-label { color: #c8ccd4; font-size: 0.9em; }

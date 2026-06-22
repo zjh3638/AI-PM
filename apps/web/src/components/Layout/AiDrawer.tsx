@@ -15,6 +15,14 @@ const SUGGESTIONS = [
   '生成本周周报',
   '我的待办有哪些',
 ];
+const SLASH_COMMANDS = [
+  { trigger: '/风险', label: '扫描风险', msg: '帮我扫描当前项目的风险' },
+  { trigger: '/周报', label: '生成周报', msg: '生成本周周报' },
+  { trigger: '/拆解', label: '拆解需求', msg: '帮我把这个需求拆成子任务：' },
+  { trigger: '/待办', label: '查看待办', msg: '查看我的待办任务' },
+  { trigger: '/建任务', label: '创建任务', msg: '创建任务：' },
+  { trigger: '/搜任务', label: '搜索任务', msg: '搜索任务：' },
+];
 const TOOL_LABELS: Record<string, string> = {
   get_workspace_context: '获取项目信息',
   create_task: '创建任务',
@@ -39,6 +47,13 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
   const [conversationId, setConversationId] = useState<string | undefined>();
   const abortRef = useRef<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  // slash-command palette
+  const [slashOpen, setSlashOpen] = useState(false);
+  const [slashIdx, setSlashIdx] = useState(0);
+  const slashMatches = SLASH_COMMANDS.filter(
+    c => c.trigger.startsWith(input) || c.label.includes(input.slice(1)),
+  );
 
   useEffect(() => {
     if (!open || !user) return;
@@ -76,9 +91,12 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
     if (!open) { setInput(''); setLoaded(false); abortRef.current?.abort(); }
   }, [open]);
 
+  const closeSlash = () => { setSlashOpen(false); setSlashIdx(0); };
+
   const sendMessage = useCallback(async (text?: string) => {
     const msg = text || input.trim();
     if (!msg || loading) return;
+    closeSlash();
     const userMsg: ChatMsg = { id: `u-${Date.now()}`, role: 'user', text: msg };
     const aiPlaceholder: ChatMsg = {
       id: `tmp-${Date.now()}`, role: 'assistant', status: 'streaming',
@@ -110,6 +128,41 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
     setLoading(false);
     abortRef.current = null;
   }, [input, loading, agent, conversationId, routeCtx]);
+
+  const handleInputChange = (val: string) => {
+    setInput(val);
+    if (val.startsWith('/')) {
+      setSlashOpen(true);
+      setSlashIdx(0);
+    } else {
+      setSlashOpen(false);
+    }
+  };
+
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (slashOpen && slashMatches.length > 0) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSlashIdx(i => (i + 1) % slashMatches.length);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSlashIdx(i => (i - 1 + slashMatches.length) % slashMatches.length);
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        pickSlash(slashMatches[slashIdx]);
+      } else if (e.key === 'Escape') {
+        closeSlash();
+      }
+      return;
+    }
+    if (e.key === 'Enter') sendMessage();
+  };
+
+  const pickSlash = (cmd: typeof SLASH_COMMANDS[number]) => {
+    setInput(cmd.msg);
+    closeSlash();
+    inputRef.current?.focus();
+  };
 
   const stopGeneration = () => abortRef.current?.abort();
   const newConversation = () => {
@@ -157,9 +210,23 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
           </div>
         </div>
         <div className="chat-input-area">
-          <input type="text" placeholder={needsConfig ? '请先配置 AI Key...' : '输入指令，Enter 发送'}
-            value={input} onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && sendMessage()}
+          {slashOpen && slashMatches.length > 0 && (
+            <div className="slash-palette">
+              {slashMatches.map((c, i) => (
+                <div key={c.trigger}
+                  className={`slash-item${i === slashIdx ? ' active' : ''}`}
+                  onMouseDown={e => { e.preventDefault(); pickSlash(c); }}
+                  onMouseEnter={() => setSlashIdx(i)}>
+                  <span className="slash-trigger">{c.trigger}</span>
+                  <span className="slash-label">{c.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <input type="text" ref={inputRef}
+            placeholder={needsConfig ? '请先配置 AI Key...' : '输入指令，输入 / 查看快捷指令…'}
+            value={input} onChange={e => handleInputChange(e.target.value)}
+            onKeyDown={handleInputKeyDown}
             disabled={loading || needsConfig} />
           {loading
             ? <button className="send-btn stop" onClick={stopGeneration}>■</button>
