@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { useAuthStore } from '../../stores/authStore';
 import api from '../../api/client';
 import { streamChat } from '../../api/aiStream';
@@ -162,7 +164,7 @@ function MessageView({ msg, userName }: { msg: ChatMsg; userName: string }) {
     return (
       <div className="chat-msg user">
         <div className="msg-label">{userName}</div>
-        <div dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br>') }} />
+        <div className="msg-text-plain">{msg.text}</div>
       </div>
     );
   }
@@ -175,7 +177,11 @@ function MessageView({ msg, userName }: { msg: ChatMsg; userName: string }) {
           {msg.toolCalls.map(tc => <ToolTraceCard key={tc.idx} trace={tc} />)}
         </div>
       )}
-      {msg.text && <div dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br>') }} />}
+      {msg.text && (
+        <div className="msg-md">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.text}</ReactMarkdown>
+        </div>
+      )}
       {msg.error && <div className="msg-error">⚠ {msg.error}</div>}
     </div>
   );
