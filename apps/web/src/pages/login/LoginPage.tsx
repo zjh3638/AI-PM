@@ -24,6 +24,22 @@ export default function LoginPage() {
     }
   };
 
+  const handleLdapLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const form = e.target as HTMLFormElement;
+    const username = (form.elements.namedItem('username') as HTMLInputElement).value;
+    const password = (form.elements.namedItem('password') as HTMLInputElement).value;
+    setLoading(true);
+    try {
+      await login(username, password, 'LDAP');
+      navigate('/dashboard');
+    } catch {
+      // error handled by API client
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="login-page">
       <div className="login-card">
@@ -46,12 +62,6 @@ export default function LoginPage() {
           >
             LDAP
           </button>
-          <button
-            className={`login-tab${activeTab === 2 ? ' active' : ''}`}
-            onClick={() => setActiveTab(2)}
-          >
-            企微扫码
-          </button>
         </div>
 
         {/* Password Login */}
@@ -73,7 +83,7 @@ export default function LoginPage() {
         </form>
 
         {/* LDAP Login */}
-        <form className={`login-form${activeTab === 1 ? ' active' : ''}`} onSubmit={handlePasswordLogin}>
+        <form className={`login-form${activeTab === 1 ? ' active' : ''}`} onSubmit={handleLdapLogin}>
           <div className="field">
             <label>企业账号</label>
             <input type="text" name="username" placeholder="请输入 LDAP 账号" />
@@ -86,28 +96,6 @@ export default function LoginPage() {
             {loading ? '登录中...' : 'LDAP 登录'}
           </button>
         </form>
-
-        {/* WeChat QR */}
-        <div className={`login-form${activeTab === 2 ? ' active' : ''}`}>
-          <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
-            <div
-              style={{
-                width: 120,
-                height: 120,
-                background: 'var(--bg-raised)',
-                margin: '0 auto 12px',
-                borderRadius: 'var(--radius)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: '2.5rem',
-              }}
-            >
-              扫码
-            </div>
-            请使用企业微信扫描二维码
-          </div>
-        </div>
       </div>
     </div>
   );

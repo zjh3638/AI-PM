@@ -13,10 +13,17 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expiration: int = 86400  # 24 hours in seconds
 
-    # 企微
-    wecom_corp_id: str = ""
-    wecom_agent_id: str = ""
-    wecom_secret: str = ""
+    # LDAP
+    ldap_enabled: bool = False
+    ldap_server_uri: str = "ldap://localhost:389"
+    ldap_bind_dn: str = ""
+    ldap_bind_password: str = ""
+    ldap_base_dn: str = ""
+    ldap_user_filter: str = "(uid={username})"
+    ldap_username_attribute: str = "uid"
+    ldap_display_name_attribute: str = "cn"
+    ldap_email_attribute: str = "mail"
+    ldap_auto_create_user: bool = True
 
     # Git 知识库
     git_repos_path: str = "./repos"

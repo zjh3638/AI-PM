@@ -14,7 +14,10 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @router.post("/login")
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
-    user = await auth_service.login_local(db, req.username, req.password)
+    if req.source == "LDAP":
+        user = await auth_service.login_ldap(db, req.username, req.password)
+    else:
+        user = await auth_service.login_local(db, req.username, req.password)
     token = create_access_token(user.id)
     return {
         "code": 0,

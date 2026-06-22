@@ -6,6 +6,7 @@ from pydantic import BaseModel
 class LoginRequest(BaseModel):
     username: str
     password: str
+    source: str = "LOCAL"  # "LOCAL" | "LDAP"
 
 
 class TokenResponse(BaseModel):

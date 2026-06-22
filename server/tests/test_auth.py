@@ -1,8 +1,12 @@
 """
 Auth API tests: login, me, refresh, logout
 """
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import AsyncClient
+
+from app.integrations.auth_provider import AuthResult
 
 
 class TestAuth:
@@ -80,3 +84,91 @@ class TestAuth:
         assert resp.status_code == 200
         body = resp.json()
         assert body["code"] == 0
+
+    # ─── LDAP login tests ──────────────────────────────────────
+
+    async def test_login_ldap_success(self, client: AsyncClient):
+        """LDAP 登录成功：mock LdapAuthProvider 返回正常结果，自动创建用户。"""
+        mock_result = AuthResult(
+            username="zhangsan",
+            display_name="张三",
+            email="zhangsan@company.com",
+            source="LDAP",
+        )
+
+        with patch("app.services.auth.settings.ldap_enabled", True), \
+             patch(
+                 "app.integrations.auth_provider.LdapAuthProvider.authenticate",
+                 new_callable=AsyncMock,
+             ) as mock_auth:
+            mock_auth.return_value = mock_result
+
+            resp = await client.post("/api/auth/login", json={
+                "username": "zhangsan",
+                "password": "ldappass123",
+                "source": "LDAP",
+            })
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["code"] == 0
+        assert "access_token" in body["data"]
+        assert body["data"]["user"]["username"] == "zhangsan"
+        assert body["data"]["user"]["display_name"] == "张三"
+
+        # 第二次登录应该复用已创建的用户
+        with patch("app.services.auth.settings.ldap_enabled", True), \
+             patch(
+                 "app.integrations.auth_provider.LdapAuthProvider.authenticate",
+                 new_callable=AsyncMock,
+             ) as mock_auth2:
+            mock_auth2.return_value = mock_result
+            resp2 = await client.post("/api/auth/login", json={
+                "username": "zhangsan",
+                "password": "ldappass123",
+                "source": "LDAP",
+            })
+        assert resp2.status_code == 200
+
+    async def test_login_ldap_invalid_credentials(self, client: AsyncClient):
+        """LDAP 凭据错误。"""
+        with patch("app.services.auth.settings.ldap_enabled", True), \
+             patch(
+                 "app.integrations.auth_provider.LdapAuthProvider.authenticate",
+                 new_callable=AsyncMock,
+             ) as mock_auth:
+            mock_auth.return_value = None
+
+            resp = await client.post("/api/auth/login", json={
+                "username": "nobody",
+                "password": "wrong",
+                "source": "LDAP",
+            })
+
+        assert resp.status_code == 400
+        body = resp.json()
+        assert body["code"] != 0
+
+    async def test_login_local_rejects_ldap_user(self, client: AsyncClient, db_session):
+        """source=LDAP 的用户不能通过本地密码登录。"""
+        from app.models.user import User
+
+        ldap_user = User(
+            username="ldapuser1",
+            display_name="LDAP User",
+            hashed_password="",  # LDAP 用户无密码
+            source="LDAP",
+            status="ACTIVE",
+        )
+        db_session.add(ldap_user)
+        await db_session.commit()
+
+        resp = await client.post("/api/auth/login", json={
+            "username": "ldapuser1",
+            "password": "anything",
+            "source": "LOCAL",
+        })
+
+        assert resp.status_code == 400
+        body = resp.json()
+        assert body["code"] != 0
