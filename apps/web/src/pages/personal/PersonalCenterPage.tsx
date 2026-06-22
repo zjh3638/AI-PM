@@ -304,25 +304,16 @@ export default function PersonalCenterPage() {
                 </div>
 
                 <div className="llm-form-group">
-                  <label className="llm-form-label">选择模型</label>
-                  <div className="llm-model-grid">
-                    {[
-                      { id: 'deepseek-chat', name: 'DeepSeek Chat', desc: '通用对话' },
-                      { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', desc: '深度推理' },
-                      { id: 'qwen-max', name: 'Qwen Max', desc: '阿里通义千问' },
-                      { id: 'qwen3.5-plus', name: 'Qwen 3.5 Plus', desc: '新一代千问' },
-                      { id: 'gpt-4o', name: 'GPT-4o', desc: 'OpenAI 多模态' },
-                      { id: 'claude-3.5-sonnet', name: 'Claude 3.5', desc: 'Anthropic' },
-                    ].map((m) => (
-                      <div
-                        key={m.id}
-                        className={`llm-model-card${llmModel === m.id ? ' selected' : ''}`}
-                        onClick={() => setLlmModel(m.id)}
-                      >
-                        <div className="llm-model-name">{m.name}</div>
-                        <div className="llm-model-desc">{m.desc}</div>
-                      </div>
-                    ))}
+                  <label className="llm-form-label">模型名称</label>
+                  <input
+                    type="text"
+                    value={llmModel}
+                    onChange={(e) => setLlmModel(e.target.value)}
+                    placeholder="例如: deepseek-chat, qwen-max, gpt-4o"
+                    className="llm-key-input"
+                  />
+                  <div className="llm-form-hint">
+                    填写模型名称，需与网关支持的模型一致
                   </div>
                 </div>
 
