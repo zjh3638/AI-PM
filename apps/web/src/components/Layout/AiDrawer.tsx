@@ -39,25 +39,33 @@ export default function AiDrawer({ open, onClose }: { open: boolean; onClose: ()
 
   useEffect(() => {
     if (!open || !user) return;
+    const ws = routeCtx.workspace_id;
+    let cancelled = false;
     (async () => {
       try {
         const [cfg, hist] = await Promise.all([
           api.get('/ai/me/llm-config'),
-          api.get('/ai/chat-history'),
+          api.get('/ai/chat-history', { params: ws ? { workspace_id: ws } : {} }),
         ]);
+        if (cancelled) return;
         setNeedsConfig(!cfg.data.has_api_key);
         const d = hist.data;
         if (d?.conversation_id) {
           setConversationId(d.conversation_id);
           setMessages(historyToMsgs(d.messages));
+        } else {
+          setConversationId(undefined);
+          setMessages([]);
         }
         setLoaded(true);
       } catch {
+        if (cancelled) return;
         setNeedsConfig(true);
         setLoaded(true);
       }
     })();
-  }, [open, user]);
+    return () => { cancelled = true; };
+  }, [open, user, routeCtx.workspace_id]);
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, loading]);
 
