@@ -852,3 +852,31 @@
 }
 /* ═══ INLINE CHAT PANEL ═══ (removed — use global AiDrawer) */
   width: 36px;
+
+/* AI Drawer — tool trace cards */
+.tool-traces { margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
+.tool-trace { border: 1px solid var(--border, #2a2f3a); border-radius: 6px; font-size: 0.85em; }
+.tool-trace.error { border-color: #d04545; }
+.tool-trace-head { display: flex; align-items: center; gap: 6px; padding: 4px 8px; cursor: pointer;
+                   user-select: none; background: rgba(255,255,255,0.02); }
+.tool-trace-icon { font-weight: bold; }
+.tool-trace.running .tool-trace-icon { color: #f0b020; }
+.tool-trace.success .tool-trace-icon { color: #4ad08d; }
+.tool-trace.error .tool-trace-icon { color: #ef6b6b; }
+.tool-trace-label { flex: 1; }
+.tool-trace-toggle { opacity: 0.5; font-size: 0.8em; }
+.tool-trace-body { padding: 6px 10px; border-top: 1px solid var(--border, #2a2f3a);
+                   font-family: monospace; word-break: break-all; }
+.tool-trace-body code { background: rgba(0,0,0,0.25); padding: 1px 4px; border-radius: 3px; }
+.tool-trace-error { color: #ef6b6b; margin-top: 4px; }
+
+.streaming-dot { color: #4ad08d; animation: pulse-streaming 1s infinite; }
+@keyframes pulse-streaming { 0%, 100% { opacity: 0.3; } 50% { opacity: 1; } }
+
+.drawer-newchat { background: transparent; border: 1px solid var(--border, #2a2f3a);
+                  color: inherit; padding: 2px 8px; border-radius: 4px;
+                  cursor: pointer; margin-right: 6px; }
+.drawer-newchat:hover { background: rgba(255,255,255,0.05); }
+.send-btn.stop { background: #d04545; color: white; }
+.chat-msg.ai.error { border-left: 2px solid #ef6b6b; padding-left: 8px; }
+.msg-error { color: #ef6b6b; margin-top: 4px; font-size: 0.9em; }
