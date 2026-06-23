@@ -262,17 +262,30 @@ def _save_settings(data: dict) -> None:
 
 class SystemSettingsRequest(BaseModel):
     llm_gateway_url: Optional[str] = Field(default=None, max_length=500)
+    # LDAP
+    ldap_enabled: Optional[bool] = None
+    ldap_server_uri: Optional[str] = Field(default=None, max_length=500)
+    ldap_bind_dn: Optional[str] = Field(default=None, max_length=500)
+    ldap_bind_password: Optional[str] = Field(default=None, max_length=200)
+    ldap_base_dn: Optional[str] = Field(default=None, max_length=500)
+    ldap_user_filter: Optional[str] = Field(default=None, max_length=200)
+    ldap_username_attribute: Optional[str] = Field(default=None, max_length=100)
+    ldap_display_name_attribute: Optional[str] = Field(default=None, max_length=100)
+    ldap_email_attribute: Optional[str] = Field(default=None, max_length=100)
+    ldap_auto_create_user: Optional[bool] = None
 
 
 @router.get("/admin/settings", response_model=APIResponse)
 async def get_system_settings(user: User = Depends(get_current_user)):
     if user.system_role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
-    s = _load_settings()
+    from app.services.ldap_config import get_ldap_config_for_display
+    ldap_cfg = get_ldap_config_for_display()
     return {
         "code": 0, "message": "ok",
         "data": {
             "llm_gateway_url": get_gateway_url(),
+            **ldap_cfg,
         },
     }
 
@@ -285,7 +298,90 @@ async def update_system_settings(
     if user.system_role != "SUPER_ADMIN":
         raise HTTPException(status_code=403, detail="仅超级管理员可访问")
     s = _load_settings()
+
     if req.llm_gateway_url is not None:
         s["llm_gateway_url"] = req.llm_gateway_url
+
+    # LDAP fields — only write if explicitly provided (not None)
+    ldap_fields = [
+        "ldap_enabled", "ldap_server_uri", "ldap_bind_dn",
+        "ldap_bind_password", "ldap_base_dn", "ldap_user_filter",
+        "ldap_username_attribute", "ldap_display_name_attribute",
+        "ldap_email_attribute", "ldap_auto_create_user",
+    ]
+    for key in ldap_fields:
+        val = getattr(req, key, None)
+        if val is not None:
+            s[key] = val
+
     _save_settings(s)
     return {"code": 0, "message": "ok", "data": s}
+
+
+class LdapTestRequest(BaseModel):
+    ldap_server_uri: str = ""
+    ldap_bind_dn: str = ""
+    ldap_bind_password: str = ""
+    ldap_base_dn: str = ""
+    ldap_user_filter: str = "(uid={username})"
+
+
+@router.post("/admin/settings/test-ldap", response_model=APIResponse)
+async def test_ldap_connection(
+    req: LdapTestRequest,
+    user: User = Depends(get_current_user),
+):
+    """Test LDAP connection with provided parameters. SUPER_ADMIN only."""
+    if user.system_role != "SUPER_ADMIN":
+        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+
+    import asyncio
+    from ldap3 import Server, Connection, ALL, SUBTREE
+    from ldap3.core.exceptions import LDAPException, LDAPBindError, LDAPSocketOpenError
+
+    server_uri = req.ldap_server_uri
+    if not server_uri:
+        return {"code": 1, "message": "请输入 LDAP 服务器地址", "data": None}
+
+    loop = asyncio.get_running_loop()
+
+    def _test():
+        server = Server(server_uri, get_info=ALL)
+        conn = None
+        try:
+            # Step 1: bind with service account
+            conn = Connection(
+                server,
+                user=req.ldap_bind_dn,
+                password=req.ldap_bind_password,
+                auto_bind=True,
+            )
+
+            # Step 2: search users
+            search_filter = req.ldap_user_filter.format(username="*")
+            conn.search(
+                search_base=req.ldap_base_dn,
+                search_filter=search_filter,
+                search_scope=SUBTREE,
+                attributes=["cn"],
+            )
+            user_count = len(conn.entries)
+            return {
+                "success": True,
+                "message": f"连接成功，搜索到 {user_count} 个用户",
+                "user_count": user_count,
+            }
+        except LDAPBindError as e:
+            return {"success": False, "message": f"LDAP 绑定失败：{e}"}
+        except LDAPSocketOpenError as e:
+            return {"success": False, "message": f"无法连接 LDAP 服务器：{e}"}
+        except LDAPException as e:
+            return {"success": False, "message": f"LDAP 错误：{e}"}
+        finally:
+            if conn:
+                conn.unbind()
+
+    result = await loop.run_in_executor(None, _test)
+    if result["success"]:
+        return {"code": 0, "message": result["message"], "data": {"user_count": result["user_count"]}}
+    return {"code": 1, "message": result["message"], "data": None}

@@ -7,7 +7,7 @@ from typing import Optional
 from ldap3 import Server, Connection, ALL, SUBTREE
 from ldap3.core.exceptions import LDAPException, LDAPBindError, LDAPSocketOpenError
 
-from app.config import settings
+from app.services.ldap_config import get_ldap_config
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,8 @@ class LdapAuthProvider(AuthProvider):
         return "ldap"
 
     async def authenticate(self, credentials: dict) -> Optional[AuthResult]:
-        if not settings.ldap_enabled:
+        ldap_cfg = get_ldap_config()
+        if not ldap_cfg.get("ldap_enabled"):
             logger.warning("LDAP is not enabled, skipping LDAP authentication")
             return None
 
@@ -74,28 +75,29 @@ class LdapAuthProvider(AuthProvider):
     def _authenticate_sync(
         self, username: str, password: str
     ) -> Optional[AuthResult]:
-        server = Server(settings.ldap_server_uri, get_info=ALL)
+        ldap_cfg = get_ldap_config()
+        server = Server(ldap_cfg["ldap_server_uri"], get_info=ALL)
         conn = None
 
         try:
             # Step 1: 服务账号绑定
             conn = Connection(
                 server,
-                user=settings.ldap_bind_dn,
-                password=settings.ldap_bind_password,
+                user=ldap_cfg["ldap_bind_dn"],
+                password=ldap_cfg["ldap_bind_password"],
                 auto_bind=True,
             )
 
             # Step 2: 搜索用户
-            search_filter = settings.ldap_user_filter.format(username=username)
+            search_filter = ldap_cfg["ldap_user_filter"].format(username=username)
             conn.search(
-                search_base=settings.ldap_base_dn,
+                search_base=ldap_cfg["ldap_base_dn"],
                 search_filter=search_filter,
                 search_scope=SUBTREE,
                 attributes=[
-                    settings.ldap_username_attribute,
-                    settings.ldap_display_name_attribute,
-                    settings.ldap_email_attribute,
+                    ldap_cfg["ldap_username_attribute"],
+                    ldap_cfg["ldap_display_name_attribute"],
+                    ldap_cfg["ldap_email_attribute"],
                 ],
             )
 
@@ -122,13 +124,13 @@ class LdapAuthProvider(AuthProvider):
             try:
                 # 提取属性值
                 ldap_username = _get_attr(
-                    entry, settings.ldap_username_attribute, username
+                    entry, ldap_cfg["ldap_username_attribute"], username
                 )
                 ldap_display_name = _get_attr(
-                    entry, settings.ldap_display_name_attribute, username
+                    entry, ldap_cfg["ldap_display_name_attribute"], username
                 )
                 ldap_email = _get_attr(
-                    entry, settings.ldap_email_attribute, None
+                    entry, ldap_cfg["ldap_email_attribute"], None
                 )
 
                 logger.info("LDAP authentication succeeded for %s", username)

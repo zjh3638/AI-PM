@@ -96,7 +96,7 @@ class TestAuth:
             source="LDAP",
         )
 
-        with patch("app.services.auth.settings.ldap_enabled", True), \
+        with patch("app.services.auth.get_ldap_config", return_value={"ldap_enabled": True, "ldap_auto_create_user": True}), \
              patch(
                  "app.integrations.auth_provider.LdapAuthProvider.authenticate",
                  new_callable=AsyncMock,
@@ -117,7 +117,7 @@ class TestAuth:
         assert body["data"]["user"]["display_name"] == "张三"
 
         # 第二次登录应该复用已创建的用户
-        with patch("app.services.auth.settings.ldap_enabled", True), \
+        with patch("app.services.auth.get_ldap_config", return_value={"ldap_enabled": True, "ldap_auto_create_user": True}), \
              patch(
                  "app.integrations.auth_provider.LdapAuthProvider.authenticate",
                  new_callable=AsyncMock,
@@ -132,7 +132,7 @@ class TestAuth:
 
     async def test_login_ldap_invalid_credentials(self, client: AsyncClient):
         """LDAP 凭据错误。"""
-        with patch("app.services.auth.settings.ldap_enabled", True), \
+        with patch("app.services.auth.get_ldap_config", return_value={"ldap_enabled": True, "ldap_auto_create_user": True}), \
              patch(
                  "app.integrations.auth_provider.LdapAuthProvider.authenticate",
                  new_callable=AsyncMock,

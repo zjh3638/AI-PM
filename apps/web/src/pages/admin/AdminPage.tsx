@@ -178,10 +178,38 @@ export default function AdminPage() {
   const [gwSaving, setGwSaving] = useState(false);
   const [gwMsg, setGwMsg] = useState('');
 
+  // LDAP settings
+  const [ldapEnabled, setLdapEnabled] = useState(false);
+  const [ldapServerUri, setLdapServerUri] = useState('');
+  const [ldapBindDn, setLdapBindDn] = useState('');
+  const [ldapBindPassword, setLdapBindPassword] = useState('');
+  const [ldapBaseDn, setLdapBaseDn] = useState('');
+  const [ldapUserFilter, setLdapUserFilter] = useState('');
+  const [ldapUsernameAttr, setLdapUsernameAttr] = useState('');
+  const [ldapDisplayNameAttr, setLdapDisplayNameAttr] = useState('');
+  const [ldapEmailAttr, setLdapEmailAttr] = useState('');
+  const [ldapAutoCreate, setLdapAutoCreate] = useState(true);
+  const [ldapSaving, setLdapSaving] = useState(false);
+  const [ldapMsg, setLdapMsg] = useState('');
+  const [ldapTesting, setLdapTesting] = useState(false);
+  const [ldapTestResult, setLdapTestResult] = useState('');
+
   const fetchSettings = async () => {
     try {
       const res = await api.get('/ai/admin/settings');
-      setGatewayUrl(res.data.llm_gateway_url || '');
+      const d = res.data || {};
+      setGatewayUrl(d.llm_gateway_url || '');
+      // LDAP
+      setLdapEnabled(d.ldap_enabled || false);
+      setLdapServerUri(d.ldap_server_uri || '');
+      setLdapBindDn(d.ldap_bind_dn || '');
+      setLdapBindPassword('');  // password is masked, never pre-fill
+      setLdapBaseDn(d.ldap_base_dn || '');
+      setLdapUserFilter(d.ldap_user_filter || '(uid={username})');
+      setLdapUsernameAttr(d.ldap_username_attribute || 'uid');
+      setLdapDisplayNameAttr(d.ldap_display_name_attribute || 'cn');
+      setLdapEmailAttr(d.ldap_email_attribute || 'mail');
+      setLdapAutoCreate(d.ldap_auto_create_user !== false);
     } catch { /* skip */ }
   };
 
@@ -193,6 +221,50 @@ export default function AdminPage() {
       setGwMsg('已保存');
     } catch { setGwMsg('保存失败'); }
     setGwSaving(false);
+  };
+
+  const saveLdap = async () => {
+    setLdapSaving(true);
+    setLdapMsg('');
+    try {
+      const payload: any = {
+        ldap_enabled: ldapEnabled,
+        ldap_server_uri: ldapServerUri,
+        ldap_bind_dn: ldapBindDn,
+        ldap_base_dn: ldapBaseDn,
+        ldap_user_filter: ldapUserFilter,
+        ldap_username_attribute: ldapUsernameAttr,
+        ldap_display_name_attribute: ldapDisplayNameAttr,
+        ldap_email_attribute: ldapEmailAttr,
+        ldap_auto_create_user: ldapAutoCreate,
+      };
+      if (ldapBindPassword) {
+        payload.ldap_bind_password = ldapBindPassword;
+      }
+      await api.patch('/ai/admin/settings', payload);
+      setLdapMsg('LDAP 配置已保存');
+    } catch (e: any) {
+      setLdapMsg(e?.response?.data?.message || '保存失败');
+    }
+    setLdapSaving(false);
+  };
+
+  const testLdap = async () => {
+    setLdapTesting(true);
+    setLdapTestResult('');
+    try {
+      const res = await api.post('/ai/admin/settings/test-ldap', {
+        ldap_server_uri: ldapServerUri,
+        ldap_bind_dn: ldapBindDn,
+        ldap_bind_password: ldapBindPassword,
+        ldap_base_dn: ldapBaseDn,
+        ldap_user_filter: ldapUserFilter,
+      });
+      setLdapTestResult(res.message || '连接成功');
+    } catch (e: any) {
+      setLdapTestResult(e?.response?.data?.message || '测试失败');
+    }
+    setLdapTesting(false);
   };
 
   const adminTabs = [
@@ -322,18 +394,20 @@ export default function AdminPage() {
       )}
 
       {activeTab === 'settings' && (
-        <div style={{ maxWidth: 560 }}>
+        <div style={{ maxWidth: 640 }}>
           <div className="llm-status-card configured" style={{ marginBottom: 20 }}>
             <div className="llm-status-icon">⚙️</div>
             <div className="llm-status-text">
               <div className="llm-status-title">系统设置</div>
-              <div className="llm-status-desc">配置 LLM 网关等全局参数，仅超级管理员可操作</div>
+              <div className="llm-status-desc">配置 LLM 网关、LDAP 认证等全局参数，仅超级管理员可操作</div>
             </div>
           </div>
 
-          <div className="llm-form">
+          {/* ── LLM Gateway ────────────────────────────── */}
+          <div className="llm-form" style={{ marginBottom: 24 }}>
+            <h4 style={{ margin: '0 0 16px', fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>LLM 网关</h4>
             <div className="llm-form-group">
-              <label className="llm-form-label">LLM 网关地址</label>
+              <label className="llm-form-label">网关地址</label>
               <div className="llm-gateway-card">
                 <input
                   type="text"
@@ -347,13 +421,154 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
-
             <div className="llm-form-actions">
               <button className="btn btn-primary btn-sm" onClick={saveGateway} disabled={gwSaving}>
                 {gwSaving ? '保存中...' : '保存'}
               </button>
               {gwMsg && <span className={`llm-form-msg${gwMsg.includes('失败') ? ' error' : ''}`}>{gwMsg}</span>}
             </div>
+          </div>
+
+          {/* ── LDAP ────────────────────────────────────── */}
+          <div className="llm-form">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-primary)' }}>LDAP 认证</h4>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
+                <input
+                  type="checkbox"
+                  checked={ldapEnabled}
+                  onChange={(e) => setLdapEnabled(e.target.checked)}
+                  style={{ width: 16, height: 16 }}
+                />
+                启用 LDAP
+              </label>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 16px' }}>
+              <div className="llm-form-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="llm-form-label">服务器地址</label>
+                <input
+                  type="text"
+                  value={ldapServerUri}
+                  onChange={(e) => setLdapServerUri(e.target.value)}
+                  placeholder="ldap://ldap.company.com:389"
+                  className="llm-key-input"
+                />
+              </div>
+              <div className="llm-form-group">
+                <label className="llm-form-label">绑定 DN</label>
+                <input
+                  type="text"
+                  value={ldapBindDn}
+                  onChange={(e) => setLdapBindDn(e.target.value)}
+                  placeholder="cn=admin,dc=company,dc=com"
+                  className="llm-key-input"
+                />
+              </div>
+              <div className="llm-form-group">
+                <label className="llm-form-label">绑定密码</label>
+                <input
+                  type="password"
+                  value={ldapBindPassword}
+                  onChange={(e) => setLdapBindPassword(e.target.value)}
+                  placeholder={ldapBindPassword ? '' : '留空不修改'}
+                  className="llm-key-input"
+                />
+              </div>
+              <div className="llm-form-group" style={{ gridColumn: '1 / -1' }}>
+                <label className="llm-form-label">用户基础 DN</label>
+                <input
+                  type="text"
+                  value={ldapBaseDn}
+                  onChange={(e) => setLdapBaseDn(e.target.value)}
+                  placeholder="ou=users,dc=company,dc=com"
+                  className="llm-key-input"
+                />
+              </div>
+              <div className="llm-form-group">
+                <label className="llm-form-label">用户过滤器</label>
+                <input
+                  type="text"
+                  value={ldapUserFilter}
+                  onChange={(e) => setLdapUserFilter(e.target.value)}
+                  placeholder="(uid={username})"
+                  className="llm-key-input"
+                />
+              </div>
+              <div className="llm-form-group">
+                <label className="llm-form-label">用户名属性</label>
+                <input
+                  type="text"
+                  value={ldapUsernameAttr}
+                  onChange={(e) => setLdapUsernameAttr(e.target.value)}
+                  placeholder="uid"
+                  className="llm-key-input"
+                />
+              </div>
+              <div className="llm-form-group">
+                <label className="llm-form-label">显示名属性</label>
+                <input
+                  type="text"
+                  value={ldapDisplayNameAttr}
+                  onChange={(e) => setLdapDisplayNameAttr(e.target.value)}
+                  placeholder="cn"
+                  className="llm-key-input"
+                />
+              </div>
+              <div className="llm-form-group">
+                <label className="llm-form-label">邮箱属性</label>
+                <input
+                  type="text"
+                  value={ldapEmailAttr}
+                  onChange={(e) => setLdapEmailAttr(e.target.value)}
+                  placeholder="mail"
+                  className="llm-key-input"
+                />
+              </div>
+            </div>
+
+            <div className="llm-form-group" style={{ marginTop: 12 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: '0.8rem' }}>
+                <input
+                  type="checkbox"
+                  checked={ldapAutoCreate}
+                  onChange={(e) => setLdapAutoCreate(e.target.checked)}
+                  style={{ width: 16, height: 16 }}
+                />
+                首次登录自动创建用户
+              </label>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: 4, marginLeft: 24 }}>
+                开启后，LDAP 验证通过的账号将自动在系统中创建用户记录
+              </div>
+            </div>
+
+            <div className="llm-form-actions" style={{ marginTop: 16 }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                onClick={testLdap}
+                disabled={ldapTesting || !ldapServerUri}
+              >
+                {ldapTesting ? '测试中...' : '测试连接'}
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={saveLdap} disabled={ldapSaving}>
+                {ldapSaving ? '保存中...' : '保存 LDAP 配置'}
+              </button>
+              {ldapMsg && (
+                <span className={`llm-form-msg${ldapMsg.includes('失败') || ldapMsg.includes('错误') ? ' error' : ''}`} style={{ fontSize: '0.75rem' }}>
+                  {ldapMsg}
+                </span>
+              )}
+            </div>
+            {ldapTestResult && (
+              <div style={{
+                marginTop: 10, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                background: ldapTestResult.includes('成功') ? 'var(--green-50)' : 'var(--red-50)',
+                color: ldapTestResult.includes('成功') ? 'var(--green-600)' : 'var(--red-500)',
+                fontSize: '0.78rem',
+              }}>
+                {ldapTestResult}
+              </div>
+            )}
           </div>
         </div>
       )}

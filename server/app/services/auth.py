@@ -6,9 +6,9 @@ from sqlalchemy.orm import selectinload
 
 from app.models.user import User
 from app.security import verify_password, hash_password
-from app.config import settings
 from app.exceptions import AppException
 from app.integrations.auth_provider import LdapAuthProvider
+from app.services.ldap_config import get_ldap_config
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +30,8 @@ async def login_local(db: AsyncSession, username: str, password: str) -> User:
 
 async def login_ldap(db: AsyncSession, username: str, password: str) -> User:
     """LDAP 登录 — 验证 LDAP 凭据，首次登录自动创建本地用户记录。"""
-    if not settings.ldap_enabled:
+    ldap_cfg = get_ldap_config()
+    if not ldap_cfg.get("ldap_enabled"):
         raise AppException(400, "LDAP 登录未启用")
 
     # Step 1: 验证 LDAP 凭据
@@ -52,7 +53,7 @@ async def login_ldap(db: AsyncSession, username: str, password: str) -> User:
     user = result.scalar_one_or_none()
 
     if user is None:
-        if not settings.ldap_auto_create_user:
+        if not ldap_cfg.get("ldap_auto_create_user", True):
             raise AppException(403, "LDAP 用户未授权，请联系管理员")
 
         user = User(
