@@ -14,6 +14,7 @@ class Department(Base, UUIDMixin, TimestampMixin):
     parent_id: Mapped[Optional[str]] = mapped_column(String(36), ForeignKey("departments.id"), nullable=True)
     path: Mapped[str] = mapped_column(String(500), default="")
     sort_order: Mapped[int] = mapped_column(default=0)
+    ldap_dn: Mapped[Optional[str]] = mapped_column(String(500), nullable=True, unique=True)
 
     parent = relationship("Department", remote_side="Department.id", back_populates="children")
     children = relationship("Department", back_populates="parent")

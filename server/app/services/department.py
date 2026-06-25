@@ -57,6 +57,7 @@ async def create_department(
     name: str,
     parent_id: Optional[str] = None,
     sort_order: int = 0,
+    ldap_dn: Optional[str] = None,
 ) -> Department:
     # Build path
     path = f"/{name}"
@@ -66,7 +67,7 @@ async def create_department(
             raise AppException(404, "父部门不存在", 404)
         path = f"{parent.path}/{name}"
 
-    dept = Department(name=name, parent_id=parent_id, path=path, sort_order=sort_order)
+    dept = Department(name=name, parent_id=parent_id, path=path, sort_order=sort_order, ldap_dn=ldap_dn)
     db.add(dept)
     await db.commit()
     await db.refresh(dept)
@@ -79,6 +80,7 @@ async def update_department(
     name: Optional[str] = None,
     parent_id: Optional[str] = None,
     sort_order: Optional[int] = None,
+    ldap_dn: Optional[str] = None,
 ) -> Department:
     if name is not None:
         dept.name = name
@@ -106,6 +108,9 @@ async def update_department(
 
     if sort_order is not None:
         dept.sort_order = sort_order
+
+    if ldap_dn is not None:
+        dept.ldap_dn = ldap_dn
 
     await db.commit()
     await db.refresh(dept)

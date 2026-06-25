@@ -18,6 +18,7 @@ class AuthResult:
     display_name: str
     email: Optional[str] = None
     department: Optional[str] = None
+    dn: Optional[str] = None  # LDAP 用户的 distinguishedName，用于部门匹配
     source: str = "LOCAL"
 
 
@@ -138,6 +139,8 @@ class LdapAuthProvider(AuthProvider):
                     username=ldap_username,
                     display_name=ldap_display_name,
                     email=ldap_email,
+                    department=_get_attr(entry, "department", None),
+                    dn=user_dn,
                     source="LDAP",
                 )
             finally:

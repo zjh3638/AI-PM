@@ -47,10 +47,11 @@ async def create_department(
     await pc.require_system_role("SUPER_ADMIN", "ADMIN")
     dept = await dept_service.create_department(
         db, name=req.name, parent_id=req.parent_id, sort_order=req.sort_order,
+        ldap_dn=req.ldap_dn,
     )
     return {"code": 0, "message": "ok", "data": {
         "id": dept.id, "name": dept.name, "parent_id": dept.parent_id,
-        "path": dept.path, "sort_order": dept.sort_order,
+        "path": dept.path, "sort_order": dept.sort_order, "ldap_dn": dept.ldap_dn,
     }}
 
 
@@ -68,10 +69,11 @@ async def update_department(
     dept = await dept_service.update_department(
         db, dept,
         name=req.name, parent_id=req.parent_id, sort_order=req.sort_order,
+        ldap_dn=req.ldap_dn,
     )
     return {"code": 0, "message": "ok", "data": {
         "id": dept.id, "name": dept.name, "parent_id": dept.parent_id,
-        "path": dept.path, "sort_order": dept.sort_order,
+        "path": dept.path, "sort_order": dept.sort_order, "ldap_dn": dept.ldap_dn,
     }}
 
 

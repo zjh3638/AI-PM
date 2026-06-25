@@ -194,6 +194,25 @@ export default function AdminPage() {
   const [ldapTesting, setLdapTesting] = useState(false);
   const [ldapTestResult, setLdapTestResult] = useState('');
 
+  // LDAP import state
+  const [ldapImportTab, setLdapImportTab] = useState<'ous' | 'users'>('ous');
+  const [ldapOus, setLdapOus] = useState<any[]>([]);
+  const [ldapOuKeyword, setLdapOuKeyword] = useState('');
+  const [ldapOuLoading, setLdapOuLoading] = useState(false);
+  const [ldapOuSelected, setLdapOuSelected] = useState<Set<string>>(new Set());
+  const [ldapOuSyncing, setLdapOuSyncing] = useState(false);
+  const [ldapOuMsg, setLdapOuMsg] = useState('');
+
+  const [ldapUsers, setLdapUsers] = useState<any[]>([]);
+  const [ldapUserKeyword, setLdapUserKeyword] = useState('');
+  const [ldapUserTotal, setLdapUserTotal] = useState(0);
+  const [ldapUserPage, setLdapUserPage] = useState(1);
+  const [ldapUserLoading, setLdapUserLoading] = useState(false);
+  const [ldapUserSelected, setLdapUserSelected] = useState<Set<string>>(new Set());
+  const [ldapUserImporting, setLdapUserImporting] = useState(false);
+  const [ldapUserMsg, setLdapUserMsg] = useState('');
+  const [ldapImportDeptId, setLdapImportDeptId] = useState('');
+
   const fetchSettings = async () => {
     try {
       const res = await api.get('/ai/admin/settings');
@@ -267,9 +286,70 @@ export default function AdminPage() {
     setLdapTesting(false);
   };
 
+  // ── LDAP 导入 ──────────────────────────────────────
+  const fetchLdapOus = async () => {
+    setLdapOuLoading(true);
+    setLdapOuMsg('');
+    try {
+      const res: any = await api.get('/admin/ldap/ous', { params: { keyword: ldapOuKeyword || undefined } });
+      setLdapOus(res.data || []);
+    } catch (e: any) {
+      setLdapOuMsg(e?.response?.data?.message || '获取 OU 列表失败');
+    } finally { setLdapOuLoading(false); }
+  };
+
+  const syncLdapOus = async () => {
+    if (ldapOuSelected.size === 0) { setLdapOuMsg('请先选择要同步的 OU'); return; }
+    setLdapOuSyncing(true);
+    setLdapOuMsg('');
+    try {
+      const res: any = await api.post('/admin/ldap/sync-ous', { ou_dns: Array.from(ldapOuSelected) });
+      const d = res.data || {};
+      setLdapOuMsg(`同步完成：创建 ${d.created || 0} 个，跳过 ${d.skipped || 0} 个${d.errors?.length ? `，${d.errors.length} 个失败` : ''}`);
+      setLdapOuSelected(new Set());
+      fetchDeptTree();  // Refresh department tree
+    } catch (e: any) {
+      setLdapOuMsg(e?.response?.data?.message || '同步失败');
+    } finally { setLdapOuSyncing(false); }
+  };
+
+  const fetchLdapUsers = async (page = 1) => {
+    setLdapUserLoading(true);
+    setLdapUserMsg('');
+    try {
+      const res: any = await api.get('/admin/ldap/users', {
+        params: { keyword: ldapUserKeyword || undefined, page, page_size: 50 },
+      });
+      const d = res.data || {};
+      setLdapUsers(d.items || []);
+      setLdapUserTotal(d.total || 0);
+      setLdapUserPage(page);
+    } catch (e: any) {
+      setLdapUserMsg(e?.response?.data?.message || '获取 LDAP 用户列表失败');
+    } finally { setLdapUserLoading(false); }
+  };
+
+  const importLdapUsers = async () => {
+    if (ldapUserSelected.size === 0) { setLdapUserMsg('请先选择要导入的用户'); return; }
+    setLdapUserImporting(true);
+    setLdapUserMsg('');
+    try {
+      const payload: any = { user_dns: Array.from(ldapUserSelected) };
+      if (ldapImportDeptId) payload.department_id = ldapImportDeptId;
+      const res: any = await api.post('/admin/ldap/import-users', payload);
+      const d = res.data || {};
+      setLdapUserMsg(`导入完成：新增 ${d.imported || 0} 人，更新 ${d.updated || 0} 人${d.errors?.length ? `，${d.errors.length} 个失败` : ''}`);
+      setLdapUserSelected(new Set());
+      fetchUsers();  // Refresh user list
+    } catch (e: any) {
+      setLdapUserMsg(e?.response?.data?.message || '导入失败');
+    } finally { setLdapUserImporting(false); }
+  };
+
   const adminTabs = [
     { key: 'users', label: '用户管理' },
     { key: 'departments', label: '部门管理' },
+    { key: 'ldap-import', label: 'LDAP 导入' },
     { key: 'settings', label: '系统设置' },
     { key: 'agents', label: 'Agent 配置' },
   ];
@@ -368,6 +448,215 @@ export default function AdminPage() {
           ) : (
             <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
               <DeptTree nodes={deptTree} expanded={expandedDepts} onToggle={toggleExpand} onEdit={openDeptEdit} onDelete={deleteDept} onAdd={openDeptCreate} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── LDAP 导入 Tab ────────────────────────────── */}
+      {activeTab === 'ldap-import' && (
+        <div style={{ maxWidth: 800 }}>
+          <div className="llm-status-card configured" style={{ marginBottom: 20 }}>
+            <div className="llm-status-icon">📂</div>
+            <div className="llm-status-text">
+              <div className="llm-status-title">LDAP 数据导入</div>
+              <div className="llm-status-desc">从 LDAP 目录同步组织架构和用户数据。请先在「系统设置」中配置 LDAP 连接参数。</div>
+            </div>
+          </div>
+
+          {/* Sub-tabs */}
+          <div style={{ display: 'flex', gap: 4, marginBottom: 20 }}>
+            <button className={`personal-tab${ldapImportTab === 'ous' ? ' active' : ''}`} onClick={() => setLdapImportTab('ous')}>
+              部门同步
+            </button>
+            <button className={`personal-tab${ldapImportTab === 'users' ? ' active' : ''}`} onClick={() => { setLdapImportTab('users'); fetchLdapUsers(1); }}>
+              用户导入
+            </button>
+          </div>
+
+          {/* ── OU 同步 ──────────────────────────────── */}
+          {ldapImportTab === 'ous' && (
+            <div className="llm-form">
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                <input
+                  type="text"
+                  placeholder="搜索 OU..."
+                  value={ldapOuKeyword}
+                  onChange={(e) => setLdapOuKeyword(e.target.value)}
+                  className="llm-key-input"
+                  style={{ flex: 1 }}
+                />
+                <button className="btn btn-primary btn-sm" onClick={fetchLdapOus} disabled={ldapOuLoading}>
+                  {ldapOuLoading ? '搜索中...' : '搜索'}
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {ldapOus.length > 0 ? `${ldapOus.length} 个 OU` : ldapOuLoading ? '加载中...' : '点击搜索获取 LDAP 组织单位'}
+                </span>
+                {ldapOus.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost btn-xs" onClick={() => setLdapOuSelected(
+                      ldapOuSelected.size === ldapOus.length ? new Set() : new Set(ldapOus.map((ou: any) => ou.dn))
+                    )}>
+                      {ldapOuSelected.size === ldapOus.length ? '取消全选' : '全选'}
+                    </button>
+                    <button className="btn btn-primary btn-sm" onClick={syncLdapOus} disabled={ldapOuSyncing}>
+                      {ldapOuSyncing ? '同步中...' : `同步选中 (${ldapOuSelected.size})`}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {ldapOus.length > 0 && (
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', maxHeight: 400, overflow: 'auto' }}>
+                  {ldapOus.map((ou: any) => (
+                    <label
+                      key={ou.dn}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px',
+                        borderBottom: '1px solid var(--border-light)', cursor: 'pointer',
+                        background: ldapOuSelected.has(ou.dn) ? 'var(--blue-50)' : undefined,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={ldapOuSelected.has(ou.dn)}
+                        onChange={() => {
+                          const next = new Set(ldapOuSelected);
+                          next.has(ou.dn) ? next.delete(ou.dn) : next.add(ou.dn);
+                          setLdapOuSelected(next);
+                        }}
+                        style={{ width: 14, height: 14 }}
+                      />
+                      <span style={{ fontSize: '0.82rem', fontWeight: 500 }}>{ou.name}</span>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', flex: 1 }}>{ou.dn}</span>
+                      {ou.description && <span style={{ fontSize: '0.7rem', color: 'var(--text-secondary)' }}>{ou.description}</span>}
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {ldapOuMsg && (
+                <div style={{
+                  marginTop: 12, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                  background: ldapOuMsg.includes('失败') || ldapOuMsg.includes('失败') ? 'var(--red-50)' : 'var(--green-50)',
+                  color: ldapOuMsg.includes('失败') ? 'var(--red-500)' : 'var(--green-600)',
+                  fontSize: '0.78rem',
+                }}>
+                  {ldapOuMsg}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── 用户导入 ──────────────────────────────── */}
+          {ldapImportTab === 'users' && (
+            <div className="llm-form">
+              <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+                <input
+                  type="text"
+                  placeholder="搜索用户名/显示名/邮箱..."
+                  value={ldapUserKeyword}
+                  onChange={(e) => setLdapUserKeyword(e.target.value)}
+                  className="llm-key-input"
+                  style={{ flex: 1, minWidth: 200 }}
+                />
+                <select
+                  value={ldapImportDeptId}
+                  onChange={(e) => setLdapImportDeptId(e.target.value)}
+                  className="llm-key-input"
+                  style={{ width: 160, fontSize: '0.78rem' }}
+                >
+                  <option value="">自动匹配部门</option>
+                  {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                </select>
+                <button className="btn btn-primary btn-sm" onClick={() => fetchLdapUsers(1)} disabled={ldapUserLoading}>
+                  搜索
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  {ldapUserTotal > 0 ? `共 ${ldapUserTotal} 人（第 ${ldapUserPage} 页）` : ldapUserLoading ? '加载中...' : '搜索 LDAP 用户'}
+                </span>
+                {ldapUsers.length > 0 && (
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn btn-ghost btn-xs" onClick={() => setLdapUserSelected(
+                      ldapUserSelected.size === ldapUsers.length ? new Set() : new Set(ldapUsers.map((u: any) => u.dn))
+                    )}>
+                      {ldapUserSelected.size === ldapUsers.length ? '取消全选' : '全选'}
+                    </button>
+                    <button className="btn btn-primary btn-sm" onClick={importLdapUsers} disabled={ldapUserImporting}>
+                      {ldapUserImporting ? '导入中...' : `导入选中 (${ldapUserSelected.size})`}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {ldapUsers.length > 0 && (
+                <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: 'var(--bg-raised)' }}>
+                        <th style={{ padding: '8px 12px', width: 30 }}></th>
+                        <th style={{ padding: '8px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'left' }}>用户名</th>
+                        <th style={{ padding: '8px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'left' }}>显示名</th>
+                        <th style={{ padding: '8px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'left' }}>邮箱</th>
+                        <th style={{ padding: '8px 12px', fontSize: '0.7rem', fontWeight: 600, color: 'var(--text-muted)', textAlign: 'left' }}>部门路径</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ldapUsers.map((u: any) => (
+                        <tr key={u.dn} style={{ borderBottom: '1px solid var(--border-light)', background: ldapUserSelected.has(u.dn) ? 'var(--blue-50)' : undefined }}>
+                          <td style={{ padding: '8px 12px' }}>
+                            <input
+                              type="checkbox"
+                              checked={ldapUserSelected.has(u.dn)}
+                              onChange={() => {
+                                const next = new Set(ldapUserSelected);
+                                next.has(u.dn) ? next.delete(u.dn) : next.add(u.dn);
+                                setLdapUserSelected(next);
+                              }}
+                              style={{ width: 14, height: 14 }}
+                            />
+                          </td>
+                          <td style={{ padding: '8px 12px', fontSize: '0.8rem', fontWeight: 500 }}>{u.username}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '0.8rem' }}>{u.display_name}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>{u.email || '-'}</td>
+                          <td style={{ padding: '8px 12px', fontSize: '0.72rem', color: 'var(--text-muted)' }}>{u.ou_path || u.department || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {ldapUserTotal > 50 && (
+                <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginTop: 12 }}>
+                  <button className="btn btn-ghost btn-xs" onClick={() => fetchLdapUsers(ldapUserPage - 1)} disabled={ldapUserPage <= 1}>
+                    上一页
+                  </button>
+                  <span style={{ fontSize: '0.75rem', lineHeight: '24px' }}>
+                    {ldapUserPage} / {Math.ceil(ldapUserTotal / 50)}
+                  </span>
+                  <button className="btn btn-ghost btn-xs" onClick={() => fetchLdapUsers(ldapUserPage + 1)} disabled={ldapUserPage >= Math.ceil(ldapUserTotal / 50)}>
+                    下一页
+                  </button>
+                </div>
+              )}
+
+              {ldapUserMsg && (
+                <div style={{
+                  marginTop: 12, padding: '10px 14px', borderRadius: 'var(--radius-sm)',
+                  background: ldapUserMsg.includes('失败') ? 'var(--red-50)' : 'var(--green-50)',
+                  color: ldapUserMsg.includes('失败') ? 'var(--red-500)' : 'var(--green-600)',
+                  fontSize: '0.78rem',
+                }}>
+                  {ldapUserMsg}
+                </div>
+              )}
             </div>
           )}
         </div>
