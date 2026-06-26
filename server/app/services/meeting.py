@@ -36,7 +36,11 @@ async def create_meeting(
 
 
 async def get_meeting(db: AsyncSession, meeting_id: str) -> Optional[Meeting]:
-    result = await db.execute(select(Meeting).where(Meeting.id == meeting_id))
+    result = await db.execute(
+        select(Meeting)
+        .where(Meeting.id == meeting_id)
+        .options(selectinload(Meeting.host))
+    )
     return result.scalar_one_or_none()
 
 
