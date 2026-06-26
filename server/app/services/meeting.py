@@ -137,22 +137,29 @@ async def get_board_data(
         in_progress = []
         delayed = []
 
+        # Collect assignee IDs for batch name lookup
+        ms_assignee_ids = {t.assignee_id for t in ms_tasks if t.assignee_id}
+        ms_assignee_names = {}
+        if ms_assignee_ids:
+            u_result = await db.execute(
+                select(User.id, User.display_name).where(User.id.in_(ms_assignee_ids))
+            )
+            ms_assignee_names = {row[0]: row[1] for row in u_result.all()}
+
         for t in ms_tasks:
             task_dict = {
                 "id": t.id,
                 "title": t.title,
                 "status": t.status,
+                "assignee_name": ms_assignee_names.get(t.assignee_id) if t.assignee_id else None,
                 "due_date": t.due_date.isoformat() if t.due_date else None,
                 "completed_at": t.completed_at.isoformat() if t.completed_at else None,
             }
             if t.status == "DONE":
                 completed.append(task_dict)
             elif t.due_date and t.due_date < today:
-                # delayed: status != DONE AND due_date < today
                 delayed.append(task_dict)
             else:
-                # in progress: status in [TODO, IN_PROGRESS, IN_REVIEW]
-                # AND (due_date >= today OR due_date IS NULL)
                 in_progress.append(task_dict)
 
         # Last 5 completed by completed_at desc
