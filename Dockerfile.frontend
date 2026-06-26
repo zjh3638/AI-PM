@@ -1,0 +1,32 @@
+# ── Builder stage: build frontend from monorepo root ──
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Enable pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+# Copy monorepo root config
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json ./
+
+# Copy frontend app
+COPY apps/web/ ./apps/web/
+
+# Install all workspace deps and build
+RUN pnpm install --frozen-lockfile
+RUN pnpm build --filter=@ai-pm/web
+
+
+# ── Runtime stage: nginx serving static files ──
+FROM nginx:alpine
+
+# Copy built assets
+COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+
+# Copy nginx config
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -q -O /dev/null http://localhost/health || exit 1
