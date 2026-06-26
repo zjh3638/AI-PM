@@ -1,0 +1,79 @@
+version: "3.8"
+
+services:
+  # ═══ PostgreSQL 16 ════════════════════════════════════
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-pm-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ai_pm
+      POSTGRES_PASSWORD: ai_pm_pass
+      POSTGRES_DB: ai_pm
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_pm -d ai_pm"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # ═══ Redis（可选，代码暂未使用，后续用于缓存/会话/任务队列）═══
+  redis:
+    image: redis:7-alpine
+    container_name: ai-pm-redis
+    restart: unless-stopped
+    profiles:
+      - full
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ═══ Backend (FastAPI) ═══════════════════════════════════
+  backend:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ai-pm-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - AI_PM_DATABASE_URL=postgresql+asyncpg://ai_pm:ai_pm_pass@postgres:5432/ai_pm
+      - AI_PM_REDIS_URL=redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./server/settings.json:/app/settings.json
+      - backend_uploads:/app/uploads
+      - backend_repos:/app/repos
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ═══ Frontend (Nginx + React SPA) ══════════════════════
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ai-pm-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  backend_uploads:
+  backend_repos:
