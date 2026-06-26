@@ -19,6 +19,7 @@ from app.models.risk import Risk
 from app.models.task_progress import TaskProgress
 from app.models.project_group import ProjectGroup, ProjectGroupItem
 from app.models.chat_history import ChatHistory
+from app.models.meeting import Meeting
 
 __all__ = [
     "UUIDMixin",
@@ -46,4 +47,5 @@ __all__ = [
     "ProjectGroup",
     "ProjectGroupItem",
     "ChatHistory",
+    "Meeting",
 ]
