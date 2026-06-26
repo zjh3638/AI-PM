@@ -1,4 +1,4 @@
-"""baseline
+"""baseline (PostgreSQL)
 
 Revision ID: 9d84d66c2f9b
 Revises: 
