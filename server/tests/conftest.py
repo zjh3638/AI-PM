@@ -1,26 +1,22 @@
 import asyncio
-import tempfile
-from pathlib import Path
+import os
 from typing import AsyncGenerator
 
 import pytest
 from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-from sqlalchemy.pool import StaticPool
 
 from app.database import Base, get_db
 from app.models import *  # noqa: F401,F403
 from app.security import hash_password, create_access_token
 from app.services import git_storage
 
-# Use StaticPool so all connections share the same in-memory database
-TEST_DATABASE_URL = "sqlite+aiosqlite://"
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    echo=False,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
+# Use a dedicated test database — create beforehand with: createdb ai_pm_test
+TEST_DATABASE_URL = os.getenv(
+    "AI_PM_TEST_DATABASE_URL",
+    "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_pm_test",
 )
+test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
 TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
