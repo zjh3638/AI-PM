@@ -9,6 +9,7 @@ import './styles/pulse.css';
 import './styles/login.css';
 import './styles/personal.css';
 import './styles/bigscreen.css';
+import './styles/meeting.css';
 import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
