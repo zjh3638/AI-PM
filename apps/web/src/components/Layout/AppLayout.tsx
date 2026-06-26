@@ -7,6 +7,7 @@ import WorkspaceDetailPage from '../../pages/workspace-detail/WorkspaceDetailPag
 import PersonalCenterPage from '../../pages/personal/PersonalCenterPage';
 import PlaceholderPage from '../../pages/placeholder/PlaceholderPage';
 import BigScreenPage from '../../pages/bigscreen/BigScreenPage';
+import MeetingBoardPage from '../../pages/meeting/MeetingBoardPage';
 import AdminPage from '../../pages/admin/AdminPage';
 import ProjectGroupDetailPage from '../../pages/project-group-detail/ProjectGroupDetailPage';
 import SearchBar from '../search/SearchBar';
@@ -38,7 +39,7 @@ export default function AppLayout() {
   const navItems = [
     { key: '/dashboard', label: '我的关注' },
     { key: '/workspaces', label: '工作空间' },
-    { key: '/bigscreen', label: '会议大屏' },
+    { key: '/meetings', label: '会议' },
     { key: '/personal', label: '个人中心' },
   ];
 
@@ -119,13 +120,14 @@ export default function AppLayout() {
       </nav>
 
       {/* Content */}
-      <div className={activeKey === '/bigscreen' ? 'page-wide' : 'page'}>
+      <div className={activeKey === '/meetings' || activeKey === '/bigscreen' ? 'page-wide' : 'page'}>
         <Routes>
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/workspaces" element={<WorkspaceListPage />} />
           <Route path="/workspaces/:id/*" element={<WorkspaceDetailPage />} />
           <Route path="/project-groups/:id" element={<ProjectGroupDetailPage />} />
           <Route path="/bigscreen" element={<BigScreenPage />} />
+          <Route path="/meetings/:id" element={<MeetingBoardPage />} />
           <Route path="/personal" element={<PersonalCenterPage />} />
           <Route path="/settings" element={<AdminPage />} />
           <Route path="/" element={<DashboardPage />} />
