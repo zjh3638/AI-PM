@@ -1,11 +1,12 @@
 """Seed initial data: admin user, default department, roles, two workspace types."""
 import asyncio
+import os
 import sys
 sys.path.insert(0, ".")
 
 from datetime import date, timedelta
 
-from app.database import engine, async_session, Base
+from app.database import engine, async_session
 from app.models.user import User
 from app.models.department import Department
 from app.models.role import Role
@@ -17,68 +18,11 @@ from app.models.iteration import Iteration
 from app.models.task import Task
 from app.security import hash_password
 
+SKIP_DDL = os.environ.get("SKIP_DDL", "").lower() in ("1", "true", "yes")
+
 
 async def seed():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Ensure new columns exist for SQLite (safe DDL, ignored if already present)
-        from sqlalchemy import text
-        for col in [
-            "requirement_review_status VARCHAR(20)",
-            "requirement_reviewer_id VARCHAR(36) REFERENCES users(id)",
-            "requirement_review_note TEXT",
-            "design_review_status VARCHAR(20)",
-            "design_reviewer_id VARCHAR(36) REFERENCES users(id)",
-            "design_review_note TEXT",
-            "design_doc TEXT",
-            "prd_doc TEXT",
-            "self_test_report TEXT",
-            "test_report TEXT",
-            "rating INTEGER",
-            "evaluation TEXT",
-            "acceptance_owner_id VARCHAR(36) REFERENCES users(id)",
-        ]:
-            try:
-                await conn.execute(text(f"ALTER TABLE tasks ADD COLUMN {col}"))
-            except Exception:
-                pass
-        # Milestone phase + dependency
-        for col in [
-            "phase VARCHAR(20) DEFAULT 'PLANNING'",
-            "depends_on_id VARCHAR(36) REFERENCES milestones(id)",
-        ]:
-            try:
-                await conn.execute(text(f"ALTER TABLE milestones ADD COLUMN {col}"))
-            except Exception:
-                pass
-        # Workspace strict_gate
-        try:
-            await conn.execute(text("ALTER TABLE workspaces ADD COLUMN strict_gate BOOLEAN DEFAULT 1"))
-        except Exception:
-            pass
-        # Risks table (SQLite fallback)
-        try:
-            await conn.execute(text("""
-                CREATE TABLE IF NOT EXISTS risks (
-                    id VARCHAR(36) PRIMARY KEY,
-                    workspace_id VARCHAR(36) NOT NULL REFERENCES workspaces(id),
-                    milestone_id VARCHAR(36) REFERENCES milestones(id),
-                    title VARCHAR(500) NOT NULL,
-                    description TEXT,
-                    risk_type VARCHAR(20) NOT NULL DEFAULT 'OTHER',
-                    probability VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
-                    impact VARCHAR(20) NOT NULL DEFAULT 'MEDIUM',
-                    status VARCHAR(20) NOT NULL DEFAULT 'IDENTIFIED',
-                    mitigation TEXT,
-                    owner_id VARCHAR(36) REFERENCES users(id),
-                    closed_at DATETIME,
-                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-                )
-            """))
-        except Exception:
-            pass
-
+    # DDL is handled by Alembic migrations
     async with async_session() as db:
         dept = Department(id="dept-001", name="默认部门", path="/默认部门")
         db.add(dept)
