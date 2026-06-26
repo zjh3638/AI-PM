@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
     # 数据库
-    database_url: str = "mysql+asyncmy://root@localhost:3306/ai_pm"
+    database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_pm"
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"
