@@ -1,0 +1,136 @@
+# ═══════════════════════════════════════════════════════════════
+# AI-PM 生产部署编排（内网服务器用）
+#
+# 前提：已通过 docker load 加载镜像
+# 用法:
+#   docker compose -f docker-compose.prod.yml up -d
+# ═══════════════════════════════════════════════════════════════
+
+x-logging: &logging
+  driver: "json-file"
+  options:
+    max-size: "${LOG_MAX_SIZE:-10m}"
+    max-file: "${LOG_MAX_FILE:-5}"
+
+x-restart: &restart
+  restart: unless-stopped
+
+x-graceful-stop: &graceful-stop
+  stop_grace_period: 30s
+
+networks:
+  ai-pm-net:
+    driver: bridge
+
+services:
+
+  # ═══ PostgreSQL 16 ═══════════════════════════════════════
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-pm-postgres
+    <<: [*restart, *graceful-stop, *logging]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-ai_pm}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请设置 POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_pm}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "${PG_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai-pm-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-ai_pm} -d ${POSTGRES_DB:-ai_pm}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    deploy:
+      resources:
+        reservations:
+          memory: "256M"
+
+  # ═══ Redis（可选，docker compose -f docker-compose.prod.yml --profile full up）═══
+  redis:
+    image: redis:7-alpine
+    container_name: ai-pm-redis
+    <<: [*restart, *graceful-stop, *logging]
+    profiles:
+      - full
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai-pm-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        reservations:
+          memory: "64M"
+
+  # ═══ Backend (FastAPI) ═══════════════════════════════════
+  backend:
+    image: ai-pm-backend:latest
+    container_name: ai-pm-backend
+    <<: [*restart, *graceful-stop, *logging]
+    environment:
+      AI_PM_DATABASE_URL: ${AI_PM_DATABASE_URL:-postgresql+asyncpg://${POSTGRES_USER:-ai_pm}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-ai_pm}}
+      AI_PM_REDIS_URL: ${AI_PM_REDIS_URL:-}
+      AI_PM_JWT_SECRET: ${AI_PM_JWT_SECRET:?请设置 AI_PM_JWT_SECRET}
+      AI_PM_LLM_GATEWAY_URL: ${AI_PM_LLM_GATEWAY_URL:-}
+      AI_PM_LLM_API_KEY: ${AI_PM_LLM_API_KEY:-}
+      AI_PM_LDAP_ENABLED: ${AI_PM_LDAP_ENABLED:-False}
+      AI_PM_LDAP_SERVER_URI: ${AI_PM_LDAP_SERVER_URI:-}
+      AI_PM_LDAP_BIND_DN: ${AI_PM_LDAP_BIND_DN:-}
+      AI_PM_LDAP_BIND_PASSWORD: ${AI_PM_LDAP_BIND_PASSWORD:-}
+      AI_PM_LDAP_BASE_DN: ${AI_PM_LDAP_BASE_DN:-}
+      AI_PM_LDAP_USER_FILTER: ${AI_PM_LDAP_USER_FILTER:-}
+      AI_PM_API_BASE_URL: ${AI_PM_API_BASE_URL:-}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./server/settings.json:/app/settings.json:ro
+      - backend_uploads:/app/uploads
+      - backend_repos:/app/repos
+    networks:
+      - ai-pm-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          memory: "512M"
+
+  # ═══ Frontend (Nginx + React SPA) ════════════════════════
+  frontend:
+    image: ai-pm-frontend:latest
+    container_name: ai-pm-frontend
+    <<: [*restart, *graceful-stop, *logging]
+    ports:
+      - "${FRONTEND_PORT:-80}:80"
+    networks:
+      - ai-pm-net
+    depends_on:
+      backend:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          memory: "64M"
+
+volumes:
+  postgres_data:
+    name: ai-pm-postgres-data
+  redis_data:
+    name: ai-pm-redis-data
+  backend_uploads:
+    name: ai-pm-backend-uploads
+  backend_repos:
+    name: ai-pm-backend-repos

@@ -1,94 +1,227 @@
 #!/bin/bash
 # ─────────────────────────────────────────────────────────
-# AI-PM Docker 镜像传输工具
+# AI-PM Docker 镜像传输 & 部署打包工具
 #
-# 用于「公网构建 → 传输到内网部署」的场景。
+# 场景:
+#   服务器 A（有公网/代码）: 构建镜像 → 打包
+#   服务器 B（内网运行）:    加载镜像 → 部署
 #
 # 用法:
-#   # 在公网机器上构建并打包
-#   ./scripts/docker-transfer.sh save
+#   在服务器 A 上:
+#     ./scripts/docker-transfer.sh build    # 构建应用镜像
+#     ./scripts/docker-transfer.sh package  # 打包镜像 + 部署文件 → deploy-package/
 #
-#   # 将生成的 ai-pm-images.tar.gz 传输到内网机器
-#   # 在内网机器上加载
-#   ./scripts/docker-transfer.sh load
+#   将 deploy-package/ 整个目录拷贝到服务器 B
+#
+#   在服务器 B 上:
+#     cd deploy-package
+#     ./deploy.sh                           # 加载镜像 + 启动全部服务
 # ─────────────────────────────────────────────────────────
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 IMAGES=(
   "ai-pm-backend:latest"
   "ai-pm-frontend:latest"
 )
-TARBALL="ai-pm-images.tar.gz"
-REQUIRED_IMAGES=(
+BASE_IMAGES=(
   "postgres:16-alpine"
   "redis:7-alpine"
 )
-REQUIRED_TARBALL="ai-pm-base-images.tar.gz"
+PACKAGE_DIR="$PROJECT_DIR/deploy-package"
+APP_TARBALL="ai-pm-images.tar.gz"
+BASE_TARBALL="ai-pm-base-images.tar.gz"
 
 usage() {
-  echo "用法: $0 {save|load|save-all|load-all}"
-  echo ""
-  echo "  save      构建应用镜像并打包（不含 postgres/redis 基础镜像）"
-  echo "  load      从 tar.gz 加载应用镜像"
-  echo "  save-all  打包应用镜像 + 拉取基础镜像并一起打包"
-  echo "  load-all  加载全部镜像（应用 + 基础镜像）"
-  echo ""
-  echo "  基础镜像 (postgres:16-alpine, redis:7-alpine) 较大，"
-  echo "  建议在内网机器上单独 docker pull（如果有镜像代理），"
-  echo "  或用 save-all/load-all 一起传输。"
+  cat <<EOF
+用法: $0 {build|package|package-all}
+
+  build      在服务器 A 上构建应用镜像
+  package    构建 + 打包应用镜像和部署文件 → deploy-package/
+  package-all 构建 + 打包应用镜像 + 拉取基础镜像一起打包
+
+输出目录: deploy-package/
+  ├── ai-pm-images.tar.gz      # 应用镜像
+  ├── ai-pm-base-images.tar.gz # 基础镜像（仅 package-all）
+  ├── docker-compose.prod.yml  # 部署编排
+  ├── .env.example             # 配置模板
+  ├── settings.json            # 后端配置模板
+  └── deploy.sh                # 服务器 B 一键部署脚本
+EOF
   exit 1
 }
 
-cmd="${1:-}"
-case "$cmd" in
-  save)
-    echo "=== 构建应用镜像 ==="
-    docker compose build
+# ── build: 构建应用镜像 ──────────────────────────────────
+do_build() {
+  echo "=== 构建应用镜像（服务器 A）==="
+  cd "$PROJECT_DIR"
+  docker compose build
+  echo "构建完成"
+}
 
-    echo "=== 打包应用镜像 → ${TARBALL} ==="
-    docker save "${IMAGES[@]}" | gzip > "$TARBALL"
-    echo "完成: ${TARBALL} ($(du -h "$TARBALL" | cut -f1))"
-    ;;
+# ── package: 打包部署文件 ────────────────────────────────
+do_package() {
+  local include_base="${1:-false}"
 
-  load)
-    if [ ! -f "$TARBALL" ]; then
-      echo "错误: 找不到 ${TARBALL}，请先将其复制到当前目录"
-      exit 1
-    fi
-    echo "=== 加载应用镜像 ← ${TARBALL} ==="
-    gunzip -c "$TARBALL" | docker load
-    echo "已加载 ${#IMAGES[@]} 个镜像"
-    echo "运行: docker compose up -d"
-    ;;
+  echo "=== 1/4 构建应用镜像 ==="
+  do_build
 
-  save-all)
-    echo "=== 构建应用镜像 ==="
-    docker compose build
+  echo ""
+  echo "=== 2/4 打包应用镜像 ==="
+  cd "$PROJECT_DIR"
+  rm -rf "$PACKAGE_DIR"
+  mkdir -p "$PACKAGE_DIR"
+  docker save "${IMAGES[@]}" | gzip > "$PACKAGE_DIR/$APP_TARBALL"
+  echo "  → $APP_TARBALL ($(du -h "$PACKAGE_DIR/$APP_TARBALL" | cut -f1))"
 
-    echo "=== 拉取基础镜像 ==="
-    for img in "${REQUIRED_IMAGES[@]}"; do
+  if [ "$include_base" = "true" ]; then
+    echo ""
+    echo "=== 3/4 拉取 & 打包基础镜像 ==="
+    for img in "${BASE_IMAGES[@]}"; do
+      echo "  pulling $img..."
       docker pull "$img"
     done
+    docker save "${BASE_IMAGES[@]}" | gzip > "$PACKAGE_DIR/$BASE_TARBALL"
+    echo "  → $BASE_TARBALL ($(du -h "$PACKAGE_DIR/$BASE_TARBALL" | cut -f1))"
+    step="4/4"
+  else
+    step="3/3"
+  fi
 
-    ALL_IMAGES=("${IMAGES[@]}" "${REQUIRED_IMAGES[@]}")
+  echo ""
+  echo "=== ${step} 复制部署文件 ==="
 
-    echo "=== 打包全部镜像 → ${REQUIRED_TARBALL} ==="
-    docker save "${ALL_IMAGES[@]}" | gzip > "$REQUIRED_TARBALL"
-    echo "完成: ${REQUIRED_TARBALL} ($(du -h "$REQUIRED_TARBALL" | cut -f1))"
+  # 生产 compose 文件（无 build 指令）
+  cp "$PROJECT_DIR/docker-compose.prod.yml" "$PACKAGE_DIR/"
+
+  # 配置模板
+  cp "$PROJECT_DIR/.env.example" "$PACKAGE_DIR/"
+
+  # settings.json 模板
+  if [ -f "$PROJECT_DIR/server/settings.json" ]; then
+    cp "$PROJECT_DIR/server/settings.json" "$PACKAGE_DIR/"
+  fi
+
+  # 生成服务器 B 上的部署脚本
+  cat > "$PACKAGE_DIR/deploy.sh" << 'DEPLOY_SCRIPT'
+#!/bin/bash
+# ───────────────────────────────────────────────────────
+# AI-PM 内网部署脚本（在服务器 B 上运行）
+# 前提: 已安装 Docker & Docker Compose v2
+# ───────────────────────────────────────────────────────
+set -euo pipefail
+
+cd "$(dirname "$0")"
+
+echo "========================================="
+echo "  AI-PM 内网部署"
+echo "========================================="
+echo ""
+
+# ── 1. 检查 .env ──────────────────────────────────────
+if [ ! -f .env ]; then
+  echo "[!] 未找到 .env 文件"
+  echo "    请先复制并编辑配置: cp .env.example .env"
+  echo "    必须设置: POSTGRES_PASSWORD, AI_PM_JWT_SECRET, AI_PM_LLM_GATEWAY_URL"
+  exit 1
+fi
+
+# ── 2. 检查 settings.json ──────────────────────────────
+if [ ! -f settings.json ]; then
+  echo "[!] 未找到 settings.json，创建默认配置..."
+  echo '{"llm_gateway_url": ""}' > settings.json
+  echo "    已创建默认 settings.json，LLM 网关地址将从环境变量读取"
+fi
+
+# ── 3. 加载镜像 ────────────────────────────────────────
+echo ">>> 加载应用镜像..."
+if [ -f ai-pm-images.tar.gz ]; then
+  gunzip -c ai-pm-images.tar.gz | docker load
+  echo "    应用镜像加载完成"
+else
+  echo "    [!] 未找到 ai-pm-images.tar.gz，跳过"
+fi
+
+if [ -f ai-pm-base-images.tar.gz ]; then
+  echo ">>> 加载基础镜像..."
+  gunzip -c ai-pm-base-images.tar.gz | docker load
+  echo "    基础镜像加载完成"
+fi
+
+# ── 4. 检查基础镜像 ────────────────────────────────────
+echo ""
+echo ">>> 检查基础镜像..."
+for img in postgres:16-alpine redis:7-alpine; do
+  if docker image inspect "$img" >/dev/null 2>&1; then
+    echo "    ✓ $img"
+  else
+    echo "    ○ $img 本地不存在，docker compose 将自动拉取"
+  fi
+done
+
+# ── 5. 启动服务 ────────────────────────────────────────
+echo ""
+echo ">>> 启动服务..."
+docker compose -f docker-compose.prod.yml up -d
+
+# ── 6. 等待健康检查 ────────────────────────────────────
+echo ""
+echo ">>> 等待服务就绪..."
+sleep 5
+
+echo ""
+echo ">>> 服务状态:"
+docker compose -f docker-compose.prod.yml ps
+
+echo ""
+echo "========================================="
+echo "  部署完成"
+echo "========================================="
+echo ""
+echo "  验证:"
+echo "    curl http://localhost/api/health"
+echo "    curl http://localhost/"
+echo ""
+echo "  管理:"
+echo "    docker compose -f docker-compose.prod.yml ps"
+echo "    docker compose -f docker-compose.prod.yml logs -f"
+echo "    docker compose -f docker-compose.prod.yml restart"
+echo "    docker compose -f docker-compose.prod.yml down"
+DEPLOY_SCRIPT
+
+  chmod +x "$PACKAGE_DIR/deploy.sh"
+
+  echo ""
+  echo "========================================="
+  echo "  打包完成: deploy-package/"
+  echo "========================================="
+  echo ""
+  echo "文件列表:"
+  ls -lh "$PACKAGE_DIR/"
+  echo ""
+  echo "接下来:"
+  echo "  1. 将 deploy-package/ 目录拷贝到服务器 B"
+  echo "  2. 在服务器 B 上:"
+  echo "     cd deploy-package"
+  echo "     cp .env.example .env  # 编辑 .env 填入实际值"
+  echo "     ./deploy.sh            # 一键部署"
+}
+
+# ── Main ────────────────────────────────────────────────
+cmd="${1:-}"
+case "$cmd" in
+  build)
+    do_build
     ;;
-
-  load-all)
-    if [ ! -f "$REQUIRED_TARBALL" ]; then
-      echo "错误: 找不到 ${REQUIRED_TARBALL}，请先将其复制到当前目录"
-      exit 1
-    fi
-    echo "=== 加载全部镜像 ← ${REQUIRED_TARBALL} ==="
-    gunzip -c "$REQUIRED_TARBALL" | docker load
-    echo "已加载全部镜像"
-    echo "运行: docker compose up -d"
+  package)
+    do_package false
     ;;
-
+  package-all)
+    do_package true
+    ;;
   *)
     usage
     ;;
