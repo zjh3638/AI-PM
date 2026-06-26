@@ -1,11 +1,16 @@
 #!/bin/sh
-set -e
+set -euo pipefail
 
 echo "=== AI-PM prestart ==="
 
-# Wait for PostgreSQL to be ready (up to 60 seconds)
-echo "Waiting for PostgreSQL..."
-for i in $(seq 1 30); do
+# ── Wait for PostgreSQL ──────────────────────────────────
+# Timeout in seconds, configurable via env var
+PRESTART_PG_TIMEOUT="${PRESTART_PG_TIMEOUT:-60}"
+PG_RETRY_INTERVAL="${PG_RETRY_INTERVAL:-2}"
+
+echo "Waiting for PostgreSQL (timeout=${PRESTART_PG_TIMEOUT}s)..."
+elapsed=0
+while [ "$elapsed" -lt "$PRESTART_PG_TIMEOUT" ]; do
     if uv run python -c "
 import asyncio
 from app.config import settings
@@ -13,23 +18,36 @@ from sqlalchemy import text
 from app.database import engine
 
 async def check():
-    async with engine.begin() as conn:
-        await conn.execute(text('SELECT 1'))
-    print('PostgreSQL is ready')
+    try:
+        async with engine.begin() as conn:
+            result = await conn.execute(text('SELECT 1'))
+            await result.fetchone()
+        print('ready')
+        return True
+    except Exception as e:
+        return False
 
-asyncio.run(check())
+if not asyncio.run(check()):
+    exit(1)
 " 2>/dev/null; then
+        echo "PostgreSQL is ready"
         break
     fi
-    echo "  attempt $i/30..."
-    sleep 2
+    elapsed=$((elapsed + PG_RETRY_INTERVAL))
+    echo "  waiting... (${elapsed}s/${PRESTART_PG_TIMEOUT}s)"
+    sleep "$PG_RETRY_INTERVAL"
 done
 
-# Apply database migrations
+if [ "$elapsed" -ge "$PRESTART_PG_TIMEOUT" ]; then
+    echo "ERROR: PostgreSQL not ready after ${PRESTART_PG_TIMEOUT}s"
+    exit 1
+fi
+
+# ── Apply database migrations ────────────────────────────
 echo "Applying database migrations..."
 uv run alembic upgrade head
 
-# Seed initial data (skip DDL since migrations handle schema)
+# ── Seed initial data ────────────────────────────────────
 echo "Seeding initial data..."
 SKIP_DDL=1 uv run python seed.py
 

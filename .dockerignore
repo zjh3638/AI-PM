@@ -44,3 +44,9 @@ scripts
 .env
 .env.local
 .env.*.local
+
+# Docker artifacts
+*.tar
+*.tar.gz
+*.tgz
+docker-bake.hcl
