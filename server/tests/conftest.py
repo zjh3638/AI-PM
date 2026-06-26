@@ -4,6 +4,7 @@ from typing import AsyncGenerator
 
 import pytest
 from httpx import AsyncClient, ASGITransport
+from sqlalchemy import NullPool
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from app.database import Base, get_db
@@ -11,27 +12,29 @@ from app.models import *  # noqa: F401,F403
 from app.security import hash_password, create_access_token
 from app.services import git_storage
 
-# Use a dedicated test database — create beforehand with: createdb ai_pm_test
 TEST_DATABASE_URL = os.getenv(
     "AI_PM_TEST_DATABASE_URL",
     "postgresql+asyncpg://postgres:postgres@localhost:5432/ai_pm_test",
 )
-test_engine = create_async_engine(TEST_DATABASE_URL, echo=False)
+
+# NullPool avoids connection concurrency issues with asyncpg + pytest-asyncio
+test_engine = create_async_engine(TEST_DATABASE_URL, echo=False, poolclass=NullPool)
 TestSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
 @pytest.fixture(scope="session")
 def event_loop():
+    """Session-scoped event loop for session-scoped fixtures."""
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 async def setup_db(tmp_path_factory):
+    """Create tables once before all tests, drop once after."""
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-    # Redirect git_store to a per-test tmp dir so commits don't pollute the repo
     tmp_repos = tmp_path_factory.mktemp("git_repos")
     original_repos_path = git_storage.git_store.repos_path
     git_storage.git_store.repos_path = tmp_repos
@@ -39,6 +42,19 @@ async def setup_db(tmp_path_factory):
     git_storage.git_store.repos_path = original_repos_path
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest.fixture(autouse=True)
+async def cleanup_tables():
+    """Truncate all tables between tests for isolation."""
+    yield
+    from sqlalchemy import text
+    table_names = [t.name for t in reversed(Base.metadata.sorted_tables)]
+    if table_names:
+        async with test_engine.begin() as conn:
+            await conn.execute(
+                text(f"TRUNCATE TABLE {', '.join(table_names)} RESTART IDENTITY CASCADE")
+            )
 
 
 async def override_get_db() -> AsyncGenerator[AsyncSession, None]:

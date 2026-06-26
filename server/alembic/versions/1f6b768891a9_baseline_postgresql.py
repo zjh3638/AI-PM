@@ -1,8 +1,8 @@
-"""baseline (PostgreSQL)
+"""baseline_postgresql
 
-Revision ID: 9d84d66c2f9b
+Revision ID: 1f6b768891a9
 Revises: 
-Create Date: 2026-06-18 17:05:04.970114
+Create Date: 2026-06-26 10:52:24.674273
 """
 from typing import Sequence, Union
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '9d84d66c2f9b'
+revision: str = '1f6b768891a9'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -25,11 +25,13 @@ def upgrade() -> None:
     sa.Column('parent_id', sa.String(length=36), nullable=True),
     sa.Column('path', sa.String(length=500), nullable=False),
     sa.Column('sort_order', sa.Integer(), nullable=False),
+    sa.Column('ldap_dn', sa.String(length=500), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['parent_id'], ['departments.id'], ),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('ldap_dn')
     )
     op.create_table('roles',
     sa.Column('code', sa.String(length=50), nullable=False),
@@ -59,9 +61,11 @@ def upgrade() -> None:
     sa.Column('system_role', sa.String(length=20), nullable=False),
     sa.Column('status', sa.String(length=20), nullable=False),
     sa.Column('source', sa.String(length=20), nullable=False),
+    sa.Column('llm_api_key', sa.String(length=500), nullable=True),
+    sa.Column('llm_model', sa.String(length=100), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -75,13 +79,32 @@ def upgrade() -> None:
     sa.ForeignKeyConstraint(['template_id'], ['workflow_templates.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
+    op.create_table('chat_history',
+    sa.Column('user_id', sa.String(length=36), nullable=False),
+    sa.Column('role', sa.String(length=16), nullable=False),
+    sa.Column('content', sa.Text(), nullable=False),
+    sa.Column('agent', sa.String(length=32), nullable=True),
+    sa.Column('tool_actions', sa.JSON(), nullable=True),
+    sa.Column('tool_calls', sa.JSON(), nullable=True),
+    sa.Column('tool_call_id', sa.String(length=64), nullable=True),
+    sa.Column('conversation_id', sa.String(length=36), nullable=True),
+    sa.Column('workspace_id', sa.String(length=36), nullable=True),
+    sa.Column('conversation_title', sa.String(length=64), nullable=True),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('id', sa.String(length=36), nullable=False),
+    sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_chat_history_conversation_id'), 'chat_history', ['conversation_id'], unique=False)
+    op.create_index(op.f('ix_chat_history_user_id'), 'chat_history', ['user_id'], unique=False)
+    op.create_index('ix_chat_history_user_ws_created', 'chat_history', ['user_id', 'workspace_id', 'created_at'], unique=False)
     op.create_table('project_groups',
     sa.Column('name', sa.String(length=200), nullable=False),
     sa.Column('description', sa.Text(), nullable=True),
     sa.Column('creator_id', sa.String(length=36), nullable=False),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['creator_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -110,8 +133,8 @@ def upgrade() -> None:
     sa.Column('strict_gate', sa.Boolean(), nullable=False),
     sa.Column('git_repo_path', sa.String(length=500), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['department_id'], ['departments.id'], ),
     sa.ForeignKeyConstraint(['owner_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -127,8 +150,8 @@ def upgrade() -> None:
     sa.Column('author_id', sa.String(length=36), nullable=True),
     sa.Column('version', sa.Integer(), nullable=False),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['author_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -144,8 +167,8 @@ def upgrade() -> None:
     sa.Column('committed_points', sa.Float(), nullable=False),
     sa.Column('status', sa.String(length=20), nullable=False),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -164,8 +187,8 @@ def upgrade() -> None:
     sa.Column('color', sa.String(length=20), nullable=True),
     sa.Column('depends_on_id', sa.String(length=36), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['depends_on_id'], ['milestones.id'], ),
     sa.ForeignKeyConstraint(['owner_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ),
@@ -199,8 +222,8 @@ def upgrade() -> None:
     sa.Column('ai_agent_id', sa.String(length=36), nullable=True),
     sa.Column('role', sa.String(length=20), nullable=False),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -218,8 +241,8 @@ def upgrade() -> None:
     sa.Column('owner_id', sa.String(length=36), nullable=True),
     sa.Column('closed_at', sa.DateTime(), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['milestone_id'], ['milestones.id'], ),
     sa.ForeignKeyConstraint(['owner_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ),
@@ -267,8 +290,8 @@ def upgrade() -> None:
     sa.Column('started_at', sa.DateTime(), nullable=True),
     sa.Column('completed_at', sa.DateTime(), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['acceptance_owner_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['analyst_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['assignee_id'], ['users.id'], ),
@@ -296,8 +319,8 @@ def upgrade() -> None:
     sa.Column('old_value', sa.Text(), nullable=True),
     sa.Column('new_value', sa.Text(), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ),
     sa.ForeignKeyConstraint(['user_id'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -311,8 +334,8 @@ def upgrade() -> None:
     sa.Column('mime_type', sa.String(length=100), nullable=False),
     sa.Column('uploaded_by', sa.String(length=36), nullable=False),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['task_id'], ['tasks.id'], ),
     sa.ForeignKeyConstraint(['uploaded_by'], ['users.id'], ),
     sa.PrimaryKeyConstraint('id')
@@ -326,8 +349,8 @@ def upgrade() -> None:
     sa.Column('content', sa.Text(), nullable=False),
     sa.Column('mentions', sa.JSON(), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['author_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['document_id'], ['documents.id'], ),
     sa.ForeignKeyConstraint(['parent_comment_id'], ['comments.id'], ),
@@ -361,8 +384,8 @@ def upgrade() -> None:
     sa.Column('converted_task_id', sa.String(length=36), nullable=True),
     sa.Column('triage_note', sa.Text(), nullable=True),
     sa.Column('id', sa.String(length=36), nullable=False),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False),
     sa.ForeignKeyConstraint(['converted_task_id'], ['tasks.id'], ),
     sa.ForeignKeyConstraint(['submitter_id'], ['users.id'], ),
     sa.ForeignKeyConstraint(['workspace_id'], ['workspaces.id'], ),
@@ -420,6 +443,10 @@ def downgrade() -> None:
     op.drop_table('workspaces')
     op.drop_table('workflow_transitions')
     op.drop_table('project_groups')
+    op.drop_index('ix_chat_history_user_ws_created', table_name='chat_history')
+    op.drop_index(op.f('ix_chat_history_user_id'), table_name='chat_history')
+    op.drop_index(op.f('ix_chat_history_conversation_id'), table_name='chat_history')
+    op.drop_table('chat_history')
     op.drop_table('workflow_states')
     op.drop_index(op.f('ix_users_username'), table_name='users')
     op.drop_table('users')
