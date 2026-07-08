@@ -59,6 +59,9 @@ async def create_department(
     sort_order: int = 0,
     ldap_dn: Optional[str] = None,
 ) -> Department:
+    # Sanitize: empty string should be treated as None (root department)
+    parent_id = parent_id or None
+
     # Build path
     path = f"/{name}"
     if parent_id:
@@ -82,6 +85,9 @@ async def update_department(
     sort_order: Optional[int] = None,
     ldap_dn: Optional[str] = None,
 ) -> Department:
+    # Sanitize: empty string should be treated as None (root department)
+    parent_id = parent_id or None
+
     if name is not None:
         dept.name = name
         # Rebuild path

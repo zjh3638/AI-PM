@@ -1,7 +1,7 @@
-from typing import Optional
+from typing import Optional, Any
 from datetime import date
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class MilestoneCreate(BaseModel):
@@ -16,6 +16,15 @@ class MilestoneCreate(BaseModel):
     phase: Optional[str] = "PLANNING"
     depends_on_id: Optional[str] = None
 
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def parse_date_or_empty(cls, v: Any) -> Optional[date]:
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            return date.fromisoformat(v.split("T")[0])
+        return v
+
 
 class MilestoneUpdate(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=200)
@@ -28,3 +37,12 @@ class MilestoneUpdate(BaseModel):
     sort_order: Optional[int] = None
     color: Optional[str] = None
     depends_on_id: Optional[str] = None
+
+    @field_validator("start_date", "end_date", mode="before")
+    @classmethod
+    def parse_date_or_empty(cls, v: Any) -> Optional[date]:
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            return date.fromisoformat(v.split("T")[0])
+        return v

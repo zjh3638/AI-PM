@@ -270,11 +270,51 @@ async def remove_member(db: AsyncSession, member: WorkspaceMember):
 
 
 async def delete_workspace(db: AsyncSession, ws: Workspace):
-    # Cascade delete all related data
-    await db.execute(WorkspaceMember.__table__.delete().where(WorkspaceMember.workspace_id == ws.id))
-    from app.models.risk import Risk
-    await db.execute(Risk.__table__.delete().where(Risk.workspace_id == ws.id))
+    from sqlalchemy import select as sa_select
     from app.models.task import Task
+    from app.models.milestone import Milestone
+    from app.models.iteration import Iteration
+    from app.models.attachment import Attachment
+    from app.models.activity_log import ActivityLog
+    from app.models.chat_history import ChatHistory
+    from app.models.comment import Comment
+    from app.models.document import Document
+    from app.models.requirement_inbox import RequirementInbox
+    from app.models.notification import Notification
+    from app.models.user_role import UserRole
+
+    # Subquery to find task IDs for this workspace (used before tasks are deleted)
+    task_ids_subq = sa_select(Task.id).where(Task.workspace_id == ws.id)
+
+    # 1) Delete rows referencing tasks (FK is non-nullable, must go before tasks)
+    await db.execute(Attachment.__table__.delete().where(Attachment.task_id.in_(task_ids_subq)))
+    await db.execute(ActivityLog.__table__.delete().where(ActivityLog.task_id.in_(task_ids_subq)))
+
+    # 2) Delete tasks (has nullable FKs to milestones/iterations; safe to delete without clearing them)
     await db.execute(Task.__table__.delete().where(Task.workspace_id == ws.id))
+
+    # 3) Delete rows referencing milestones (Risk.milestone_id is nullable)
+    from app.models.risk import Risk
+    await db.execute(Risk.__table__.delete().where(Risk.milestone_id.in_(
+        sa_select(Milestone.id).where(Milestone.workspace_id == ws.id)
+    )))
+
+    # 4) Delete milestones
+    await db.execute(Milestone.__table__.delete().where(Milestone.workspace_id == ws.id))
+
+    # 5) Delete iterations
+    await db.execute(Iteration.__table__.delete().where(Iteration.workspace_id == ws.id))
+
+    # 6) Delete other workspace-level tables
+    await db.execute(Document.__table__.delete().where(Document.workspace_id == ws.id))
+    await db.execute(RequirementInbox.__table__.delete().where(RequirementInbox.workspace_id == ws.id))
+    await db.execute(ChatHistory.__table__.delete().where(ChatHistory.workspace_id == ws.id))
+    await db.execute(Notification.__table__.delete().where(Notification.workspace_id == ws.id))
+    await db.execute(UserRole.__table__.delete().where(UserRole.workspace_id == ws.id))
+
+    # 7) Delete workspace members
+    await db.execute(WorkspaceMember.__table__.delete().where(WorkspaceMember.workspace_id == ws.id))
+
+    # 8) Delete workspace itself
     await db.delete(ws)
     await db.commit()

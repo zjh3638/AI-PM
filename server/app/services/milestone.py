@@ -59,6 +59,11 @@ async def list_milestones(db: AsyncSession, workspace_id: str) -> list[dict]:
 
 
 async def update_milestone(db: AsyncSession, ms: Milestone, **kwargs) -> Milestone:
+    # Treat empty strings as None for nullable FK/string fields (compat with frontend)
+    empty_to_none = {"owner_id", "depends_on_id", "description", "plan", "color"}
+    for k in empty_to_none:
+        if k in kwargs and kwargs[k] == "":
+            kwargs[k] = None
     if "depends_on_id" in kwargs and kwargs["depends_on_id"]:
         valid = await check_circular_dependency(db, ms.id, kwargs["depends_on_id"])
         if not valid:

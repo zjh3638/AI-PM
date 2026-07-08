@@ -2,7 +2,7 @@ import type { ThemeConfig } from 'antd';
 
 const theme: ThemeConfig = {
   token: {
-    fontFamily: "'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif",
+    fontFamily: "'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', source-code-pro, Arial, Helvetica, sans-serif",
     fontSize: 15,
     colorPrimary: '#2563eb',
     colorInfo: '#2563eb',

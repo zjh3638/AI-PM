@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # API 基础 URL（用于 Webhook 回调）
     api_base_url: str = "http://localhost:8000"
 
+    # CORS 允许的源，逗号分隔；为空时允许所有（生产环境建议显式指定）
+    cors_origins: str = "http://localhost:3000"
+
     model_config = {"env_prefix": "AI_PM_", "env_file": ".env"}
 
 

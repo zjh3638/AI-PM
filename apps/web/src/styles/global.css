@@ -9,7 +9,7 @@ html {
 }
 
 body {
-  font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   background: var(--bg-root);
   color: var(--text-primary);
   line-height: 1.6;
@@ -156,9 +156,9 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
    LAYOUT
    ═══════════════════════════════════════════ */
 .page {
-  max-width: 1120px;
+  max-width: 1400px;
   margin: 0 auto;
-  padding: 28px 20px 60px;
+  padding: 28px 40px 60px;
 }
 
 .page-wide {

@@ -1,20 +1,19 @@
 # ── Builder stage: build frontend from monorepo root ─────
-FROM node:20-alpine AS builder
+FROM 7.24.4.68:28085/1ms/node:22-alpine AS builder
 
-# Build args for intranet npm mirror
 ARG NPM_REGISTRY=""
 ARG NPM_STRICT_SSL="true"
 
-# Configure npm mirror if set
+# Configure npm registry (use intranet registry, no proxy needed)
 RUN if [ -n "$NPM_REGISTRY" ]; then \
-      npm config set registry "$NPM_REGISTRY"; \
-    fi \
-    && npm config set strict-ssl "$NPM_STRICT_SSL"
+      npm config set registry "$NPM_REGISTRY" && \
+      npm config set strict-ssl "$NPM_STRICT_SSL"; \
+    fi
+
+# Install pnpm globally (corepack downloads from npmjs.org, bypasses intranet registry)
+RUN npm install -g pnpm@9.15.0
 
 WORKDIR /app
-
-# Enable pnpm (corepack downloads pnpm from npm registry, respects npm config)
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Copy monorepo root config
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml turbo.json ./
@@ -31,7 +30,7 @@ RUN pnpm build --filter=@ai-pm/web
 
 
 # ── Runtime stage: nginx serving static files ────────────
-FROM nginx:alpine
+FROM 7.24.4.68:28085/1ms/nginx:alpine
 
 # Copy built assets
 COPY --from=builder /app/apps/web/dist /usr/share/nginx/html

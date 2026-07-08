@@ -7,10 +7,11 @@
 # ═══════════════════════════════════════════════════════════════
 
 x-logging: &logging
-  driver: "json-file"
-  options:
-    max-size: "${LOG_MAX_SIZE:-10m}"
-    max-file: "${LOG_MAX_FILE:-5}"
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "${LOG_MAX_SIZE:-10m}"
+      max-file: "${LOG_MAX_FILE:-5}"
 
 x-restart: &restart
   restart: unless-stopped
@@ -26,7 +27,7 @@ services:
 
   # ═══ PostgreSQL 16 ═══════════════════════════════════════
   postgres:
-    image: postgres:16-alpine
+    image: 7.24.4.68:28085/1ms/postgres:16-alpine
     container_name: ai-pm-postgres
     <<: [*restart, *graceful-stop, *logging]
     environment:
@@ -53,7 +54,7 @@ services:
 
   # ═══ Redis（可选，docker compose --profile full up）══════
   redis:
-    image: redis:7-alpine
+    image: 7.24.4.68:28085/1ms/redis:7-alpine
     container_name: ai-pm-redis
     <<: [*restart, *graceful-stop, *logging]
     profiles:
@@ -80,11 +81,12 @@ services:
       context: ./server
       dockerfile: Dockerfile
       args:
-        APT_MIRROR: "${APT_MIRROR:-}"
-        APT_MIRROR_PROTOCOL: "${APT_MIRROR_PROTOCOL:-http}"
         PIP_INDEX_URL: "${PIP_INDEX_URL:-}"
         PIP_TRUSTED_HOST: "${PIP_TRUSTED_HOST:-}"
         UV_INDEX_URL: "${UV_INDEX_URL:-}"
+        HTTP_PROXY: "${HTTP_PROXY:-}"
+        HTTPS_PROXY: "${HTTPS_PROXY:-}"
+        NO_PROXY: "${NO_PROXY:-}"
     image: ai-pm-backend:latest
     container_name: ai-pm-backend
     <<: [*restart, *graceful-stop, *logging]
@@ -103,9 +105,9 @@ services:
       AI_PM_LDAP_USER_FILTER: ${AI_PM_LDAP_USER_FILTER:-}
       AI_PM_API_BASE_URL: ${AI_PM_API_BASE_URL:-}
     ports:
-      - "${BACKEND_PORT:-8000}:8000"
+      - "${BACKEND_PORT:-8080}:8000"
     volumes:
-      - ./server/settings.json:/app/settings.json:ro
+      - ./server/settings.json:/app/settings.json
       - backend_uploads:/app/uploads
       - backend_repos:/app/repos
     networks:
@@ -126,6 +128,9 @@ services:
       args:
         NPM_REGISTRY: "${NPM_REGISTRY:-}"
         NPM_STRICT_SSL: "${NPM_STRICT_SSL:-true}"
+        HTTP_PROXY: "${HTTP_PROXY:-}"
+        HTTPS_PROXY: "${HTTPS_PROXY:-}"
+        NO_PROXY: "${NO_PROXY:-}"
     image: ai-pm-frontend:latest
     container_name: ai-pm-frontend
     <<: [*restart, *graceful-stop, *logging]
@@ -146,6 +151,8 @@ volumes:
     name: ai-pm-postgres-data
   redis_data:
     name: ai-pm-redis-data
+  settings_data:
+    name: ai-pm-backend-settings
   backend_uploads:
     name: ai-pm-backend-uploads
   backend_repos:

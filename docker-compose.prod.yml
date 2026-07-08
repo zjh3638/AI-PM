@@ -7,10 +7,11 @@
 # ═══════════════════════════════════════════════════════════════
 
 x-logging: &logging
-  driver: "json-file"
-  options:
-    max-size: "${LOG_MAX_SIZE:-10m}"
-    max-file: "${LOG_MAX_FILE:-5}"
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "${LOG_MAX_SIZE:-10m}"
+      max-file: "${LOG_MAX_FILE:-5}"
 
 x-restart: &restart
   restart: unless-stopped
@@ -26,7 +27,7 @@ services:
 
   # ═══ PostgreSQL 16 ═══════════════════════════════════════
   postgres:
-    image: postgres:16-alpine
+    image: 7.24.4.68:28085/1ms/postgres:16-alpine
     container_name: ai-pm-postgres
     <<: [*restart, *graceful-stop, *logging]
     environment:
@@ -53,7 +54,7 @@ services:
 
   # ═══ Redis（可选，docker compose -f docker-compose.prod.yml --profile full up）═══
   redis:
-    image: redis:7-alpine
+    image: 7.24.4.68:28085/1ms/redis:7-alpine
     container_name: ai-pm-redis
     <<: [*restart, *graceful-stop, *logging]
     profiles:
@@ -95,7 +96,7 @@ services:
     ports:
       - "${BACKEND_PORT:-8000}:8000"
     volumes:
-      - ./server/settings.json:/app/settings.json:ro
+      - ./server/settings.json:/app/settings.json
       - backend_uploads:/app/uploads
       - backend_repos:/app/repos
     networks:

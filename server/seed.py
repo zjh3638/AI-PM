@@ -7,13 +7,25 @@ sys.path.insert(0, ".")
 from datetime import date, timedelta
 
 from app.database import engine, async_session
+from sqlalchemy import select as sa_select, update as sa_update
 from app.models.user import User
+from app.models.chat_history import ChatHistory
+from app.models.user_role import UserRole
+from app.models.workspace_member import WorkspaceMember
+from app.models.notification import Notification
+from app.models.activity_log import ActivityLog
+from app.models.comment import Comment
+from app.models.document import Document
+from app.models.workspace import Workspace
+from app.models.milestone import Milestone
+from app.models.risk import Risk
+from app.models.attachment import Attachment
+from app.models.requirement_inbox import RequirementInbox
+from app.models.task_progress import TaskProgress
+from app.models.meeting import Meeting
 from app.models.department import Department
 from app.models.role import Role
-from app.models.workspace import Workspace
-from app.models.workspace_member import WorkspaceMember
 from app.models.workflow import WorkflowTemplate, WorkflowState, WorkflowTransition
-from app.models.milestone import Milestone
 from app.models.iteration import Iteration
 from app.models.task import Task
 from app.security import hash_password
@@ -22,15 +34,106 @@ SKIP_DDL = os.environ.get("SKIP_DDL", "").lower() in ("1", "true", "yes")
 
 
 async def seed():
-    # DDL is handled by Alembic migrations
     async with async_session() as db:
+        # Fix any previously corrupted rows where parent_id was set to empty string
+        result = await db.execute(sa_update(Department).where(Department.parent_id == '').values(parent_id=None))
+        if result.rowcount:
+            await db.commit()
+        # Fix users with empty department_id
+        result = await db.execute(sa_update(User).where(User.department_id == '').values(department_id=None))
+        if result.rowcount:
+            await db.commit()
+
+        # Idempotent: if admin user already exists, skip seeding.
+        # This handles all partial-run and re-seed scenarios without FK issues.
+        existing = await db.execute(sa_select(User).where(User.username == "admin"))
+        if existing.first() is not None:
+            print("Seed data already exists, skipping...")
+            await engine.dispose()
+            return
+
+        # Clean slate: delete all seed-created records.
+        # Collect user IDs in dept-001 first, since many tables reference users.id
+        # without ondelete="CASCADE".
+        user_result = await db.execute(
+            sa_select(User).where(User.department_id == "dept-001")
+        )
+        dept_user_ids = [row.id for row in user_result]
+
+        # Delete child records that reference users.id (no CASCADE on these FKs)
+        for uid in dept_user_ids:
+            await db.execute(ChatHistory.__table__.delete().where(ChatHistory.user_id == uid))
+            await db.execute(UserRole.__table__.delete().where(UserRole.user_id == uid))
+            await db.execute(WorkspaceMember.__table__.delete().where(WorkspaceMember.user_id == uid))
+            await db.execute(Notification.__table__.delete().where(Notification.user_id == uid))
+            await db.execute(ActivityLog.__table__.delete().where(ActivityLog.user_id == uid))
+            await db.execute(Comment.__table__.delete().where(Comment.author_id == uid))
+            await db.execute(Document.__table__.delete().where(Document.author_id == uid))
+            await db.execute(Milestone.__table__.delete().where(Milestone.owner_id == uid))
+            await db.execute(Risk.__table__.delete().where(Risk.owner_id == uid))
+            await db.execute(Attachment.__table__.delete().where(Attachment.uploaded_by == uid))
+            await db.execute(RequirementInbox.__table__.delete().where(RequirementInbox.submitter_id == uid))
+            await db.execute(TaskProgress.__table__.delete().where(TaskProgress.created_by == uid))
+            await db.execute(Meeting.__table__.delete().where(Meeting.host_id == uid))
+
+        # Delete tasks that reference users.id via assignee, reviewer, proposer, etc.
+        for uid in dept_user_ids:
+            await db.execute(
+                Task.__table__.delete().where(
+                    Task.assignee_id == uid
+                )
+            )
+            await db.execute(
+                Task.__table__.delete().where(
+                    Task.reviewer_id == uid
+                )
+            )
+            await db.execute(
+                Task.__table__.delete().where(
+                    Task.proposer_id == uid
+                )
+            )
+            await db.execute(
+                Task.__table__.delete().where(
+                    Task.analyst_id == uid
+                )
+            )
+            await db.execute(
+                Task.__table__.delete().where(
+                    Task.qa_owner_id == uid
+                )
+            )
+            await db.execute(
+                Task.__table__.delete().where(
+                    Task.requirement_reviewer_id == uid
+                )
+            )
+            await db.execute(
+                Task.__table__.delete().where(
+                    Task.design_reviewer_id == uid
+                )
+            )
+
+        await db.execute(Milestone.__table__.delete())
+        await db.execute(Iteration.__table__.delete())
+        await db.execute(Task.__table__.delete())
+        await db.execute(WorkflowTransition.__table__.delete())
+        await db.execute(WorkflowState.__table__.delete())
+        await db.execute(WorkflowTemplate.__table__.delete())
+        await db.execute(WorkspaceMember.__table__.delete())
+        await db.execute(Workspace.__table__.delete())
+        await db.execute(Role.__table__.delete())
+        await db.execute(User.__table__.delete().where(User.department_id == "dept-001"))
+        await db.execute(Department.__table__.delete().where(Department.id == "dept-001"))
+        await db.flush()
+
         dept = Department(id="dept-001", name="默认部门", path="/默认部门")
         db.add(dept)
 
         admin = User(
             username="admin",
             email="admin@ai-pm.local",
-            hashed_password=hash_password("admin123"),
+            hashed_password=hash_password("AiPm@2026#Secure"),
             display_name="超级管理员",
             department_id="dept-001",
             system_role="SUPER_ADMIN",

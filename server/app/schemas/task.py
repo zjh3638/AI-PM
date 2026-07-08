@@ -1,7 +1,31 @@
-from typing import Optional
+from typing import Optional, Any
 from datetime import date
 
 from pydantic import BaseModel, Field
+
+
+def _coerce_date(v: Any) -> Any:
+    if v is None or v == "":
+        return None
+    if isinstance(v, str):
+        return date.fromisoformat(v.split("T")[0])
+    return v
+
+
+def _coerce_int(v: Any) -> Any:
+    if v is None or v == "":
+        return None
+    if isinstance(v, str):
+        return int(v)
+    return v
+
+
+def _coerce_float(v: Any) -> Any:
+    if v is None or v == "":
+        return None
+    if isinstance(v, str):
+        return float(v)
+    return v
 
 
 class TaskCreate(BaseModel):

@@ -9,7 +9,7 @@ import {
   RISK_SEVERITY_LABELS,
   RISK_STATUS_LABELS,
 } from '../../types';
-import type { Risk, RiskStatus } from '../../types';
+import type { Risk, RiskStatus, RiskType, RiskSeverity } from '../../types';
 
 const STATUS_OPTIONS: { label: string; value: RiskStatus | '' }[] = [
   { label: '全部状态', value: '' },
@@ -55,7 +55,16 @@ export default function RiskPanel() {
 
   const [slideOpen, setSlideOpen] = useState(false);
   const [editingRisk, setEditingRisk] = useState<Risk | null>(null);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    title: string;
+    description: string;
+    risk_type: RiskType;
+    probability: RiskSeverity;
+    impact: RiskSeverity;
+    milestone_id: string;
+    mitigation: string;
+    owner_id: string;
+  }>({
     title: '',
     description: '',
     risk_type: 'OTHER',
@@ -259,7 +268,7 @@ export default function RiskPanel() {
         <div className="form-row">
           <div className="form-group">
             <label>风险类型</label>
-            <select value={form.risk_type} onChange={(e) => setForm({ ...form, risk_type: e.target.value })}>
+            <select value={form.risk_type} onChange={(e) => setForm({ ...form, risk_type: e.target.value as RiskType })}>
               {Object.entries(RISK_TYPE_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
@@ -279,7 +288,7 @@ export default function RiskPanel() {
         <div className="form-row">
           <div className="form-group">
             <label>可能性</label>
-            <select value={form.probability} onChange={(e) => setForm({ ...form, probability: e.target.value })}>
+            <select value={form.probability} onChange={(e) => setForm({ ...form, probability: e.target.value as RiskSeverity })}>
               {Object.entries(RISK_SEVERITY_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}
@@ -287,7 +296,7 @@ export default function RiskPanel() {
           </div>
           <div className="form-group">
             <label>影响程度</label>
-            <select value={form.impact} onChange={(e) => setForm({ ...form, impact: e.target.value })}>
+            <select value={form.impact} onChange={(e) => setForm({ ...form, impact: e.target.value as RiskSeverity })}>
               {Object.entries(RISK_SEVERITY_LABELS).map(([k, v]) => (
                 <option key={k} value={k}>{v}</option>
               ))}

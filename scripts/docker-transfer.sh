@@ -28,8 +28,8 @@ IMAGES=(
   "ai-pm-frontend:latest"
 )
 BASE_IMAGES=(
-  "postgres:16-alpine"
-  "redis:7-alpine"
+  "7.24.4.68:28085/1ms/postgres:16-alpine"
+  "7.24.4.68:28085/1ms/redis:7-alpine"
 )
 PACKAGE_DIR="$PROJECT_DIR/deploy-package"
 APP_TARBALL="ai-pm-images.tar.gz"
@@ -58,7 +58,7 @@ EOF
 do_build() {
   echo "=== 构建应用镜像（服务器 A）==="
   cd "$PROJECT_DIR"
-  docker compose build
+  docker-compose build
   echo "构建完成"
 }
 
@@ -154,18 +154,18 @@ fi
 # ── 4. 检查基础镜像 ────────────────────────────────────
 echo ""
 echo ">>> 检查基础镜像..."
-for img in postgres:16-alpine redis:7-alpine; do
+for img in 7.24.4.68:28085/1ms/postgres:16-alpine 7.24.4.68:28085/1ms/redis:7-alpine; do
   if docker image inspect "$img" >/dev/null 2>&1; then
     echo "    ✓ $img"
   else
-    echo "    ○ $img 本地不存在，docker compose 将自动拉取"
+    echo "    ○ $img 本地不存在，docker-compose 将自动拉取"
   fi
 done
 
 # ── 5. 启动服务 ────────────────────────────────────────
 echo ""
 echo ">>> 启动服务..."
-docker compose -f docker-compose.prod.yml up -d
+docker-compose -f docker-compose.prod.yml up -d
 
 # ── 6. 等待健康检查 ────────────────────────────────────
 echo ""
@@ -174,7 +174,7 @@ sleep 5
 
 echo ""
 echo ">>> 服务状态:"
-docker compose -f docker-compose.prod.yml ps
+docker-compose -f docker-compose.prod.yml ps
 
 echo ""
 echo "========================================="
@@ -186,10 +186,10 @@ echo "    curl http://localhost/api/health"
 echo "    curl http://localhost/"
 echo ""
 echo "  管理:"
-echo "    docker compose -f docker-compose.prod.yml ps"
-echo "    docker compose -f docker-compose.prod.yml logs -f"
-echo "    docker compose -f docker-compose.prod.yml restart"
-echo "    docker compose -f docker-compose.prod.yml down"
+echo "    docker-compose -f docker-compose.prod.yml ps"
+echo "    docker-compose -f docker-compose.prod.yml logs -f"
+echo "    docker-compose -f docker-compose.prod.yml restart"
+echo "    docker-compose -f docker-compose.prod.yml down"
 DEPLOY_SCRIPT
 
   chmod +x "$PACKAGE_DIR/deploy.sh"

@@ -299,7 +299,15 @@ export default function WorkspaceDetailPage() {
 
   const submitMsEdit = async () => {
     if (!id || !msEditForm.name.trim()) return;
-    await useMilestoneStore.getState().update(id, msEditForm.id, msEditForm);
+    const payload: Record<string, any> = { ...msEditForm };
+    // Convert empty strings to null so FastAPI doesn't reject date fields
+    if (!payload.start_date) delete payload.start_date;
+    if (!payload.end_date) delete payload.end_date;
+    if (payload.owner_id === '') delete payload.owner_id;
+    if (payload.description === '') delete payload.description;
+    if (payload.plan === '') delete payload.plan;
+    delete payload.id; // id is in the URL, not body
+    await useMilestoneStore.getState().update(id, msEditForm.id, payload);
     setMsEditOpen(false);
   };
 

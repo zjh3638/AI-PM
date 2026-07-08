@@ -20,8 +20,7 @@ from app.database import engine
 async def check():
     try:
         async with engine.begin() as conn:
-            result = await conn.execute(text('SELECT 1'))
-            await result.fetchone()
+            await conn.execute(text('SELECT 1'))
         print('ready')
         return True
     except Exception as e:

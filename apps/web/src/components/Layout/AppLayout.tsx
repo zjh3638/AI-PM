@@ -4,6 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 import DashboardPage from '../../pages/dashboard/DashboardPage';
 import WorkspaceListPage from '../../pages/workspace-list/WorkspaceListPage';
 import WorkspaceDetailPage from '../../pages/workspace-detail/WorkspaceDetailPage';
+import ProjectGroupListPage from '../../pages/project-group-list/ProjectGroupListPage';
 import PersonalCenterPage from '../../pages/personal/PersonalCenterPage';
 import PlaceholderPage from '../../pages/placeholder/PlaceholderPage';
 import BigScreenPage from '../../pages/bigscreen/BigScreenPage';
@@ -120,8 +121,9 @@ export default function AppLayout() {
       </nav>
 
       {/* Content */}
-      <div className={activeKey === '/meetings' || activeKey === '/bigscreen' ? 'page-wide' : 'page'}>
+      <div className={activeKey === '/meetings' || activeKey === '/bigscreen' || activeKey === '/project-groups' || activeKey === '/workspaces' ? 'page-wide' : 'page'}>
         <Routes>
+          <Route path="/project-groups" element={<ProjectGroupListPage />} />
           <Route path="/dashboard" element={<DashboardPage />} />
           <Route path="/workspaces" element={<WorkspaceListPage />} />
           <Route path="/workspaces/:id/*" element={<WorkspaceDetailPage />} />

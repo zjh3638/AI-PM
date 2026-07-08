@@ -49,7 +49,7 @@ export default function AdminPage() {
   const [deptLoading, setDeptLoading] = useState(false);
   const [deptPanelOpen, setDeptPanelOpen] = useState(false);
   const [deptEditing, setDeptEditing] = useState<any>(null);
-  const [deptForm, setDeptForm] = useState({ name: '', parent_id: '', sort_order: 0 });
+  const [deptForm, setDeptForm] = useState({ name: '', parent_id: null as string | null, sort_order: 0 });
   const [deptSubmitting, setDeptSubmitting] = useState(false);
   const [deptError, setDeptError] = useState('');
   const [expandedDepts, setExpandedDepts] = useState<Set<string>>(new Set());
@@ -89,7 +89,11 @@ export default function AdminPage() {
         if (form.password) data.password = form.password;
         await api.patch(`/users/${editing.id}`, data);
       } else {
-        await api.post('/users', form);
+        const payload: any = { username: form.username, display_name: form.display_name, email: form.email || null, password: form.password, system_role: form.system_role };
+        if (form.department_id) {
+          payload.department_id = form.department_id;
+        }
+        await api.post('/users', payload);
       }
       setPanelOpen(false);
       fetchUsers();
@@ -105,7 +109,7 @@ export default function AdminPage() {
   };
 
   // Department CRUD
-  const openDeptCreate = (parentId = '') => {
+  const openDeptCreate = (parentId: string | null = null) => {
     setDeptEditing(null);
     setDeptForm({ name: '', parent_id: parentId, sort_order: 0 });
     setDeptError('');
@@ -114,7 +118,7 @@ export default function AdminPage() {
 
   const openDeptEdit = (d: any) => {
     setDeptEditing(d);
-    setDeptForm({ name: d.name, parent_id: d.parent_id || '', sort_order: d.sort_order || 0 });
+    setDeptForm({ name: d.name, parent_id: d.parent_id || null, sort_order: d.sort_order || 0 });
     setDeptError('');
     setDeptPanelOpen(true);
   };
@@ -124,10 +128,14 @@ export default function AdminPage() {
     setDeptSubmitting(true);
     setDeptError('');
     try {
+      const payload: any = { name: deptForm.name, sort_order: deptForm.sort_order };
+      if (deptForm.parent_id) {
+        payload.parent_id = deptForm.parent_id;
+      }
       if (deptEditing) {
-        await api.patch(`/departments/${deptEditing.id}`, deptForm);
+        await api.patch(`/departments/${deptEditing.id}`, payload);
       } else {
-        await api.post('/departments', deptForm);
+        await api.post('/departments', payload);
       }
       setDeptPanelOpen(false);
       fetchDeptTree();
@@ -889,7 +897,7 @@ export default function AdminPage() {
         </div>
         <div className="form-group">
           <label>上级部门</label>
-          <select value={deptForm.parent_id} onChange={(e) => setDeptForm((f) => ({ ...f, parent_id: e.target.value }))}>
+          <select value={deptForm.parent_id || ''} onChange={(e) => setDeptForm((f) => ({ ...f, parent_id: e.target.value || null }))}>
             <option value="">无（顶级部门）</option>
             {flattenDeptTree(deptTree).filter((d: any) => d.id !== deptEditing?.id).map((d: any) => (
               <option key={d.id} value={d.id}>{d.path}</option>

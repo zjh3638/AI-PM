@@ -11,6 +11,10 @@ from app.models.user import User
 
 
 async def create_risk(db: AsyncSession, workspace_id: str, **kwargs) -> dict:
+    # Convert empty strings to None to avoid FK violations
+    for k in ("milestone_id", "owner_id"):
+        if kwargs.get(k) == "":
+            kwargs[k] = None
     risk = Risk(workspace_id=workspace_id, **kwargs)
     db.add(risk)
     await db.commit()

@@ -451,13 +451,15 @@ export default function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFu
                   <div style={{ marginLeft: 8, marginTop: 2, marginBottom: 6, padding: '4px 8px', background: 'var(--bg-raised)', borderRadius: 'var(--radius-sm)', borderLeft: '2px solid var(--border-light)' }}>
                     {children.map((child: any) => {
                       const childTypeIcon: Record<string, string> = { TASK: '✅', BUG: '🐛', SUB_TASK: '📌', SPIKE: '🔬' };
+                      const statusColor: Record<string, string> = { TODO: 'var(--text-muted)', IN_PROGRESS: 'var(--blue-500)', IN_REVIEW: 'var(--amber-500)', DONE: 'var(--green-500)' };
+                      const statusLabel: Record<string, string> = { TODO: '待办', IN_PROGRESS: '进行中', IN_REVIEW: '审核中', DONE: '✓' };
                       return (
                       <div key={child.id}
                         onClick={(e) => { e.stopPropagation(); onEditTask(child); }}
                         style={{ padding: '3px 6px', marginBottom: 2, borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.68rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-surface)' }}>
                         <span>{childTypeIcon[child.task_type] || '📄'} {child.title}</span>
-                        <span style={{ fontSize: '0.56rem', color: ({TODO:'var(--text-muted)',IN_PROGRESS:'var(--blue-500)',IN_REVIEW:'var(--amber-500)',DONE:'var(--green-500)'})[child.status] || 'var(--text-muted)', fontWeight: 500 }}>
-                          {({TODO:'待办',IN_PROGRESS:'进行中',IN_REVIEW:'审核中',DONE:'✓'})[child.status] || child.status}
+                        <span style={{ fontSize: '0.56rem', color: statusColor[child.status] || 'var(--text-muted)', fontWeight: 500 }}>
+                          {statusLabel[child.status] || child.status}
                         </span>
                       </div>
                       );

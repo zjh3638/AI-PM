@@ -10,6 +10,10 @@ from app.exceptions import AppException
 
 
 async def create_user(db: AsyncSession, **kwargs) -> User:
+    # Sanitize: empty string should be treated as None for optional string fields
+    for field in ("department_id", "ldap_dn"):
+        if kwargs.get(field) == "":
+            kwargs[field] = None
     result = await db.execute(select(User).where(User.username == kwargs["username"]))
     if result.scalar_one_or_none():
         raise AppException(400, "用户名已存在")
@@ -61,6 +65,9 @@ async def list_users(
 
 
 async def update_user(db: AsyncSession, user: User, **kwargs) -> User:
+    # Sanitize: empty string should be treated as None for optional foreign key fields
+    if kwargs.get("department_id") == "":
+        kwargs["department_id"] = None
     for field, value in kwargs.items():
         if value is not None:
             setattr(user, field, value)
