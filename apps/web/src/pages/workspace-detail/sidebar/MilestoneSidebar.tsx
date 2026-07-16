@@ -106,8 +106,8 @@ export default function MilestoneSidebar({ selectedId, onSelect, onEdit }: { sel
                   )}
 
                   <div className="sms-row1">
-                    <span className="sms-name">{ms.name}</span>
-                    <div style={{ display: 'flex', gap: 3, alignItems: 'center' }}>
+                    <span className="sms-name" title={ms.name}>{ms.name}</span>
+                    <div style={{ display: 'flex', gap: 3, alignItems: 'center', flexShrink: 0 }}>
                       <span className={`sms-badge ${phaseCls}`}>
                         {phaseLabel}
                       </span>

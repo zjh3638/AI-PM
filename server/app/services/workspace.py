@@ -1,4 +1,5 @@
 from typing import Optional
+import logging
 
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,6 +9,9 @@ from app.models.workspace import Workspace
 from app.models.workspace_member import WorkspaceMember
 from app.models.user import User
 from app.exceptions import AppException
+from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 async def create_workspace(db: AsyncSession, creator: User, **kwargs) -> Workspace:
@@ -52,6 +56,28 @@ async def create_workspace(db: AsyncSession, creator: User, **kwargs) -> Workspa
         owner_member = WorkspaceMember(workspace_id=ws.id, user_id=owner_id, role="OWNER")
         db.add(owner_member)
 
+    # 创建企业微信群聊（如果启用）
+    if settings.wecom_enabled:
+        try:
+            from app.services import wecom_service
+
+            # 获取初始成员的 userid 列表
+            member_userids = [creator.id]
+            if owner_id != creator.id:
+                member_userids.append(owner_id)
+
+            # 创建外部群聊
+            chat_id = await wecom_service.create_external_group(
+                name=f"【{ws.name}】项目群",
+                owner_userid=owner_id,
+                member_userids=member_userids,
+            )
+            ws.wecom_chat_id = chat_id
+            logger.info(f"工作空间 {ws.id} 企业微信群聊创建成功: {chat_id}")
+        except Exception as e:
+            logger.warning(f"创建企业微信群聊失败，不阻断工作空间创建: {e}")
+            # 群聊创建失败不影响工作空间创建
+
     await db.commit()
     await db.refresh(ws)
     return ws
@@ -62,6 +88,61 @@ async def get_workspace(db: AsyncSession, workspace_id: str) -> Optional[Workspa
         select(Workspace).where(Workspace.id == workspace_id)
     )
     return result.scalar_one_or_none()
+
+
+async def init_wecom_group(db: AsyncSession, workspace_id: str) -> str:
+    """为已有工作空间初始化企业微信（联盟E动）群聊并拉入全部成员。
+
+    用于存量项目补建群：创建群聊、把所有真实成员（排除 AI Agent）拉进群，
+    群主优先取工作空间 owner，否则取第一个成员。
+
+    Args:
+        db: 数据库会话
+        workspace_id: 工作空间ID
+
+    Returns:
+        新建群聊的 chatid
+
+    Raises:
+        AppException: 企业微信未启用、工作空间不存在、已有群聊、无有效成员或建群失败
+    """
+    if not settings.wecom_enabled:
+        raise AppException(400, "企业微信（联盟E动）未启用")
+
+    ws = await get_workspace(db, workspace_id)
+    if ws is None:
+        raise AppException(404, "工作空间不存在", 404)
+    if ws.wecom_chat_id:
+        raise AppException(400, "该项目已存在联盟E动群")
+
+    # 取全部真实成员的 user_id（排除 AI Agent 与空 user_id）
+    result = await db.execute(
+        select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
+    )
+    members = result.scalars().all()
+    member_userids = [m.user_id for m in members if m.user_id]
+    if not member_userids:
+        raise AppException(400, "项目暂无可加入群聊的成员")
+
+    # 群主优先取 owner，且必须在成员列表中，否则退化为第一个成员
+    owner_userid = ws.owner_id if ws.owner_id in member_userids else member_userids[0]
+
+    from app.services import wecom_service
+    try:
+        chat_id = await wecom_service.create_external_group(
+            name=f"【{ws.name}】项目群",
+            owner_userid=owner_userid,
+            member_userids=member_userids,
+        )
+    except wecom_service.WeComAPIError as e:
+        logger.warning(f"工作空间 {workspace_id} 初始化联盟E动群失败: {e}")
+        raise AppException(500, f"创建联盟E动群失败: {e.errmsg}")
+
+    ws.wecom_chat_id = chat_id
+    await db.commit()
+    await db.refresh(ws)
+    logger.info(f"工作空间 {workspace_id} 补建联盟E动群成功: {chat_id}，成员 {len(member_userids)} 人")
+    return chat_id
 
 
 async def list_workspaces(
@@ -80,7 +161,7 @@ async def list_workspaces(
     )
     member_ws_ids = [r[0] for r in (await db.execute(member_query)).all()]
 
-    query = select(Workspace)
+    query = select(Workspace).options(selectinload(Workspace.owner), selectinload(Workspace.department))
     count_query = select(func.count(Workspace.id))
 
     if user.system_role != "SUPER_ADMIN":
@@ -113,36 +194,33 @@ async def list_workspaces(
     result = await db.execute(query)
     workspaces = result.scalars().all()
 
+    # Batch fetch member counts in a single query
+    ws_ids = [ws.id for ws in workspaces]
+    member_counts: dict[str, int] = {}
+    if ws_ids:
+        from sqlalchemy import func as sa_func
+        mc_result = await db.execute(
+            select(WorkspaceMember.workspace_id, sa_func.count(WorkspaceMember.id))
+            .where(WorkspaceMember.workspace_id.in_(ws_ids))
+            .group_by(WorkspaceMember.workspace_id)
+        )
+        member_counts = {row[0]: row[1] for row in mc_result.all()}
+
+    # Batch fetch templates
+    template_ids = [ws.template_id for ws in workspaces if ws.template_id]
+    templates: dict[str, str] = {}
+    if template_ids:
+        from app.models.workflow import WorkflowTemplate
+        tmpl_result = await db.execute(
+            select(WorkflowTemplate).where(WorkflowTemplate.id.in_(template_ids))
+        )
+        templates = {t.id: t.name for t in tmpl_result.scalars().all()}
+
     data = []
     for ws in workspaces:
-        mc_result = await db.execute(
-            select(func.count(WorkspaceMember.id)).where(WorkspaceMember.workspace_id == ws.id)
-        )
-        # Resolve template name
-        template_name = None
-        if ws.template_id:
-            from app.models.workflow import WorkflowTemplate
-            tmpl = await db.get(WorkflowTemplate, ws.template_id)
-            template_name = tmpl.name if tmpl else None
-
-        # Resolve owner info
-        owner_name = None
-        department_name = None
-        if ws.owner_id:
-            owner_result = await db.execute(
-                select(User).where(User.id == ws.owner_id)
-            )
-            owner = owner_result.scalar_one_or_none()
-            if owner:
-                owner_name = owner.display_name
-                if owner.department_id:
-                    from app.models.department import Department
-                    dept_result = await db.execute(
-                        select(Department).where(Department.id == owner.department_id)
-                    )
-                    dept = dept_result.scalar_one_or_none()
-                    if dept:
-                        department_name = dept.name
+        owner_name = ws.owner.display_name if ws.owner else None
+        department_name = ws.department.name if ws.department else None
+        template_name = templates.get(ws.template_id) if ws.template_id else None
 
         data.append({
             "id": ws.id, "name": ws.name, "key": ws.key,
@@ -153,7 +231,7 @@ async def list_workspaces(
             "git_repo_path": ws.git_repo_path,
             "template_id": ws.template_id, "template_name": template_name,
             "strict_gate": ws.strict_gate if hasattr(ws, 'strict_gate') else True,
-            "member_count": mc_result.scalar() or 0,
+            "member_count": member_counts.get(ws.id, 0),
             "created_at": ws.created_at.isoformat() if ws.created_at else "",
             "updated_at": ws.updated_at.isoformat() if ws.updated_at else "",
         })
@@ -242,6 +320,18 @@ async def add_member(db: AsyncSession, workspace_id: str, user_id: str, role: st
     db.add(member)
     await db.commit()
     await db.refresh(member, ["user"])
+
+    # 同步到企业微信群聊（如果启用）
+    if settings.wecom_enabled:
+        try:
+            workspace = await get_workspace(db, workspace_id)
+            if workspace and workspace.wecom_chat_id:
+                from app.services import wecom_service
+                await wecom_service.add_group_members(workspace.wecom_chat_id, [user_id])
+                logger.info(f"成员 {user_id} 已同步到企业微信群聊 {workspace.wecom_chat_id}")
+        except Exception as e:
+            logger.warning(f"同步企业微信群成员失败: {e}")
+
     return member
 
 
@@ -265,8 +355,23 @@ async def update_member_role(db: AsyncSession, member: WorkspaceMember, role: st
 
 
 async def remove_member(db: AsyncSession, member: WorkspaceMember):
+    workspace_id = member.workspace_id
+    user_id = member.user_id
+    user_name = member.user.display_name if member.user else "未知成员"
+
     await db.delete(member)
     await db.commit()
+
+    # 同步到企业微信群聊（如果启用）
+    if settings.wecom_enabled:
+        try:
+            workspace = await get_workspace(db, workspace_id)
+            if workspace and workspace.wecom_chat_id:
+                from app.services import wecom_service
+                await wecom_service.remove_group_members(workspace.wecom_chat_id, [user_id])
+                logger.info(f"成员 {user_id} 已从企业微信群聊 {workspace.wecom_chat_id} 移除")
+        except Exception as e:
+            logger.warning(f"移除企业微信群成员失败: {e}")
 
 
 async def delete_workspace(db: AsyncSession, ws: Workspace):
@@ -282,6 +387,8 @@ async def delete_workspace(db: AsyncSession, ws: Workspace):
     from app.models.requirement_inbox import RequirementInbox
     from app.models.notification import Notification
     from app.models.user_role import UserRole
+    from app.models.task_progress import TaskProgress
+    from app.models.project_group import ProjectGroupItem
 
     # Subquery to find task IDs for this workspace (used before tasks are deleted)
     task_ids_subq = sa_select(Task.id).where(Task.workspace_id == ws.id)
@@ -289,6 +396,19 @@ async def delete_workspace(db: AsyncSession, ws: Workspace):
     # 1) Delete rows referencing tasks (FK is non-nullable, must go before tasks)
     await db.execute(Attachment.__table__.delete().where(Attachment.task_id.in_(task_ids_subq)))
     await db.execute(ActivityLog.__table__.delete().where(ActivityLog.task_id.in_(task_ids_subq)))
+    await db.execute(Comment.__table__.delete().where(Comment.task_id.in_(task_ids_subq)))
+    await db.execute(TaskProgress.__table__.delete().where(TaskProgress.task_id.in_(task_ids_subq)))
+    # 可空 FK：解除对任务的引用（这些行随后按 workspace_id 一并删除，但需先于删任务解除引用）
+    await db.execute(
+        Notification.__table__.update()
+        .where(Notification.task_id.in_(task_ids_subq))
+        .values(task_id=None)
+    )
+    await db.execute(
+        RequirementInbox.__table__.update()
+        .where(RequirementInbox.converted_task_id.in_(task_ids_subq))
+        .values(converted_task_id=None)
+    )
 
     # 2) Delete tasks (has nullable FKs to milestones/iterations; safe to delete without clearing them)
     await db.execute(Task.__table__.delete().where(Task.workspace_id == ws.id))
@@ -312,9 +432,12 @@ async def delete_workspace(db: AsyncSession, ws: Workspace):
     await db.execute(Notification.__table__.delete().where(Notification.workspace_id == ws.id))
     await db.execute(UserRole.__table__.delete().where(UserRole.workspace_id == ws.id))
 
-    # 7) Delete workspace members
+    # 7) Remove project group references
+    await db.execute(ProjectGroupItem.__table__.delete().where(ProjectGroupItem.workspace_id == ws.id))
+
+    # 8) Delete workspace members
     await db.execute(WorkspaceMember.__table__.delete().where(WorkspaceMember.workspace_id == ws.id))
 
-    # 8) Delete workspace itself
+    # 9) Delete workspace itself
     await db.delete(ws)
     await db.commit()

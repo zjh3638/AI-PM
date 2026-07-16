@@ -56,14 +56,22 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   fetchBacklog: async (wsId) => {
     set({ backlogLoading: true });
-    const result = await api.get(`/workspaces/${wsId}/backlog`);
-    set({ backlog: result.data, backlogLoading: false });
+    try {
+      const result = await api.get(`/workspaces/${wsId}/backlog`);
+      set({ backlog: result.data, backlogLoading: false });
+    } catch {
+      set({ backlogLoading: false });
+    }
   },
 
   fetchIdeas: async (wsId) => {
     set({ ideasLoading: true });
-    const result = await api.get(`/workspaces/${wsId}/ideas`);
-    set({ ideas: result.data, ideasLoading: false });
+    try {
+      const result = await api.get(`/workspaces/${wsId}/ideas`);
+      set({ ideas: result.data, ideasLoading: false });
+    } catch {
+      set({ ideasLoading: false });
+    }
   },
 
   planStory: async (wsId, storyId, iterationId) => {
@@ -74,30 +82,50 @@ export const useTaskStore = create<TaskState>((set, get) => ({
 
   fetchList: async (wsId, params = {}) => {
     set({ loading: true });
-    const result = await api.get(`/workspaces/${wsId}/tasks`, { params });
-    set({ tasks: result.data, total: result.total, loading: false });
+    try {
+      const result = await api.get(`/workspaces/${wsId}/tasks`, { params });
+      set({ tasks: result.data, total: result.total, loading: false });
+    } catch {
+      set({ loading: false });
+    }
   },
 
   fetchDetail: async (wsId, taskId) => {
-    const result = await api.get(`/workspaces/${wsId}/tasks/${taskId}`);
-    set({ current: result.data, currentPermissions: result.data.permissions || null });
+    try {
+      const result = await api.get(`/workspaces/${wsId}/tasks/${taskId}`);
+      set({ current: result.data, currentPermissions: result.data.permissions || null });
+    } catch {
+      // Error already handled by API client interceptor
+    }
   },
 
   fetchChildren: async (wsId, taskId) => {
-    const result = await api.get(`/workspaces/${wsId}/tasks/${taskId}/children`);
-    set({ children: result.data });
+    try {
+      const result = await api.get(`/workspaces/${wsId}/tasks/${taskId}/children`);
+      set({ children: result.data });
+    } catch {
+      // Error already handled by API client interceptor
+    }
   },
 
   fetchEpics: async (wsId) => {
-    const result = await api.get(`/workspaces/${wsId}/epics`);
-    set({ epics: result.data });
+    try {
+      const result = await api.get(`/workspaces/${wsId}/epics`);
+      set({ epics: result.data });
+    } catch {
+      // Error already handled by API client interceptor
+    }
   },
 
   fetchKanban: async (wsId, groupBy = 'status', taskType = '') => {
-    const params: Record<string, string> = { group_by: groupBy };
-    if (taskType) params.task_type = taskType;
-    const result = await api.get(`/workspaces/${wsId}/kanban`, { params });
-    set({ kanban: result.data, kanbanGroupBy: groupBy, kanbanVersion: get().kanbanVersion + 1 });
+    try {
+      const params: Record<string, string> = { group_by: groupBy };
+      if (taskType) params.task_type = taskType;
+      const result = await api.get(`/workspaces/${wsId}/kanban`, { params });
+      set({ kanban: result.data, kanbanGroupBy: groupBy, kanbanVersion: get().kanbanVersion + 1 });
+    } catch {
+      // Error already handled by API client interceptor
+    }
   },
 
   fetchPermissions: async (wsId, taskId) => {

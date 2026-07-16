@@ -31,7 +31,7 @@ export type SSEFrame =
   | { event: 'delta'; data: { content: string } }
   | { event: 'tool_call_start'; data: { idx: number; tool: string; args: Record<string, unknown> } }
   | { event: 'tool_call_result'; data: { idx: number; result_summary: string; error?: string } }
-  | { event: 'done'; data: { message_id: string; conversation_id: string; actions: ActionItem[] } }
+  | { event: 'done'; data: { message_id: string; conversation_id: string; user_message_id?: string; actions: ActionItem[] } }
   | { event: 'error'; data: { message: string } };
 
 export type RouteContext = {

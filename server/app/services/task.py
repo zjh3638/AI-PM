@@ -93,7 +93,10 @@ async def list_tasks(
     total_result = await db.execute(count_query)
     total = total_result.scalar()
 
-    sort_col = getattr(Task, sort_by, Task.created_at)
+    # Whitelist sortable columns to prevent arbitrary attribute access
+    ALLOWED_SORT_COLS = {"title", "status", "priority", "created_at", "updated_at",
+                         "due_date", "sort_order", "estimation", "phase"}
+    sort_col = getattr(Task, sort_by) if sort_by in ALLOWED_SORT_COLS else Task.created_at
     if sort_dir == "asc":
         query = query.order_by(sort_col.asc())
     else:
@@ -108,7 +111,7 @@ async def update_task(db: AsyncSession, task: Task, **kwargs) -> Task:
     for field, value in kwargs.items():
         if value is not None:
             setattr(task, field, value)
-    # Auto-set timestamps
+    # Auto-set timestamps (naive UTC to match TIMESTAMP WITHOUT TIME ZONE columns)
     if kwargs.get("status") == "IN_PROGRESS" and not task.started_at:
         task.started_at = datetime.utcnow()
     if kwargs.get("status") == "DONE":
@@ -132,12 +135,24 @@ async def get_epics(db: AsyncSession, workspace_id: str) -> list[dict]:
     )
     epics = result.scalars().all()
 
+    if not epics:
+        return []
+
+    # Batch fetch all stories belonging to these epics in one query
+    epic_ids = [e.id for e in epics]
+    stories_result = await db.execute(
+        select(Task).where(Task.epic_id.in_(epic_ids))
+    )
+    all_stories = stories_result.scalars().all()
+
+    # Group stories by epic_id
+    stories_by_epic: dict[str, list] = {}
+    for s in all_stories:
+        stories_by_epic.setdefault(s.epic_id, []).append(s)
+
     data = []
     for epic in epics:
-        stories_result = await db.execute(
-            select(Task).where(Task.epic_id == epic.id)
-        )
-        stories = stories_result.scalars().all()
+        stories = stories_by_epic.get(epic.id, [])
         total_stories = len(stories)
         done_stories = sum(1 for s in stories if s.status == "DONE")
         total_points = sum(s.estimation or 0 for s in stories)
@@ -296,6 +311,50 @@ async def get_child_count(db: AsyncSession, task_id: str) -> int:
     return result.scalar() or 0
 
 
+async def delete_task(db: AsyncSession, task: Task) -> None:
+    """删除任务及其所有子孙任务，并清理引用 tasks.id 的关联记录。
+
+    tasks.id 被 7 处外键引用（其中 activity_logs/attachments/task_progress 为
+    NOT NULL），必须先清理这些记录再删任务，否则 MySQL 外键约束会拒绝删除。
+    """
+    from sqlalchemy import or_
+    from app.models.activity_log import ActivityLog
+    from app.models.attachment import Attachment
+    from app.models.comment import Comment
+    from app.models.task_progress import TaskProgress
+    from app.models.notification import Notification
+    from app.models.requirement_inbox import RequirementInbox
+
+    # 收集自身 + 所有子孙任务 id（parent_id / epic_id 自引用，级联删除）
+    ids = [task.id]
+    stack = [task.id]
+    while stack:
+        pid = stack.pop()
+        rows = await db.execute(
+            select(Task.id).where(or_(Task.parent_id == pid, Task.epic_id == pid))
+        )
+        for cid in rows.scalars().all():
+            if cid not in ids:
+                ids.append(cid)
+                stack.append(cid)
+
+    # 1) 清理引用 tasks.id 的关联表
+    await db.execute(Attachment.__table__.delete().where(Attachment.task_id.in_(ids)))
+    await db.execute(ActivityLog.__table__.delete().where(ActivityLog.task_id.in_(ids)))
+    await db.execute(Comment.__table__.delete().where(Comment.task_id.in_(ids)))
+    await db.execute(TaskProgress.__table__.delete().where(TaskProgress.task_id.in_(ids)))
+    await db.execute(Notification.__table__.delete().where(Notification.task_id.in_(ids)))
+    # 可空 FK：解除引用而非删除需求收件箱记录
+    await db.execute(
+        RequirementInbox.__table__.update()
+        .where(RequirementInbox.converted_task_id.in_(ids))
+        .values(converted_task_id=None)
+    )
+
+    # 2) 删除任务本身（含所有子孙）
+    await db.execute(Task.__table__.delete().where(Task.id.in_(ids)))
+
+
 def _task_to_dict(task: Task) -> dict:
     # Safely access relationships that may not be eagerly loaded
     try:
@@ -412,15 +471,22 @@ async def list_backlog(db: AsyncSession, workspace_id: str) -> list[dict]:
         .order_by(Task.priority.asc(), Task.created_at.desc())
     )
     stories = result.scalars().all()
+
+    # Batch count children in one query
+    story_ids = [s.id for s in stories]
+    child_counts: dict[str, int] = {}
+    if story_ids:
+        count_result = await db.execute(
+            select(Task.parent_id, func.count(Task.id))
+            .where(Task.parent_id.in_(story_ids))
+            .group_by(Task.parent_id)
+        )
+        child_counts = {row[0]: row[1] for row in count_result.all()}
+
     data = []
     for story in stories:
-        # Count children
-        child_result = await db.execute(
-            select(func.count(Task.id)).where(Task.parent_id == story.id)
-        )
-        child_count = child_result.scalar() or 0
         d = _task_to_dict(story)
-        d["children_count"] = child_count
+        d["children_count"] = child_counts.get(story.id, 0)
         data.append(d)
     return data
 

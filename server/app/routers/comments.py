@@ -26,7 +26,11 @@ class CommentUpdate(BaseModel):
 
 
 @router.get("/api/tasks/{task_id}/comments", response_model=APIResponse)
-async def list_task_comments(task_id: str, db: AsyncSession = Depends(get_db)):
+async def list_task_comments(
+    task_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
     comments = await comment_svc.get_comments(db, task_id)
     return {"code": 0, "message": "ok", "data": comments}
 

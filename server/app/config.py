@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     jwt_expiration: int = 86400  # 24 hours in seconds
 
     # LDAP
-    ldap_enabled: bool = False
+    ldap_enabled: bool = True
     ldap_server_uri: str = "ldap://localhost:389"
     ldap_bind_dn: str = ""
     ldap_bind_password: str = ""
@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     ldap_display_name_attribute: str = "cn"
     ldap_email_attribute: str = "mail"
     ldap_auto_create_user: bool = True
+
+    # 企业微信集成
+    wecom_enabled: bool = False
+    wecom_corp_id: str = ""
+    wecom_agent_id: str = ""
+    wecom_agent_secret: str = ""
+    wecom_api_base: str = "https://qyapi.weixin.qq.com/cgi-bin"
 
     # Git 知识库
     git_repos_path: str = "./repos"

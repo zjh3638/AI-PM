@@ -13,6 +13,8 @@ class ChatHistory(Base, UUIDMixin):
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False, index=True)
     role: Mapped[str] = mapped_column(String(16), nullable=False)  # user / assistant / tool
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    # 多模态内容（OpenAI vision content 数组）；纯文本消息为 NULL
+    content_json: Mapped[list | None] = mapped_column(JSON, nullable=True)
     agent: Mapped[str | None] = mapped_column(String(32), nullable=True)
     tool_actions: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     tool_calls: Mapped[list | None] = mapped_column(JSON, nullable=True)

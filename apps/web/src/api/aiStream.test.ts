@@ -24,7 +24,7 @@ describe('parseSSEFrame', () => {
 
 describe('streamChat', () => {
   it('dispatches frames split across chunks', async () => {
-    global.fetch = vi.fn().mockResolvedValue({
+    globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
       body: makeReadable([
         'event: delta\ndata: {"content":"你"}\n\nevent: delta\ndata: {"con',
@@ -45,7 +45,7 @@ describe('streamChat', () => {
 
   it('respects AbortController', async () => {
     const ctrl = new AbortController();
-    global.fetch = vi.fn((_url, opts: any) => {
+    globalThis.fetch = vi.fn((_url, opts: any) => {
       ctrl.abort();
       return Promise.reject(new DOMException('aborted', 'AbortError'));
     }) as any;

@@ -181,6 +181,27 @@ async def update_task(
             await activity_svc.log_activity(db, task_id, current_user.id, action,
                 field_name=label, old_value=str(old_val), new_value=str(req_val))
 
+            # 发送企业微信通知
+            from app.config import settings
+            if settings.wecom_enabled:
+                try:
+                    from app.services import wecom_notification
+                    if action == 'ASSIGN' and req_val:
+                        # 任务分配通知（@提醒被分配人）
+                        assignee = await db.get(User, str(req_val))
+                        if assignee:
+                            await wecom_notification.notify_task_assigned(
+                                db, workspace_id, task, assignee, label, current_user
+                            )
+                    elif action == 'STATUS_CHANGE':
+                        # 任务状态变更通知
+                        await wecom_notification.notify_task_status_changed(
+                            db, workspace_id, task, str(old_val), str(req_val), current_user
+                        )
+                except Exception as e:
+                    # 通知失败不影响业务
+                    pass
+
     task = await task_service.update_task(
         db, task,
         title=req.title, description=req.description, status=req.status, phase=req.phase,
@@ -212,7 +233,7 @@ async def delete_task(
     task = await task_service.get_task(db, task_id)
     if task is None or task.workspace_id != workspace_id:
         raise AppException(404, "任务不存在", 404)
-    await db.delete(task)
+    await task_service.delete_task(db, task)
     await db.commit()
     return {"code": 0, "message": "ok", "data": None}
 
@@ -369,10 +390,11 @@ async def return_task_phase(
         raise AppException(400, f"当前阶段「{task.phase}」不支持退回操作", 400)
 
     prev_phase = phases[idx - 1]
+    original_phase = phases[idx]  # Save before update
     task = await task_service.update_task(db, task, phase=prev_phase, status="TODO")
 
     # On design review reject, reset review status
-    if task.phase == "DESIGN" and task.design_review_status:
+    if original_phase == "DESIGN" and task.design_review_status:
         task.design_review_status = None
         task.design_reviewer_id = None
         task.design_review_note = None
@@ -461,12 +483,13 @@ async def review_requirement(
     if not is_mgr and task.analyst_id != current_user.id:
         raise AppException(403, "只有需求分析师或项目负责人才能评审需求", 403)
 
+    old_status = task.requirement_review_status or "未评审"
     task = await task_service.review_requirement(db, task, current_user.id, req.action, req.note)
 
     status_label = "通过" if req.action == "APPROVED" else "驳回"
     from app.services import activity_svc
     await activity_svc.log_activity(db, task_id, current_user.id, "UPDATE",
-        field_name="需求评审", old_value=task.requirement_review_status or "未评审",
+        field_name="需求评审", old_value=old_status,
         new_value=status_label)
 
     return {"code": 0, "message": f"需求评审已{status_label}", "data": _task_to_dict(task)}
@@ -496,12 +519,13 @@ async def review_design(
     if not is_mgr and task.reviewer_id != current_user.id:
         raise AppException(403, "只有阶段审核人或项目负责人才能评审方案", 403)
 
+    old_status = task.design_review_status or "未评审"
     task = await task_service.review_design(db, task, current_user.id, req.action, req.note)
 
     status_label = "通过" if req.action == "APPROVED" else "驳回"
     from app.services import activity_svc
     await activity_svc.log_activity(db, task_id, current_user.id, "UPDATE",
-        field_name="方案评审", old_value=task.design_review_status or "未评审",
+        field_name="方案评审", old_value=old_status,
         new_value=status_label)
 
     return {"code": 0, "message": f"方案评审已{status_label}", "data": _task_to_dict(task)}

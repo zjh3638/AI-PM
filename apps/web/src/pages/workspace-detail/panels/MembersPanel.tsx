@@ -8,14 +8,34 @@ import type { WorkspaceMember } from '../../../types';
 
 export default function MembersPanel() {
   const { id } = useParams<{ id: string }>();
-  const { members, loading, fetchMembers } = useWorkspaceStore();
+  const { members, loading, fetchMembers, current, fetchDetail } = useWorkspaceStore();
   const { user } = useAuthStore();
 
   useEffect(() => { if (id) fetchMembers(id); }, [id]);
 
-  const canManage = !user || members.length === 0
-    ? true
-    : members.some((m: WorkspaceMember) => m.user_id === user.id && (m.role === 'OWNER' || m.role === 'MANAGER'));
+  const [wecomLoading, setWecomLoading] = useState(false);
+  // 企业微信（联盟E动）已启用且当前项目尚未建群时，允许补建群
+  const canInitWecom = current?.wecom_enabled && !current?.wecom_chat_id;
+
+  const handleInitWecom = async () => {
+    if (!id) return;
+    if (!confirm('将为本项目创建联盟E动群，并把全部成员拉入群聊，是否继续？')) return;
+    setWecomLoading(true);
+    try {
+      await api.post(`/workspaces/${id}/wecom-group`);
+      await fetchDetail(id);
+    } catch {
+      /* 错误已由 API 拦截器统一提示 */
+    } finally {
+      setWecomLoading(false);
+    }
+  };
+
+  const canManage = user && (
+    user.system_role === 'SUPER_ADMIN' ||
+    members.length === 0 ||
+    members.some((m: WorkspaceMember) => m.user_id === user.id && (m.role === 'OWNER' || m.role === 'MANAGER'))
+  );
 
   const [addOpen, setAddOpen] = useState(false);
   const [users, setUsers] = useState<any[]>([]);
@@ -77,8 +97,8 @@ export default function MembersPanel() {
     try {
       await api.delete(`/workspaces/${id}/members/${member.id}`);
       fetchMembers(id);
-    } catch (e: any) {
-      alert(e?.response?.data?.message || '移除失败');
+    } catch {
+      /* 错误已由 API 拦截器统一提示 */
     }
   };
 
@@ -89,9 +109,21 @@ export default function MembersPanel() {
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
         <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>共 {members.length} 人</span>
-        {canManage && (
-          <button className="btn btn-primary btn-sm" onClick={openAdd}>+ 添加成员</button>
-        )}
+        <div style={{ display: 'flex', gap: 8 }}>
+          {canManage && canInitWecom && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={handleInitWecom}
+              disabled={wecomLoading}
+              title="为本项目创建联盟E动群并拉入全部成员"
+            >
+              {wecomLoading ? '创建中...' : '创建联盟E动群'}
+            </button>
+          )}
+          {canManage && (
+            <button className="btn btn-primary btn-sm" onClick={openAdd}>+ 添加成员</button>
+          )}
+        </div>
       </div>
 
       {loading ? (

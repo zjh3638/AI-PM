@@ -124,14 +124,14 @@ export default function DashboardPage() {
   const kpiCards = isAdmin
     ? [
         { label: '我待办', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '我的任务' },
-        { label: '待审核', value: (inReviewTasks || stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
+        { label: '待审核', value: (inReviewTasks ?? stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
         { label: '项目数', value: workspaces.length, color: '#3b82f6', sub: `${stats?.active_projects ?? 0} 活跃` },
-        { label: '已逾期', value: (overdueTasks || stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
+        { label: '已逾期', value: (overdueTasks ?? stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
       ]
     : [
         { label: '我的任务', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '待处理' },
-        { label: '待审核', value: (inReviewTasks || stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
-        { label: '已逾期', value: (overdueTasks || stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
+        { label: '待审核', value: (inReviewTasks ?? stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
+        { label: '已逾期', value: (overdueTasks ?? stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
         { label: '进行中项目', value: stats?.active_projects ?? workspaces.length, color: '#3b82f6', sub: '个' },
       ];
 

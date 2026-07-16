@@ -4,8 +4,10 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 html {
-  font-size: 15px;
+  font-size: 17px;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 body {
@@ -139,6 +141,10 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   gap: 8px;
 }
 
+.nav .nav-avatar-wrap {
+  position: relative;
+}
+
 .nav .user-avatar {
   width: 28px;
   height: 28px;
@@ -150,6 +156,48 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   justify-content: center;
   font-size: 0.7rem;
   font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  position: relative;
+}
+.nav .user-avatar:hover {
+  background: var(--blue-200);
+}
+
+/* User dropdown */
+.user-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  background: var(--bg-elevated, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+  min-width: 160px;
+  z-index: 200;
+  overflow: hidden;
+}
+.user-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.12s;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+.user-dropdown-item:hover {
+  background: var(--bg-hover, #f3f4f6);
+}
+.user-dropdown-item .anticon {
+  font-size: 0.9rem;
+  color: var(--text-muted);
 }
 
 /* ═══════════════════════════════════════════

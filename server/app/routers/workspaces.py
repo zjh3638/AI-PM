@@ -14,6 +14,7 @@ from app.schemas.common import APIResponse, PaginatedResponse
 from app.services import workspace as ws_service
 from app.services.permission import PermissionChecker, get_permission_checker
 from app.exceptions import AppException
+from app.config import settings
 
 router = APIRouter(prefix="/api/workspaces", tags=["workspaces"])
 
@@ -54,6 +55,8 @@ def _ws_to_dict(ws, member_count: int = 0) -> dict:
         "git_repo_path": ws.git_repo_path,
         "template_name": getattr(ws, '_template_name', None),
         "strict_gate": getattr(ws, 'strict_gate', True),
+        "wecom_enabled": settings.wecom_enabled,
+        "wecom_chat_id": ws.wecom_chat_id,
         "member_count": member_count,
         "created_at": ws.created_at.isoformat() if ws.created_at else "",
         "updated_at": ws.updated_at.isoformat() if ws.updated_at else "",
@@ -125,17 +128,22 @@ async def available_users(
     query = query.order_by(User.display_name)
     result = await db.execute(query)
     users = result.scalars().all()
+
+    # Batch fetch departments in one query
+    dept_ids = [u.department_id for u in users if u.department_id]
+    dept_map: dict[str, str] = {}
+    if dept_ids:
+        dept_result = await db.execute(
+            select(Department).where(Department.id.in_(dept_ids))
+        )
+        dept_map = {d.id: d.name for d in dept_result.scalars().all()}
+
     data = []
     for u in users:
-        dept_name = None
-        if u.department_id:
-            dept = await db.get(Department, u.department_id)
-            if dept:
-                dept_name = dept.name
         data.append({
             "id": u.id, "username": u.username,
             "display_name": u.display_name, "email": u.email,
-            "department_name": dept_name,
+            "department_name": dept_map.get(u.department_id) if u.department_id else None,
         })
     return {"code": 0, "message": "ok", "data": data}
 
@@ -195,6 +203,18 @@ async def archive_workspace(
     return {"code": 0, "message": "ok", "data": None}
 
 
+@router.post("/{workspace_id}/wecom-group", response_model=APIResponse)
+async def init_wecom_group(
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    """为存量项目补建联盟E动（企业微信）群聊并拉入全部成员。"""
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
+    chat_id = await ws_service.init_wecom_group(db, workspace_id)
+    return {"code": 0, "message": "联盟E动群创建成功", "data": {"wecom_chat_id": chat_id}}
+
+
 @router.delete("/{workspace_id}", response_model=APIResponse)
 async def delete_workspace(
     workspace_id: str,
@@ -228,9 +248,20 @@ async def add_member(
     req: MemberCreate,
     db: AsyncSession = Depends(get_db),
     pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
 ):
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     member = await ws_service.add_member(db, workspace_id, req.user_id, req.role)
+
+    # 发送成员加入通知
+    from app.config import settings
+    if settings.wecom_enabled and member.user:
+        try:
+            from app.services import wecom_notification
+            await wecom_notification.notify_member_joined(db, workspace_id, member.user, current_user)
+        except Exception:
+            pass  # 通知失败不影响业务
+
     data = {
         "id": member.id, "workspace_id": member.workspace_id,
         "user_id": member.user_id, "user_name": member.user.display_name if member.user else None,
@@ -270,6 +301,7 @@ async def remove_member(
     member_id: str,
     db: AsyncSession = Depends(get_db),
     pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
 ):
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     member = await ws_service.get_member(db, workspace_id, member_id)
@@ -277,5 +309,19 @@ async def remove_member(
         raise AppException(404, "成员不存在", 404)
     if member.role == "OWNER":
         raise AppException(400, "不能移除工作空间所有者")
+
+    # 保存成员信息用于通知
+    member_name = member.user.display_name if member.user else "未知成员"
+
     await ws_service.remove_member(db, member)
+
+    # 发送成员移除通知
+    from app.config import settings
+    if settings.wecom_enabled:
+        try:
+            from app.services import wecom_notification
+            await wecom_notification.notify_member_removed(db, workspace_id, member_name, current_user)
+        except Exception:
+            pass  # 通知失败不影响业务
+
     return {"code": 0, "message": "ok", "data": None}

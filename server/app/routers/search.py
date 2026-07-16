@@ -2,6 +2,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.deps import get_current_user
+from app.models.user import User
 from app.schemas.common import APIResponse
 from app.services import search as search_svc
 
@@ -14,6 +16,7 @@ async def search(
     type: str = Query(default="all"),
     workspace_id: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     results = await search_svc.search(
         db, q,

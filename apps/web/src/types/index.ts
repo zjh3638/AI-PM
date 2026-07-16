@@ -24,6 +24,8 @@ export interface Workspace {
   git_repo_path: string | null;
   template_name: string | null;
   strict_gate: boolean;
+  wecom_enabled?: boolean;
+  wecom_chat_id?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -315,6 +317,37 @@ export const RISK_STATUS_LABELS: Record<string, string> = {
   IDENTIFIED: '已识别',
   MITIGATING: '应对中',
   CLOSED: '已关闭',
+};
+
+// Project reports (周报/月报)
+export type ReportType = 'WEEKLY' | 'MONTHLY';
+export type ReportStatus = 'DRAFT' | 'PUBLISHED';
+
+export interface ProjectReport {
+  id: string;
+  workspace_id: string;
+  report_type: ReportType;
+  period_start: string | null;
+  period_end: string | null;
+  title: string;
+  content: string | null;
+  summary_data: any | null;
+  status: ReportStatus;
+  created_by: string;
+  created_by_name: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export const REPORT_TYPE_LABELS: Record<string, string> = {
+  WEEKLY: '周报',
+  MONTHLY: '月报',
+};
+
+export const REPORT_STATUS_LABELS: Record<string, string> = {
+  DRAFT: '草稿',
+  PUBLISHED: '已发布',
 };
 
 // Task progress feedback

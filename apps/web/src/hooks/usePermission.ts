@@ -3,6 +3,7 @@ import type { SystemRole, WorkspaceRole } from '../types';
 
 export function usePermission() {
   const user = useAuthStore((s) => s.user);
+  const loading = useAuthStore((s) => s.loading);
 
   const hasSystemRole = (...roles: SystemRole[]) => {
     if (!user) return false;
@@ -17,5 +18,5 @@ export function usePermission() {
     return roles.includes(member.role);
   };
 
-  return { user, hasSystemRole, hasWorkspaceRole };
+  return { user, loading, hasSystemRole, hasWorkspaceRole };
 }

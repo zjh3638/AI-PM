@@ -1,7 +1,7 @@
 from typing import Optional, Any
 from datetime import date
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 def _coerce_date(v: Any) -> Any:
@@ -25,6 +25,29 @@ def _coerce_float(v: Any) -> Any:
         return None
     if isinstance(v, str):
         return float(v)
+    return v
+
+
+_ID_FIELDS = (
+    "parent_id", "epic_id", "iteration_id", "milestone_id",
+    "assignee_id", "reviewer_id", "proposer_id", "analyst_id",
+    "qa_owner_id", "acceptance_owner_id", "verifier_id",
+)
+
+
+def _coerce_optional_id(v: Any) -> Any:
+    """Convert empty strings to None for optional ID fields."""
+    if v == "" or v == "null":
+        return None
+    return v
+
+
+def _coerce_reviewer_ids(v: Any) -> Any:
+    """Normalize reviewer_ids: reject string 'null', empty list → None."""
+    if v is None or v == "null" or v == "":
+        return None
+    if isinstance(v, list) and len(v) == 0:
+        return None
     return v
 
 
@@ -59,6 +82,16 @@ class TaskCreate(BaseModel):
     sort_order: int = 0
     due_date: Optional[date] = None
 
+    @field_validator(*_ID_FIELDS, mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: Any) -> Any:
+        return _coerce_optional_id(v)
+
+    @field_validator("reviewer_ids", mode="before")
+    @classmethod
+    def normalize_reviewer_ids(cls, v: Any) -> Any:
+        return _coerce_reviewer_ids(v)
+
 
 class TaskUpdate(BaseModel):
     title: Optional[str] = Field(default=None, min_length=1, max_length=500)
@@ -89,6 +122,16 @@ class TaskUpdate(BaseModel):
     estimation_unit: Optional[str] = None
     sort_order: Optional[int] = None
     due_date: Optional[date] = None
+
+    @field_validator(*_ID_FIELDS, mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: Any) -> Any:
+        return _coerce_optional_id(v)
+
+    @field_validator("reviewer_ids", mode="before")
+    @classmethod
+    def normalize_reviewer_ids(cls, v: Any) -> Any:
+        return _coerce_reviewer_ids(v)
 
 
 class TaskResponse(BaseModel):

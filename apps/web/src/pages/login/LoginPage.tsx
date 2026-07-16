@@ -4,7 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);
+  const [activeTab, setActiveTab] = useState(1);
   const login = useAuthStore((s) => s.login);
   const navigate = useNavigate();
 

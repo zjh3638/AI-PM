@@ -289,31 +289,101 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 /* ═══════════════════════════════════════════
    WORKSPACE STREAM
    ═══════════════════════════════════════════ */
-.stream-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.stream-header h2 { font-size: 1.25rem; font-weight: 700; }
-.stream-header .actions { display: flex; gap: 8px; }
-.stream-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.stream-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 18px; gap: 16px; flex-wrap: wrap; }
+.stream-header .sh-title h2 { font-size: 1.35rem; font-weight: 700; letter-spacing: -0.01em; }
+.stream-header .sh-title .sh-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; }
+.stream-header .actions { display: flex; gap: 8px; align-items: center; }
+.stream-search {
+  display: flex; align-items: center; gap: 6px; background: var(--bg-surface);
+  border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 5px 10px;
+  font-size: 0.78rem; color: var(--text-muted); transition: all var(--fast); min-width: 180px;
+}
+.stream-search:focus-within { border-color: var(--blue-400); box-shadow: 0 0 0 3px var(--blue-50); }
+.stream-search input { border: none; outline: none; background: none; font: inherit; font-size: 0.8rem; color: var(--text-primary); flex: 1; min-width: 0; }
+
+.stream-filters { display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
+.stream-filters .filter-pill {
+  font-size: 0.75rem; font-weight: 500; padding: 4px 12px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-secondary); background: var(--bg-surface);
+  cursor: pointer; transition: all var(--fast);
+}
+.stream-filters .filter-pill:hover { border-color: var(--border-hover); color: var(--text-primary); }
+.stream-filters .filter-pill.active { background: var(--blue-600); border-color: var(--blue-600); color: #fff; }
+.stream-filters .filter-pill .fp-count { opacity: 0.6; margin-left: 3px; font-weight: 400; }
+
+.stream-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
 
 .ws-card {
-  background: var(--bg-surface); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 18px 20px;
-  transition: all var(--fast); cursor: pointer;
+  position: relative; background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 18px 20px 16px; overflow: hidden;
+  transition: transform var(--fast), box-shadow var(--fast), border-color var(--fast); cursor: pointer;
+  display: flex; flex-direction: column;
 }
-.ws-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-md); transform: translateY(-1px); }
-.ws-card .ws-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
-.ws-card .ws-name { font-size: 0.95rem; font-weight: 600; }
+.ws-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--border); transition: background var(--fast);
+}
+.ws-card.tier-company::before { background: var(--red-500); }
+.ws-card.tier-dept::before { background: var(--amber-500); }
+.ws-card.tier-normal::before { background: var(--blue-400); }
+.ws-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.ws-card .ws-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.ws-card .ws-name { font-size: 1rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.3; }
 .ws-card .ws-tier {
-  font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 8px;
+  font-size: 0.64rem; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; flex-shrink: 0;
 }
 .ws-card .ws-tier.company { background: var(--red-50); color: var(--red-600); }
 .ws-card .ws-tier.dept { background: var(--amber-50); color: var(--amber-600); }
-.ws-card .ws-tier.normal { background: var(--bg-raised); color: var(--text-muted); }
+.ws-card .ws-tier.normal { background: var(--bg-raised); color: var(--text-secondary); }
 .ws-card .ws-summary {
-  font-size: 0.8rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 10px;
+  font-size: 0.8rem; color: var(--text-secondary); line-height: 1.65; margin-bottom: 14px;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
-.ws-card .ws-stats { display: flex; gap: 16px; font-size: 0.76rem; color: var(--text-muted); }
-.ws-card .ws-stats .sv { font-weight: 600; color: var(--text-primary); }
-.ws-card .ws-stats .health-bar { width: 60px; height: 3px; background: var(--bg-hover); border-radius: 2px; display: inline-block; overflow: hidden; margin-left: 4px; vertical-align: middle; }
+
+/* Progress row: ring + meta chips */
+.ws-card .ws-progress { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.ws-ring {
+  --pct: 67; --ring-color: var(--blue-500);
+  width: 46px; height: 46px; border-radius: 50%; flex-shrink: 0;
+  background: conic-gradient(var(--ring-color) calc(var(--pct) * 1%), var(--bg-raised) 0);
+  display: flex; align-items: center; justify-content: center; position: relative;
+}
+.ws-ring::after { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: var(--bg-surface); }
+.ws-ring .ws-ring-val { position: relative; z-index: 1; font-size: 0.72rem; font-weight: 700; }
+.ws-card .ws-prog-meta { flex: 1; min-width: 0; }
+.ws-card .ws-prog-meta .wpm-row { display: flex; gap: 14px; font-size: 0.74rem; color: var(--text-muted); }
+.ws-card .ws-prog-meta .wpm-row .sv { font-weight: 700; color: var(--text-primary); }
+.ws-card .ws-prog-meta .wpm-row .sv.risk { color: var(--amber-600); }
+.ws-card .ws-prog-meta .wpm-row .sv.ok { color: var(--green-600); }
+.ws-card .ws-prog-meta .wpm-phase { font-size: 0.72rem; color: var(--text-secondary); margin-top: 6px; }
+
+/* Footer: avatars + last activity */
+.ws-card .ws-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-top: 12px; border-top: 1px solid var(--border-light);
+}
+.ws-avatars { display: flex; align-items: center; }
+.ws-avatars .wa {
+  width: 24px; height: 24px; border-radius: 50%; margin-left: -6px;
+  border: 2px solid var(--bg-surface); display: flex; align-items: center; justify-content: center;
+  font-size: 0.62rem; font-weight: 600; background: var(--blue-100); color: var(--blue-700);
+}
+.ws-avatars .wa:first-child { margin-left: 0; }
+.ws-avatars .wa.agent { background: var(--blue-600); color: #fff; }
+.ws-avatars .wa.more { background: var(--bg-raised); color: var(--text-muted); }
+.ws-card .ws-updated { font-size: 0.7rem; color: var(--text-muted); }
+
+/* New workspace card */
+.ws-card.ws-new {
+  border-style: dashed; background: transparent; align-items: center; justify-content: center;
+  color: var(--text-muted); text-align: center; min-height: 200px; gap: 6px;
+}
+.ws-card.ws-new::before { display: none; }
+.ws-card.ws-new:hover { border-color: var(--blue-400); color: var(--blue-600); background: var(--blue-50); transform: none; box-shadow: none; }
+.ws-card.ws-new .wn-icon { font-size: 1.6rem; font-weight: 300; }
+.ws-card.ws-new .wn-text { font-size: 0.82rem; font-weight: 500; }
+
+.health-bar { display: inline-block; }
 .health-bar .fill { height: 100%; border-radius: 2px; }
 .fill.good { background: var(--green-500); }
 .fill.warn { background: var(--amber-500); }
@@ -326,42 +396,48 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 /* Pulse header bar */
 .pulse-header {
   display: flex; align-items: center; justify-content: space-between;
-  margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+  margin-bottom: 14px; flex-wrap: wrap; gap: 10px;
+  background: var(--bg-surface); border: 1px solid var(--border);
+  border-radius: var(--radius-lg); padding: 14px 18px;
 }
 .pulse-header .ph-left { min-width: 0; }
-.pulse-header .ph-left .back { font-size: 0.78rem; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; gap: 3px; }
-.pulse-header .ph-left .back:hover { color: var(--text-primary); }
-.pulse-header .ph-left .proj-name { font-size: 1.2rem; font-weight: 700; margin-top: 2px; }
-.pulse-header .ph-left .proj-meta { font-size: 0.76rem; color: var(--text-muted); margin-top: 1px; }
+.pulse-header .ph-left .back { font-size: 0.76rem; color: var(--text-muted); cursor: pointer; display: inline-flex; align-items: center; gap: 3px; transition: color var(--fast); }
+.pulse-header .ph-left .back:hover { color: var(--blue-600); }
+.pulse-header .ph-left .proj-name { font-size: 1.25rem; font-weight: 700; letter-spacing: -0.01em; margin-top: 4px; }
+.pulse-header .ph-left .proj-meta { font-size: 0.75rem; color: var(--text-muted); margin-top: 3px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .pulse-header .ph-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 
 /* Focus strip — slim alert bar */
 .focus-strip {
-  display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap;
+  display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;
 }
 .focus-strip .fs-item {
-  flex: 1; min-width: 200px; display: flex; align-items: center; gap: 8px;
+  flex: 1; min-width: 220px; display: flex; align-items: center; gap: 9px;
   background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 7px 12px; font-size: 0.78rem; cursor: pointer; transition: all var(--fast);
+  border-left: 3px solid var(--border); padding: 9px 14px; font-size: 0.78rem;
+  cursor: pointer; transition: all var(--fast);
 }
-.focus-strip .fs-item:hover { border-color: var(--border-hover); box-shadow: var(--shadow-xs); }
-.focus-strip .fs-item .fs-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-.fs-dot.red { background: var(--red-500); }
-.fs-dot.amber { background: var(--amber-500); }
-.fs-dot.green { background: var(--green-500); }
-.focus-strip .fs-item .fs-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.focus-strip .fs-item:has(.fs-dot.red) { border-left-color: var(--red-500); background: linear-gradient(90deg, var(--red-50), var(--bg-surface) 60%); }
+.focus-strip .fs-item:has(.fs-dot.amber) { border-left-color: var(--amber-500); }
+.focus-strip .fs-item:has(.fs-dot.green) { border-left-color: var(--green-500); }
+.focus-strip .fs-item:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.focus-strip .fs-item .fs-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.fs-dot.red { background: var(--red-500); box-shadow: 0 0 0 3px var(--red-100); }
+.fs-dot.amber { background: var(--amber-500); box-shadow: 0 0 0 3px var(--amber-100); }
+.fs-dot.green { background: var(--green-500); box-shadow: 0 0 0 3px var(--green-50); }
+.focus-strip .fs-item .fs-text { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
 .focus-strip .fs-btn {
-  font-size: 0.7rem; padding: 3px 10px; border-radius: var(--radius-sm);
-  border: 1px solid var(--border); white-space: nowrap; background: transparent; cursor: pointer;
-  transition: all var(--fast);
+  font-size: 0.7rem; padding: 4px 11px; border-radius: var(--radius-sm);
+  border: 1px solid var(--border); white-space: nowrap; background: var(--bg-surface); cursor: pointer;
+  transition: all var(--fast); font-weight: 500;
 }
-.focus-strip .fs-btn:hover { background: var(--bg-hover); }
+.focus-strip .fs-btn:hover { background: var(--bg-hover); border-color: var(--border-hover); }
 .focus-strip .fs-btn.primary { background: var(--blue-600); color: #fff; border-color: var(--blue-600); }
 .focus-strip .fs-btn.primary:hover { background: var(--blue-700); }
 
 /* Main 2-col layout */
 .pulse-layout {
-  display: grid; grid-template-columns: 240px 1fr auto; gap: 14px;
+  display: grid; grid-template-columns: 244px 1fr auto; gap: 16px;
   min-height: 0; align-items: start;
 }
 
@@ -371,25 +447,28 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 /* ═══ SIDEBAR ═══ */
 .pulse-sidebar {
   background: var(--bg-surface); border: 1px solid var(--border);
-  border-radius: var(--radius-lg); padding: 14px 16px;
-  display: flex; flex-direction: column; gap: 14px;
+  border-radius: var(--radius-lg); padding: 6px 14px 14px;
+  display: flex; flex-direction: column;
   position: sticky; top: 100px;
 }
-.sidebar-section { }
+.sidebar-section { padding: 12px 0; border-bottom: 1px solid var(--border-light); }
+.sidebar-section:first-child { padding-top: 12px; }
+.sidebar-section:last-of-type { border-bottom: none; }
 .sidebar-section .ss-title {
-  font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
-  letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 6px;
+  font-size: 0.66rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px;
 }
 
 /* Sidebar KPIs */
-.sidebar-kpis { display: flex; flex-direction: column; gap: 1px; }
+.sidebar-kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .sidebar-kpi {
-  display: flex; justify-content: space-between; align-items: center;
-  padding: 5px 8px; border-radius: var(--radius-sm); font-size: 0.79rem;
+  display: flex; flex-direction: column; gap: 2px;
+  padding: 8px 10px; border-radius: var(--radius-sm); font-size: 0.79rem;
+  background: var(--bg-raised);
 }
-.sidebar-kpi:hover { background: var(--bg-hover); }
-.sidebar-kpi .sk-label { color: var(--text-secondary); }
-.sidebar-kpi .sk-value { font-weight: 600; }
+.sidebar-kpi:hover { background: var(--blue-50); }
+.sidebar-kpi .sk-label { color: var(--text-muted); font-size: 0.66rem; }
+.sidebar-kpi .sk-value { font-weight: 700; font-size: 0.92rem; }
 
 /* Sidebar milestones */
 .sidebar-ms-list { display: flex; flex-direction: column; gap: 3px; }
@@ -415,7 +494,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .sidebar-ms .sms-pct { font-size: 0.65rem; color: var(--text-muted); text-align: right; margin-top: 2px; }
 
 /* Sidebar AI summary */
-.sidebar-ai { border-top: 1px solid var(--border-light); padding-top: 2px; }
+.sidebar-ai { border-top: 1px solid var(--border-light); padding-top: 8px; margin-top: 4px; }
 .sidebar-ai .sai-head {
   display: flex; align-items: center; justify-content: space-between;
   cursor: pointer; padding: 5px 0; font-size: 0.76rem; color: var(--text-secondary);
@@ -429,7 +508,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .sidebar-ai.expanded .sai-body { display: block; }
 
 /* OpenSpec sidebar section */
-.sidebar-ospec { border-top: 1px solid var(--border-light); padding-top: 2px; }
+.sidebar-ospec { border-top: 1px solid var(--border-light); padding-top: 8px; margin-top: 4px; }
 .sidebar-ospec .sos-head {
   font-size: 0.72rem; font-weight: 600; color: var(--text-secondary);
   padding: 4px 0; cursor: pointer; display: flex; align-items: center;
@@ -521,49 +600,53 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
 /* ═══ INLINE CHAT PANEL (workspace embedded) ═══ */
 .pulse-chat {
-  width: 36px; min-width: 36px;
+  width: 40px; min-width: 40px;
   transition: width var(--slow) var(--ease);
   background: var(--bg-surface); border: 1px solid var(--border);
   border-radius: var(--radius-lg); display: flex; flex-direction: column;
-  overflow: hidden; min-height: 0; position: relative;
+  overflow: hidden; min-height: 0; position: sticky; top: 100px;
 }
-.pulse-chat.expanded { width: 380px; min-width: 380px; }
-.pulse-chat .chat-inner { width: 380px; min-width: 380px; display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.pulse-chat.expanded {
+  width: 440px; min-width: 440px;
+  height: calc(100vh - 124px); box-shadow: var(--shadow-md);
+}
+.pulse-chat .chat-inner { width: 440px; min-width: 440px; display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .pulse-chat .chat-toggle-tab {
   display: flex; position: absolute; left: 0; top: 50%; transform: translateY(-50%);
-  width: 36px; height: 80px; flex-direction: column;
+  width: 40px; height: 96px; flex-direction: column;
   align-items: center; justify-content: center; gap: 4px;
   cursor: pointer; transition: all var(--fast); z-index: 10;
-  border-radius: 6px 0 0 6px; font-size: 0.62rem; font-weight: 600;
+  border-radius: 6px 0 0 6px; font-size: 0.66rem; font-weight: 600;
   color: var(--text-muted); writing-mode: vertical-lr; letter-spacing: 2px;
   background: var(--bg-surface);
 }
 .pulse-chat .chat-toggle-tab:hover { color: var(--blue-600); background: var(--blue-50); }
 .pulse-chat.expanded .chat-toggle-tab { display: none; }
 .pulse-chat .chat-head {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 13px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  background: linear-gradient(180deg, var(--blue-50), var(--bg-surface));
 }
-.pulse-chat .chat-head h3 { font-size: 0.84rem; font-weight: 600; }
+.pulse-chat .chat-head h3 { font-size: 0.9rem; font-weight: 700; flex: 1; }
 .pulse-chat .chat-head select {
-  font-size: 0.7rem; padding: 3px 8px; border: 1px solid var(--border);
-  border-radius: var(--radius-sm); background: var(--bg-surface); max-width: 90px;
+  font-size: 0.72rem; padding: 4px 9px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--bg-surface); max-width: 100px;
 }
 .pulse-chat .chat-close-btn {
-  width: 22px; height: 22px; border-radius: var(--radius-sm); border: none;
-  background: transparent; color: var(--text-muted); font-size: 0.75rem;
+  width: 24px; height: 24px; border-radius: var(--radius-sm); border: none;
+  background: transparent; color: var(--text-muted); font-size: 0.8rem;
   cursor: pointer; display: flex; align-items: center; justify-content: center;
   transition: all var(--fast); flex-shrink: 0;
 }
 .pulse-chat .chat-close-btn:hover { background: var(--bg-hover); color: var(--text-secondary); }
-.pulse-chat .chat-body { flex: 1; overflow-y: auto; padding: 12px 14px; min-height: 0; }
-.pulse-chat .chat-body .chat-cmds { margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 4px; }
-.pulse-chat .chat-body .chat-msgs { display: flex; flex-direction: column; gap: 10px; }
-.pulse-chat .chat-body .chat-msg { font-size: 0.76rem; padding: 8px 12px; max-width: 100%; border-radius: var(--radius); line-height: 1.6; }
-.pulse-chat .chat-input-area { padding: 10px 14px; border-top: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 6px; }
-.pulse-chat .chat-input-area input { flex: 1; font-size: 0.78rem; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius); outline: none; }
-.pulse-chat .chat-input-area input:focus { border-color: var(--blue-400); }
-.pulse-chat .chat-input-area .send-btn { width: 32px; height: 32px; border-radius: var(--radius); background: var(--blue-600); color: #fff; font-weight: 700; font-size: 0.8rem; cursor: pointer; border: none; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all var(--fast); }
+.pulse-chat .chat-body { flex: 1; overflow-y: auto; padding: 16px 16px; min-height: 0; }
+.pulse-chat .chat-body .chat-cmds { margin-bottom: 14px; display: flex; flex-wrap: wrap; gap: 6px; }
+.pulse-chat .chat-body .chat-msgs { display: flex; flex-direction: column; gap: 14px; }
+.pulse-chat .chat-body .chat-msg { font-size: 0.82rem; padding: 11px 14px; max-width: 88%; border-radius: var(--radius-lg); line-height: 1.65; }
+.pulse-chat .chat-input-area { padding: 12px 16px; border-top: 1px solid var(--border); flex-shrink: 0; display: flex; gap: 8px; background: var(--bg-raised); }
+.pulse-chat .chat-input-area input { flex: 1; font-size: 0.82rem; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); outline: none; background: var(--bg-surface); transition: all var(--fast); }
+.pulse-chat .chat-input-area input:focus { border-color: var(--blue-400); box-shadow: 0 0 0 3px var(--blue-50); }
+.pulse-chat .chat-input-area .send-btn { width: 38px; height: 38px; border-radius: var(--radius); background: var(--blue-600); color: #fff; font-weight: 700; font-size: 0.9rem; cursor: pointer; border: none; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all var(--fast); }
 .pulse-chat .chat-input-area .send-btn:hover { background: var(--blue-700); }
 
 /* ═══ KB VIEWER — inline file viewer ═══ */
@@ -831,14 +914,14 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 /* ═══════════════════════════════════════════
    WORKSPACE SECTION TABS
    ═══════════════════════════════════════════ */
-.ws-tabs { display: flex; gap: 0; border-bottom: 2px solid var(--border); margin-bottom: 16px; }
+.ws-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
 .ws-tab {
-  padding: 8px 20px; font-size: 0.82rem; font-weight: 500;
-  color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -2px;
-  transition: all var(--fast); background: none;
+  padding: 9px 18px; font-size: 0.82rem; font-weight: 500;
+  color: var(--text-muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  transition: all var(--fast); background: none; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
 }
-.ws-tab:hover { color: var(--text-primary); }
-.ws-tab.active { color: var(--blue-600); border-bottom-color: var(--blue-600); }
+.ws-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+.ws-tab.active { color: var(--blue-600); border-bottom-color: var(--blue-600); background: var(--blue-50); }
 .ws-panel { display: none; }
 .ws-panel.active { display: block; }
 
@@ -944,7 +1027,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 /* AI chat — command suggestions */
 .chat-cmds { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
 .chat-cmd {
-  font-size: 0.7rem; padding: 4px 10px; border-radius: 12px; cursor: pointer;
+  font-size: 0.74rem; padding: 6px 12px; border-radius: 999px; cursor: pointer;
   background: var(--bg-raised); border: 1px solid var(--border);
   color: var(--text-secondary); transition: all var(--fast);
 }
@@ -1095,7 +1178,9 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   .task-list .list-head, .task-list .list-row { grid-template-columns: 1fr 70px 70px 60px 30px; gap: 6px; font-size: 0.72rem; }
   /* Pulse layout — stack sidebar above main */
   .pulse-layout { grid-template-columns: 1fr; }
-  .pulse-chat { min-height: 420px; }
+  .pulse-chat { min-height: 420px; position: static; }
+  .pulse-chat.expanded { width: 100%; min-width: 0; height: 70vh; }
+  .pulse-chat.expanded .chat-inner { width: 100%; min-width: 0; }
   .pulse-sidebar { position: static; }
   .focus-strip { flex-direction: column; }
   .focus-strip .fs-item { min-width: 0; }
@@ -1478,63 +1563,125 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
    ═══════════════════════════════════════════ -->
 <div id="page-stream" class="page">
 <div class="stream-header">
-  <h2>工作空间</h2>
+  <div class="sh-title">
+    <h2>工作空间</h2>
+    <div class="sh-sub">共 4 个项目 · 2 个公司/部门重点 · 1 项风险待处理</div>
+  </div>
   <div class="actions">
+    <label class="stream-search">
+      🔍<input type="text" placeholder="搜索项目...">
+    </label>
     <button class="btn btn-primary btn-sm">+ 从模板创建</button>
     <button class="btn btn-ghost btn-sm">空白创建</button>
   </div>
 </div>
+<div class="stream-filters">
+  <button class="filter-pill active">全部<span class="fp-count">4</span></button>
+  <button class="filter-pill">公司重点<span class="fp-count">1</span></button>
+  <button class="filter-pill">部门重点<span class="fp-count">2</span></button>
+  <button class="filter-pill">普通<span class="fp-count">1</span></button>
+  <button class="filter-pill">有风险<span class="fp-count">1</span></button>
+</div>
 <div class="stream-grid">
-  <div class="ws-card" onclick="navigateTo('pulse')">
+  <div class="ws-card tier-company" onclick="navigateTo('pulse')">
     <div class="ws-head">
       <span class="ws-name">Q3 大版本改版</span>
       <span class="ws-tier company">公司重点</span>
     </div>
     <div class="ws-summary">进度 67%，设计阶段完成，开发进行中。前端重构延期 3 天，影响下游 2 个任务。李四负载 120%。本周三 UI Review 是关键里程碑。</div>
-    <div class="ws-stats">
-      <span>任务 <span class="sv">24/36</span></span>
-      <span>风险 <span class="sv" style="color:var(--amber-600)">1</span></span>
-      <span>健康度 <span class="health-bar"><span class="fill warn" style="width:67%"></span></span></span>
+    <div class="ws-progress">
+      <div class="ws-ring" style="--pct:67;--ring-color:var(--amber-500)"><span class="ws-ring-val">67%</span></div>
+      <div class="ws-prog-meta">
+        <div class="wpm-row">
+          <span>任务 <span class="sv">24/36</span></span>
+          <span>风险 <span class="sv risk">1</span></span>
+        </div>
+        <div class="wpm-phase">🚧 开发阶段 · Sprint 5</div>
+      </div>
+    </div>
+    <div class="ws-foot">
+      <div class="ws-avatars">
+        <span class="wa">张</span><span class="wa">李</span><span class="wa">王</span><span class="wa agent">AI</span><span class="wa more">+2</span>
+      </div>
+      <span class="ws-updated">2 小时前更新</span>
     </div>
   </div>
 
-  <div class="ws-card">
+  <div class="ws-card tier-dept">
     <div class="ws-head">
       <span class="ws-name">运营中台优化</span>
       <span class="ws-tier dept">部门重点</span>
     </div>
     <div class="ws-summary">进度 42%。需求阶段完成，设计师 Agent 已完成首页线框图。本周进入开发阶段。团队负载正常。</div>
-    <div class="ws-stats">
-      <span>任务 <span class="sv">8/19</span></span>
-      <span>风险 <span class="sv" style="color:var(--green-600)">0</span></span>
-      <span>健康度 <span class="health-bar"><span class="fill good" style="width:85%"></span></span></span>
+    <div class="ws-progress">
+      <div class="ws-ring" style="--pct:42;--ring-color:var(--blue-500)"><span class="ws-ring-val">42%</span></div>
+      <div class="ws-prog-meta">
+        <div class="wpm-row">
+          <span>任务 <span class="sv">8/19</span></span>
+          <span>风险 <span class="sv ok">0</span></span>
+        </div>
+        <div class="wpm-phase">🎨 设计阶段</div>
+      </div>
+    </div>
+    <div class="ws-foot">
+      <div class="ws-avatars">
+        <span class="wa">赵</span><span class="wa">钱</span><span class="wa agent">AI</span>
+      </div>
+      <span class="ws-updated">昨天更新</span>
     </div>
   </div>
 
-  <div class="ws-card">
+  <div class="ws-card tier-dept">
     <div class="ws-head">
       <span class="ws-name">数据平台建设</span>
       <span class="ws-tier dept">部门重点</span>
     </div>
     <div class="ws-summary">进度 91%。数据清洗里程碑已达成。开发工程师 Agent 完成 3 个后端接口 PR，等待 Review。预计下周进入测试。</div>
-    <div class="ws-stats">
-      <span>任务 <span class="sv">41/45</span></span>
-      <span>风险 <span class="sv" style="color:var(--green-600)">0</span></span>
-      <span>健康度 <span class="health-bar"><span class="fill good" style="width:92%"></span></span></span>
+    <div class="ws-progress">
+      <div class="ws-ring" style="--pct:91;--ring-color:var(--green-500)"><span class="ws-ring-val">91%</span></div>
+      <div class="ws-prog-meta">
+        <div class="wpm-row">
+          <span>任务 <span class="sv">41/45</span></span>
+          <span>风险 <span class="sv ok">0</span></span>
+        </div>
+        <div class="wpm-phase">🧪 即将进入测试</div>
+      </div>
+    </div>
+    <div class="ws-foot">
+      <div class="ws-avatars">
+        <span class="wa">孙</span><span class="wa">周</span><span class="wa agent">AI</span><span class="wa more">+1</span>
+      </div>
+      <span class="ws-updated">3 小时前更新</span>
     </div>
   </div>
 
-  <div class="ws-card">
+  <div class="ws-card tier-normal">
     <div class="ws-head">
       <span class="ws-name">年度团建活动</span>
       <span class="ws-tier normal">普通</span>
     </div>
     <div class="ws-summary">事务类项目，进度 30%。供应商已确定，活动方案初稿已完成。下一步确认参与人员名单。</div>
-    <div class="ws-stats">
-      <span>任务 <span class="sv">3/10</span></span>
-      <span>风险 <span class="sv" style="color:var(--green-600)">0</span></span>
-      <span>健康度 <span class="health-bar"><span class="fill good" style="width:88%"></span></span></span>
+    <div class="ws-progress">
+      <div class="ws-ring" style="--pct:30;--ring-color:var(--blue-400)"><span class="ws-ring-val">30%</span></div>
+      <div class="ws-prog-meta">
+        <div class="wpm-row">
+          <span>任务 <span class="sv">3/10</span></span>
+          <span>风险 <span class="sv ok">0</span></span>
+        </div>
+        <div class="wpm-phase">📋 筹备中</div>
+      </div>
     </div>
+    <div class="ws-foot">
+      <div class="ws-avatars">
+        <span class="wa">吴</span><span class="wa">郑</span>
+      </div>
+      <span class="ws-updated">2 天前更新</span>
+    </div>
+  </div>
+
+  <div class="ws-card ws-new">
+    <span class="wn-icon">+</span>
+    <span class="wn-text">创建新工作空间</span>
   </div>
 </div>
 </div>

@@ -7,7 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from app.config import settings
 from app.exceptions import AppException, app_exception_handler, global_exception_handler
 from app.middleware import request_logging_middleware
-from app.routers import auth, users, workspaces, tasks, iterations, comments, requirements, documents, workflows, search, dashboard, milestones, departments, attachments, signals, risks, task_progress, project_groups, ai, ldap, meetings
+from app.routers import auth, users, workspaces, tasks, iterations, comments, requirements, documents, workflows, search, dashboard, milestones, departments, attachments, signals, risks, task_progress, project_groups, ai, ldap, meetings, project_reports, group_reports
 
 app = FastAPI(title="AI-PM API", version="0.0.1")
 
@@ -50,6 +50,8 @@ app.include_router(project_groups.router)
 app.include_router(ai.router)
 app.include_router(ldap.router)
 app.include_router(meetings.router)
+app.include_router(project_reports.router)
+app.include_router(group_reports.router)
 
 # Serve uploaded files
 from pathlib import Path

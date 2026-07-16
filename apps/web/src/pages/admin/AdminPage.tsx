@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import api from '../../api/client';
 import SlidePanel from '../../components/common/SlidePanel';
+import { usePermission } from '../../hooks/usePermission';
+import type { UserInfo } from '../../types';
 
 interface User {
   id: string; username: string; display_name: string; email: string;
@@ -17,6 +19,25 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 export default function AdminPage() {
+  const { user } = usePermission();
+
+  // 组件级权限检查：非管理员显示无权限提示
+  if (!user || (user.system_role !== 'SUPER_ADMIN' && user.system_role !== 'ADMIN')) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', textAlign: 'center' }}>
+        <div style={{ fontSize: '3rem', marginBottom: 16 }}>🔒</div>
+        <h2 style={{ margin: '0 0 8px', fontSize: '1.2rem', fontWeight: 600 }}>无权访问</h2>
+        <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', maxWidth: 360 }}>
+          系统管理功能仅对超级管理员和管理员开放。如有需要，请联系系统管理员。
+        </p>
+      </div>
+    );
+  }
+
+  return <AdminPageInner user={user} />;
+}
+
+function AdminPageInner({ user }: { user: UserInfo }) {
   const [activeTab, setActiveTab] = useState('users');
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
@@ -149,8 +170,8 @@ export default function AdminPage() {
     try {
       await api.delete(`/departments/${d.id}`);
       fetchDeptTree();
-    } catch (e: any) {
-      alert(e?.response?.data?.message || '删除失败');
+    } catch {
+      /* 错误已由 API 拦截器统一提示 */
     }
   };
 

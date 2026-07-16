@@ -40,8 +40,12 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
 
   fetchList: async (params = {}) => {
     set({ loading: true });
-    const data = await api.get('/workspaces', { params });
-    set({ workspaces: data.data, total: data.total, loading: false });
+    try {
+      const data = await api.get('/workspaces', { params });
+      set({ workspaces: data.data, total: data.total, loading: false });
+    } catch {
+      set({ loading: false });
+    }
   },
 
   fetchDetail: async (id: string) => {

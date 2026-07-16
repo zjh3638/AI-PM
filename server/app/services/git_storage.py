@@ -13,9 +13,16 @@ import difflib
 from pathlib import Path
 from typing import Optional
 
-from git import Repo, Actor
+from git import Repo, Actor, InvalidGitRepositoryError, NoSuchPathError, GitCommandNotFound
 
 from app.config import settings
+
+_git_available: bool
+try:
+    Repo.init(Path(settings.git_repos_path) / "_test_").close()
+    _git_available = True
+except (GitCommandNotFound, InvalidGitRepositoryError, NoSuchPathError):
+    _git_available = False
 
 
 class GitDocumentStore:
@@ -23,6 +30,7 @@ class GitDocumentStore:
         self.repos_path = Path(repos_path or settings.git_repos_path)
         # Per-workspace serial lock — git index is not safe under concurrent writers.
         self._locks: dict[str, asyncio.Lock] = {}
+        self._repo_cache: dict[str, Repo] = {}
 
     def _repo_path(self, workspace_id: str) -> Path:
         return self.repos_path / workspace_id

@@ -9,10 +9,10 @@
   --bg-hover: #f1f5f9;
 
   /* Text */
-  --text-primary: rgba(0, 0, 0, 0.85);
-  --text-secondary: #475569;
-  --text-muted: #94a3b8;
-  --text-placeholder: #cbd5e1;
+  --text-primary: rgba(0, 0, 0, 0.87);
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-placeholder: #94a3b8;
 
   /* Brand — Tech Blue */
   --blue-50: #eff6ff;

@@ -44,6 +44,27 @@ async def get_meeting(db: AsyncSession, meeting_id: str) -> Optional[Meeting]:
     return result.scalar_one_or_none()
 
 
+async def list_meetings(
+    db: AsyncSession,
+    dimension: Optional[str] = None,
+    dimension_id: Optional[str] = None,
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[Meeting]:
+    """List meetings with optional filters."""
+    query = select(Meeting).options(selectinload(Meeting.host))
+    if dimension:
+        query = query.where(Meeting.dimension == dimension)
+    if dimension_id:
+        query = query.where(Meeting.dimension_id == dimension_id)
+    if status:
+        query = query.where(Meeting.status == status)
+    query = query.order_by(Meeting.created_at.desc()).limit(limit).offset(offset)
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
 async def get_workspace_ids_for_meeting(
     db: AsyncSession, meeting: Meeting,
 ) -> list[str]:

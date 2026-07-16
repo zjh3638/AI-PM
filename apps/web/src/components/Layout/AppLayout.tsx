@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import { LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import DashboardPage from '../../pages/dashboard/DashboardPage';
 import WorkspaceListPage from '../../pages/workspace-list/WorkspaceListPage';
 import WorkspaceDetailPage from '../../pages/workspace-detail/WorkspaceDetailPage';
@@ -8,11 +9,13 @@ import ProjectGroupListPage from '../../pages/project-group-list/ProjectGroupLis
 import PersonalCenterPage from '../../pages/personal/PersonalCenterPage';
 import PlaceholderPage from '../../pages/placeholder/PlaceholderPage';
 import BigScreenPage from '../../pages/bigscreen/BigScreenPage';
+import MeetingListPage from '../../pages/meeting/MeetingListPage';
 import MeetingBoardPage from '../../pages/meeting/MeetingBoardPage';
 import AdminPage from '../../pages/admin/AdminPage';
 import ProjectGroupDetailPage from '../../pages/project-group-detail/ProjectGroupDetailPage';
 import SearchBar from '../search/SearchBar';
-import AiDrawer from './AiDrawer';
+import { Can } from '../Can';
+import AdminRoute from '../AdminRoute';
 
 // Signal data — will be dynamic later
 const SIGNALS = [
@@ -25,13 +28,30 @@ export default function AppLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user, token, logout, fetchUser } = useAuthStore();
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [signals, setSignals] = useState(SIGNALS);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const avatarRef = useRef<HTMLDivElement>(null);
 
   // Restore user on page refresh
   useEffect(() => {
     if (token && !user) fetchUser();
   }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+        setDropdownOpen(false);
+      }
+    };
+    if (dropdownOpen) document.addEventListener('click', handler);
+    return () => document.removeEventListener('click', handler);
+  }, [dropdownOpen]);
+
+  const handleLogout = async () => {
+    setDropdownOpen(false);
+    await logout();
+  };
 
   const dismissSignal = (id: number) => setSignals((s) => s.filter((x) => x.id !== id));
 
@@ -43,25 +63,6 @@ export default function AppLayout() {
     { key: '/meetings', label: '会议' },
     { key: '/personal', label: '个人中心' },
   ];
-
-  // Keyboard shortcuts
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
-        e.preventDefault();
-        setDrawerOpen(true);
-      }
-      if (e.key === 'Escape') {
-        setDrawerOpen(false);
-      }
-    },
-    [],
-  );
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleKeyDown]);
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-root)' }}>
@@ -104,19 +105,37 @@ export default function AppLayout() {
         <span className="spacer" />
         <div className="nav-right">
           <SearchBar />
-          <button className="btn btn-ghost btn-sm" onClick={() => setDrawerOpen(true)} title="AI 对话 (Ctrl+K)">
-            AI
-          </button>
-          <button
-            className="btn btn-ghost btn-sm"
-            onClick={() => navigate('/settings')}
-            title="系统管理"
-          >
-            系统
-          </button>
-          <span className="user-avatar">
-            {(user?.display_name || user?.username || '用')[0]}
-          </span>
+          <Can systemRole={['SUPER_ADMIN', 'ADMIN']}>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => navigate('/settings')}
+              title="系统管理"
+            >
+              系统
+            </button>
+          </Can>
+          <div className="nav-avatar-wrap" ref={avatarRef}>
+            <span
+              className="user-avatar"
+              onClick={() => setDropdownOpen((v) => !v)}
+              title={user?.display_name || user?.username || '用户'}
+            >
+              {(user?.display_name || user?.username || '用')[0]}
+            </span>
+            {dropdownOpen && (
+              <div className="user-dropdown">
+                <button
+                  className="user-dropdown-item"
+                  onClick={() => { setDropdownOpen(false); navigate('/personal'); }}
+                >
+                  <UserOutlined /> 个人中心
+                </button>
+                <button className="user-dropdown-item" onClick={handleLogout}>
+                  <LogoutOutlined /> 退出登录
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
@@ -129,15 +148,13 @@ export default function AppLayout() {
           <Route path="/workspaces/:id/*" element={<WorkspaceDetailPage />} />
           <Route path="/project-groups/:id" element={<ProjectGroupDetailPage />} />
           <Route path="/bigscreen" element={<BigScreenPage />} />
+          <Route path="/meetings" element={<MeetingListPage />} />
           <Route path="/meetings/:id" element={<MeetingBoardPage />} />
           <Route path="/personal" element={<PersonalCenterPage />} />
-          <Route path="/settings" element={<AdminPage />} />
+          <Route path="/settings" element={<AdminRoute><AdminPage /></AdminRoute>} />
           <Route path="/" element={<DashboardPage />} />
         </Routes>
       </div>
-
-      {/* AI Drawer */}
-      <AiDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   );
 }

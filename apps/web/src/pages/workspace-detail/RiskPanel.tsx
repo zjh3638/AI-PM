@@ -81,11 +81,7 @@ export default function RiskPanel() {
       fetchMembers(wsId);
       fetchMilestones(wsId);
     }
-  }, [wsId]);
-
-  useEffect(() => {
-    if (wsId) fetchList(wsId);
-  }, [filter]);
+  }, [wsId, filter]);
 
   const openCreate = () => {
     setEditingRisk(null);

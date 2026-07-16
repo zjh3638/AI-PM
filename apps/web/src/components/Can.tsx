@@ -9,7 +9,12 @@ interface CanProps {
 }
 
 export function Can({ systemRole, children, fallback = null }: CanProps) {
-  const { user } = usePermission();
+  const { user, loading } = usePermission();
+
+  // While user data is loading, hide privileged content instead of leaking it
+  if (loading) {
+    return <>{fallback}</>;
+  }
 
   if (systemRole && user && !systemRole.includes(user.system_role as SystemRole)) {
     return <>{fallback}</>;

@@ -76,6 +76,13 @@ export interface CompletedTask {
 }
 
 export const meetingApi = {
+  list: (params?: {
+    dimension?: string;
+    dimension_id?: string;
+    status?: string;
+  }): Promise<Meeting[]> =>
+    api.get('/meetings', { params }).then(r => r.data),
+
   create: (data: {
     title: string;
     dimension: string;

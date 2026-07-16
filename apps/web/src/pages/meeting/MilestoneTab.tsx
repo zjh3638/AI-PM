@@ -33,7 +33,7 @@ export default function MilestoneTab({ data }: { data: BoardData }) {
             {/* Header — click to toggle */}
             <div className="ms-header" onClick={() => toggle(m.id)} style={{ cursor: 'pointer' }}>
               <span className="ms-icon">{m.overdue ? '🔴' : '📌'}</span>
-              <span className="ms-name">{m.name}</span>
+              <span className="ms-name" title={m.name}>{m.name}</span>
               <span className={`ms-ms-tag ${m.phase === 'ACTIVE' ? 'active' : m.phase === 'DONE' ? 'done' : ''}`}>{phaseLabel(m.phase)}</span>
               <span className="ms-ts">{m.done_tasks}/{m.total_tasks}</span>
               <div className="ms-pct" style={{ color: pctColor }}>{Math.round(m.pct)}%</div>

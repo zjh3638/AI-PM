@@ -28,6 +28,7 @@ function groupByDate(items: any[], dateKey: string): { label: string; items: any
 
 export default function PersonalCenterPage() {
   const user = useAuthStore((s) => s.user);
+  const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('todos');
   const [myTasks, setMyTasks] = useState<any[]>([]);
@@ -144,6 +145,7 @@ export default function PersonalCenterPage() {
         </div>
         <div className="personal-actions">
           <button className="btn btn-ghost btn-sm">编辑资料</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => logout()}>退出登录</button>
         </div>
       </div>
 

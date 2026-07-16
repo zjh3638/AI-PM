@@ -16,7 +16,8 @@ STATUS_TRANSITIONS = {
         "IN_PROGRESS": {"assignee", "manager"},     # assignee starts work, or manager assigns
     },
     "IN_PROGRESS": {
-        "IN_REVIEW": {"assignee", "manager"},        # assignee submits for review
+        "IN_REVIEW": {"assignee", "manager"},        # assignee submits for review (full mode)
+        "DONE": {"assignee", "manager"},              # direct completion (simple mode, skip review)
     },
     "IN_REVIEW": {
         "DONE": {"reviewer", "manager"},             # reviewer approves

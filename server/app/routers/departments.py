@@ -16,9 +16,9 @@ router = APIRouter(prefix="/api/departments", tags=["departments"])
 @router.get("/tree", response_model=APIResponse)
 async def get_department_tree(
     db: AsyncSession = Depends(get_db),
-    pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
 ):
-    await pc.require_system_role("SUPER_ADMIN", "ADMIN")
+    # 只读参考数据：所有登录用户可访问（工作空间筛选/成员指派需要）
     tree = await dept_service.get_tree(db)
     return {"code": 0, "message": "ok", "data": tree}
 
@@ -26,8 +26,9 @@ async def get_department_tree(
 @router.get("", response_model=APIResponse)
 async def list_departments(
     db: AsyncSession = Depends(get_db),
-    pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
 ):
+    # 只读参考数据：所有登录用户可访问
     from sqlalchemy import select
     from app.models.department import Department
     result = await db.execute(select(Department).order_by(Department.sort_order))

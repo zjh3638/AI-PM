@@ -33,6 +33,7 @@ const PROJECT_TABS: TabConfig[] = [
   { key: 'iterations', label: '迭代' },
   { key: 'members', label: '成员' },
   { key: 'risks', label: '风险管理' },
+  { key: 'weekly-report', label: '周报' },
   { key: 'reports', label: '报表' },
 ];
 
@@ -41,6 +42,7 @@ const TOPIC_TABS: TabConfig[] = [
   { key: 'kb', label: '知识库' },
   { key: 'members', label: '成员' },
   { key: 'risks', label: '风险管理' },
+  { key: 'weekly-report', label: '周报' },
 ];
 
 const PROJECT_VIEWS: ViewConfig[] = [

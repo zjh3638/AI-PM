@@ -9,6 +9,7 @@ import { useIterationStore } from '../../stores/iterationStore';
 import { useMilestoneStore } from '../../stores/milestoneStore';
 import SlidePanel from '../../components/common/SlidePanel';
 import api from '../../api/client';
+import { showWarning } from '../../utils/feedback';
 
 import TrackSidebar from './sidebar/TrackSidebar';
 import { useWorkspaceMode } from './hooks/useWorkspaceMode';
@@ -25,7 +26,9 @@ import MembersPanel from './panels/MembersPanel';
 import EpicsPanel from './panels/EpicsPanel';
 import IterationsPanel from './panels/IterationsPanel';
 import ReportsPanel from './panels/ReportsPanel';
+import WeeklyReportPanel from './panels/WeeklyReportPanel';
 import RiskPanel from './RiskPanel';
+import AiChatPanel from './panels/AiChatPanel';
 import MilestoneEditSlidePanel, { type MilestoneEditForm } from './panels/MilestoneEditSlidePanel';
 import WorkspaceEditSlidePanel, { type WorkspaceEditForm } from './panels/WorkspaceEditSlidePanel';
 import { getFileIcon } from './helpers';
@@ -170,7 +173,7 @@ export default function WorkspaceDetailPage() {
         const file = items[i].getAsFile();
         if (!file) continue;
         if (file.size > 10 * 1024 * 1024) {
-          alert('图片过大（>10MB），请手动压缩后上传');
+          showWarning('图片过大（>10MB），请手动压缩后上传');
           continue;
         }
         const textarea = e.currentTarget;
@@ -288,7 +291,7 @@ export default function WorkspaceDetailPage() {
       form.append('file', file);
       await api.post(`/workspaces/${id}/tasks/${taskId}/attachments`, form);
       await fetchAttachments(taskId);
-    } catch { alert('上传附件失败'); }
+    } catch { /* 错误已由 API 拦截器统一提示 */ }
     setUploading(false);
   };
 
@@ -322,10 +325,15 @@ export default function WorkspaceDetailPage() {
     if (!id || !taskForm.title.trim()) return;
     setTaskSubmitting(true);
     try {
+      const payload: Record<string, any> = { ...taskForm };
+      for (const key of ['milestone_id', 'iteration_id', 'epic_id', 'parent_id', 'assignee_id', 'reviewer_id', 'proposer_id', 'analyst_id', 'qa_owner_id', 'acceptance_owner_id', 'verifier_id']) {
+        if (payload[key] === '' || payload[key] === 'null') delete payload[key];
+      }
+      if (payload.reviewer_ids === null || payload.reviewer_ids === 'null' || (Array.isArray(payload.reviewer_ids) && payload.reviewer_ids.length === 0)) delete payload.reviewer_ids;
       if (editingTask) {
-        await update(id, editingTask.id, taskForm as any);
+        await update(id, editingTask.id, payload as any);
       } else {
-        await create(id, taskForm as any);
+        await create(id, payload as any);
       }
       setTaskPanelOpen(false);
     } finally {
@@ -346,8 +354,12 @@ export default function WorkspaceDetailPage() {
 
   useEffect(() => { if (id) fetchDetail(id); }, [id]);
 
-  if (loading || !current) {
+  if (loading) {
     return <div style={{ textAlign: 'center', padding: 100, color: 'var(--text-muted)' }}>加载中...</div>;
+  }
+
+  if (!current) {
+    return <div style={{ textAlign: 'center', padding: 100, color: 'var(--text-muted)' }}>工作空间不存在或已被删除</div>;
   }
 
   const tabs = mode.tabs;
@@ -392,11 +404,13 @@ export default function WorkspaceDetailPage() {
       {/* Focus Strip — dynamic workspace signals */}
       <FocusStrip />
 
-      {/* KPI Row — full and simple modes only */}
-      {<KpiRow />}
-
-      {/* 3-Column Layout */}
+      {/* 3-Column Layout — KPI cards + sidebar/main on left, AI chat fills full height on right */}
       <div className="pulse-layout">
+        {/* KPI Row — spans sidebar + main columns, aligned with tab content */}
+        <div className="pulse-kpi-area">
+          <KpiRow />
+        </div>
+
         <TrackSidebar mode={mode} onEditMilestone={openMilestoneEdit} />
 
         {/* Main Content */}
@@ -475,6 +489,12 @@ export default function WorkspaceDetailPage() {
               </div>
             )}
 
+            {activeTab === 'weekly-report' && (
+              <div className="ws-panel active">
+                <WeeklyReportPanel />
+              </div>
+            )}
+
             {activeTab === 'reports' && (
               <div className="ws-panel active">
                 <ReportsPanel />
@@ -483,6 +503,8 @@ export default function WorkspaceDetailPage() {
           </div>
         </div>
 
+        {/* AI Chat — docked right panel */}
+        <AiChatPanel />
       </div>
 
       {/* Task Create/Edit Panel */}
@@ -659,7 +681,7 @@ export default function WorkspaceDetailPage() {
                             try {
                               await api.delete(`/workspaces/${id}/tasks/${editingTask!.id}/attachments/${att.id}`);
                               fetchAttachments(editingTask!.id);
-                            } catch { alert('删除附件失败'); }
+                            } catch { /* 错误已由 API 拦截器统一提示 */ }
                           }}
                         >删除</button>
                       </div>

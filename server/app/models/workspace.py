@@ -26,6 +26,7 @@ class Workspace(Base, UUIDMixin, TimestampMixin):
     template_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
     strict_gate: Mapped[bool] = mapped_column(Boolean, default=True)
     git_repo_path: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    wecom_chat_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # 企业微信群聊ID
 
     members: Mapped[list["WorkspaceMember"]] = relationship("WorkspaceMember", back_populates="workspace")
     owner: Mapped[Optional["User"]] = relationship("User", foreign_keys=[owner_id])

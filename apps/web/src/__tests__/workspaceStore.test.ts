@@ -37,7 +37,7 @@ describe('workspaceStore', () => {
   describe('fetchList', () => {
     it('sets workspaces from API', async () => {
       const mockWs = [{ id: '1', name: 'WS1', key: 'WS1' }];
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockWs, total: 1 });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockWs, total: 1 });
 
       await useWorkspaceStore.getState().fetchList({ keyword: 'test' });
 
@@ -51,7 +51,7 @@ describe('workspaceStore', () => {
   describe('fetchDetail', () => {
     it('sets current workspace', async () => {
       const mockWs = { id: '1', name: 'MyWS', key: 'MY-WS' };
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockWs });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockWs });
 
       await useWorkspaceStore.getState().fetchDetail('1');
 
@@ -63,7 +63,7 @@ describe('workspaceStore', () => {
   describe('fetchMembers', () => {
     it('sets members from API', async () => {
       const mockMembers = [{ id: 'm1', user_id: 'u1', role: 'MEMBER' }];
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockMembers });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockMembers });
 
       await useWorkspaceStore.getState().fetchMembers('ws1');
 
@@ -75,7 +75,7 @@ describe('workspaceStore', () => {
   describe('create', () => {
     it('calls API and returns created workspace', async () => {
       const newWs = { id: '2', name: 'NewWS', key: 'NEW' };
-      vi.mocked(api.post).mockResolvedValueOnce({ data: newWs });
+      vi.mocked(api.post).mockResolvedValueOnce({ code: 0, message: 'ok', data: newWs });
 
       const result = await useWorkspaceStore.getState().create({
         name: 'NewWS',
@@ -89,9 +89,9 @@ describe('workspaceStore', () => {
 
   describe('update', () => {
     it('calls API and refetches detail', async () => {
-      vi.mocked(api.patch).mockResolvedValueOnce({});
+      vi.mocked(api.patch).mockResolvedValueOnce({ code: 0, message: 'ok', data: null });
       const mockWs = { id: '1', name: 'Updated' };
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockWs });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockWs });
 
       await useWorkspaceStore.getState().update('1', { name: 'Updated' });
 
@@ -102,8 +102,8 @@ describe('workspaceStore', () => {
 
   describe('archive', () => {
     it('calls API and refetches list', async () => {
-      vi.mocked(api.post).mockResolvedValueOnce({});
-      vi.mocked(api.get).mockResolvedValueOnce({ data: [], total: 0 });
+      vi.mocked(api.post).mockResolvedValueOnce({ code: 0, message: 'ok', data: null });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: [], total: 0 });
 
       await useWorkspaceStore.getState().archive('1');
 
@@ -114,9 +114,9 @@ describe('workspaceStore', () => {
 
   describe('addMember', () => {
     it('calls API and refetches members', async () => {
-      vi.mocked(api.post).mockResolvedValueOnce({});
+      vi.mocked(api.post).mockResolvedValueOnce({ code: 0, message: 'ok', data: null });
       const mockMembers = [{ id: 'm1', role: 'MEMBER' }];
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockMembers });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockMembers });
 
       await useWorkspaceStore.getState().addMember('ws1', 'u1', 'MEMBER');
 
@@ -129,8 +129,8 @@ describe('workspaceStore', () => {
 
   describe('updateMember', () => {
     it('calls API and refetches members', async () => {
-      vi.mocked(api.patch).mockResolvedValueOnce({});
-      vi.mocked(api.get).mockResolvedValueOnce({ data: [] });
+      vi.mocked(api.patch).mockResolvedValueOnce({ code: 0, message: 'ok', data: null });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: [] });
 
       await useWorkspaceStore.getState().updateMember('ws1', 'm1', 'MANAGER');
 
@@ -140,8 +140,8 @@ describe('workspaceStore', () => {
 
   describe('removeMember', () => {
     it('calls API and refetches members', async () => {
-      vi.mocked(api.delete).mockResolvedValueOnce({});
-      vi.mocked(api.get).mockResolvedValueOnce({ data: [] });
+      vi.mocked(api.delete).mockResolvedValueOnce({ code: 0, message: 'ok', data: null });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: [] });
 
       await useWorkspaceStore.getState().removeMember('ws1', 'm1');
 

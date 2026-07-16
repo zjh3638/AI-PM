@@ -12,6 +12,23 @@ from app.exceptions import AppException
 router = APIRouter(prefix="/api/meetings", tags=["meetings"])
 
 
+@router.get("", response_model=APIResponse)
+async def list_meetings(
+    dimension: str = Query(default=""),
+    dimension_id: str = Query(default=""),
+    status: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    meetings = await meeting_service.list_meetings(
+        db,
+        dimension=dimension or None,
+        dimension_id=dimension_id or None,
+        status=status or None,
+    )
+    return {"code": 0, "message": "ok", "data": [_meeting_to_dict(m) for m in meetings]}
+
+
 @router.post("", response_model=APIResponse)
 async def create_meeting(
     req: MeetingCreate,
@@ -98,6 +115,6 @@ def _meeting_to_dict(m):
         "summary": m.summary,
         "notes": m.notes,
         "host_id": m.host_id,
-        "created_at": m.created_at.isoformat(),
+        "created_at": m.created_at.isoformat() if m.created_at else "",
         "updated_at": m.updated_at.isoformat() if m.updated_at else None,
     }

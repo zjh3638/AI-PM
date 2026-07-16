@@ -10,7 +10,7 @@ from typing import Any, Optional
 
 import httpx
 from cryptography.fernet import Fernet
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update as sa_update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -283,6 +283,116 @@ TOOLS: list[dict] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_milestone",
+            "description": "在当前工作空间创建一个里程碑（阶段性交付目标）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "description": "工作空间ID"},
+                    "name": {"type": "string", "description": "里程碑名称"},
+                    "description": {"type": "string", "description": "描述（可选）"},
+                    "start_date": {"type": "string", "description": "开始日期 YYYY-MM-DD（可选）"},
+                    "end_date": {"type": "string", "description": "结束日期 YYYY-MM-DD（可选）"},
+                    "phase": {"type": "string",
+                              "description": "阶段（可选），如 PLANNING/DESIGN/DEVELOPMENT/TESTING/RELEASE"},
+                    "owner_id": {"type": "string", "description": "负责人用户ID（可选）"},
+                },
+                "required": ["workspace_id", "name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_milestone",
+            "description": "更新一个已存在的里程碑（名称/描述/日期/阶段/状态）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "description": "工作空间ID"},
+                    "milestone_id": {"type": "string", "description": "里程碑ID"},
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "phase": {"type": "string"},
+                    "status": {"type": "string",
+                               "description": "UPCOMING/IN_PROGRESS/COMPLETED 等"},
+                    "owner_id": {"type": "string"},
+                },
+                "required": ["workspace_id", "milestone_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_iteration",
+            "description": "在当前工作空间创建一个迭代（Sprint）。开始与结束日期必填。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "description": "工作空间ID"},
+                    "name": {"type": "string", "description": "迭代名称"},
+                    "goal": {"type": "string", "description": "迭代目标（可选）"},
+                    "start_date": {"type": "string", "description": "开始日期 YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "结束日期 YYYY-MM-DD"},
+                },
+                "required": ["workspace_id", "name", "start_date", "end_date"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_iteration",
+            "description": "更新一个已存在的迭代（名称/目标/日期/状态）。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "description": "工作空间ID"},
+                    "iteration_id": {"type": "string", "description": "迭代ID"},
+                    "name": {"type": "string"},
+                    "goal": {"type": "string"},
+                    "start_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "end_date": {"type": "string", "description": "YYYY-MM-DD"},
+                    "status": {"type": "string",
+                               "description": "PLANNING/ACTIVE/COMPLETED 等"},
+                },
+                "required": ["workspace_id", "iteration_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "batch_update_tasks",
+            "description": (
+                "批量更新多个任务的同一批字段（如统一改状态、指派同一负责人、"
+                "归入同一迭代/里程碑）。一次最多 20 个任务。"
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "workspace_id": {"type": "string", "description": "工作空间ID"},
+                    "task_ids": {"type": "array", "items": {"type": "string"},
+                                 "description": "要更新的任务ID列表（1-20 个）"},
+                    "status": {"type": "string",
+                               "description": "统一设置的状态（可选）"},
+                    "priority": {"type": "string",
+                                 "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"],
+                                 "description": "统一设置的优先级（可选）"},
+                    "assignee_id": {"type": "string", "description": "统一指派的负责人ID（可选）"},
+                    "iteration_id": {"type": "string", "description": "统一归入的迭代ID（可选）"},
+                    "milestone_id": {"type": "string", "description": "统一归入的里程碑ID（可选）"},
+                },
+                "required": ["workspace_id", "task_ids"],
+            },
+        },
+    },
 ]
 
 
@@ -409,7 +519,10 @@ async def _exec_get_my_tasks(db: AsyncSession, user_id: str, status_filter: str 
     query = select(Task).where(Task.assignee_id == user_id)
     if status_filter and status_filter != "ALL":
         query = query.where(Task.status == status_filter)
-    query = query.where(Task.status != "DONE").limit(20)
+    else:
+        # Only exclude DONE when no specific status filter is given
+        query = query.where(Task.status != "DONE")
+    query = query.limit(20)
     result = await db.execute(query)
     tasks = result.scalars().all()
     return {
@@ -508,6 +621,119 @@ async def _exec_generate_report(db: AsyncSession, workspace_id: str,
     }
 
 
+def _parse_date(value):
+    """将 YYYY-MM-DD 字符串解析为 date；失败或空返回 None。"""
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except (ValueError, TypeError):
+        return None
+
+
+async def _exec_create_milestone(db: AsyncSession, workspace_id: str, name: str,
+                                 **kwargs) -> dict:
+    ms = Milestone(workspace_id=workspace_id, name=name)
+    for field in ("description", "phase", "owner_id"):
+        if kwargs.get(field) is not None:
+            setattr(ms, field, kwargs[field])
+    for field in ("start_date", "end_date"):
+        d = _parse_date(kwargs.get(field))
+        if d is not None:
+            setattr(ms, field, d)
+    db.add(ms)
+    await db.commit()
+    await db.refresh(ms)
+    return {"id": ms.id, "name": ms.name, "phase": ms.phase, "status": ms.status,
+            "start_date": str(ms.start_date) if ms.start_date else None,
+            "end_date": str(ms.end_date) if ms.end_date else None}
+
+
+async def _exec_update_milestone(db: AsyncSession, workspace_id: str,
+                                 milestone_id: str, **kwargs) -> dict:
+    result = await db.execute(select(Milestone).where(
+        Milestone.id == milestone_id, Milestone.workspace_id == workspace_id
+    ))
+    ms = result.scalar_one_or_none()
+    if not ms:
+        return {"error": f"里程碑 {milestone_id} 不存在"}
+    updated = []
+    for field in ("name", "description", "phase", "status", "owner_id"):
+        if kwargs.get(field) is not None:
+            setattr(ms, field, kwargs[field])
+            updated.append(field)
+    for field in ("start_date", "end_date"):
+        if kwargs.get(field) is not None:
+            d = _parse_date(kwargs.get(field))
+            if d is not None:
+                setattr(ms, field, d)
+                updated.append(field)
+    await db.commit()
+    await db.refresh(ms)
+    return {"id": ms.id, "name": ms.name, "updated_fields": updated}
+
+
+async def _exec_create_iteration(db: AsyncSession, workspace_id: str, name: str,
+                                 start_date: str, end_date: str, **kwargs) -> dict:
+    sd, ed = _parse_date(start_date), _parse_date(end_date)
+    if sd is None or ed is None:
+        return {"error": "迭代的开始与结束日期必填，且需为 YYYY-MM-DD 格式"}
+    it = Iteration(workspace_id=workspace_id, name=name, start_date=sd, end_date=ed)
+    if kwargs.get("goal") is not None:
+        it.goal = kwargs["goal"]
+    db.add(it)
+    await db.commit()
+    await db.refresh(it)
+    return {"id": it.id, "name": it.name, "status": it.status,
+            "start_date": str(it.start_date), "end_date": str(it.end_date)}
+
+
+async def _exec_update_iteration(db: AsyncSession, workspace_id: str,
+                                 iteration_id: str, **kwargs) -> dict:
+    result = await db.execute(select(Iteration).where(
+        Iteration.id == iteration_id, Iteration.workspace_id == workspace_id
+    ))
+    it = result.scalar_one_or_none()
+    if not it:
+        return {"error": f"迭代 {iteration_id} 不存在"}
+    updated = []
+    for field in ("name", "goal", "status"):
+        if kwargs.get(field) is not None:
+            setattr(it, field, kwargs[field])
+            updated.append(field)
+    for field in ("start_date", "end_date"):
+        if kwargs.get(field) is not None:
+            d = _parse_date(kwargs.get(field))
+            if d is not None:
+                setattr(it, field, d)
+                updated.append(field)
+    await db.commit()
+    await db.refresh(it)
+    return {"id": it.id, "name": it.name, "updated_fields": updated}
+
+
+async def _exec_batch_update_tasks(db: AsyncSession, workspace_id: str,
+                                   task_ids: list, **kwargs) -> dict:
+    if not task_ids:
+        return {"error": "task_ids 不能为空"}
+    if len(task_ids) > 20:
+        return {"error": "一次最多批量更新 20 个任务"}
+    values = {}
+    for field in ("status", "priority", "assignee_id", "iteration_id", "milestone_id"):
+        if kwargs.get(field) is not None:
+            values[field] = kwargs[field]
+    if not values:
+        return {"error": "未提供任何要更新的字段"}
+    # workspace_id 限定 + id 白名单：跨空间 ID 自动匹配 0 行，安全
+    result = await db.execute(
+        sa_update(Task)
+        .where(Task.workspace_id == workspace_id, Task.id.in_(task_ids))
+        .values(**values)
+    )
+    await db.commit()
+    return {"updated_count": result.rowcount, "updated_fields": list(values.keys())}
+
+
 TOOL_EXECUTORS = {
     "get_workspace_context": _exec_get_workspace_context,
     "create_task": _exec_create_task,
@@ -515,6 +741,11 @@ TOOL_EXECUTORS = {
     "search_tasks": _exec_search_tasks,
     "get_my_tasks": _exec_get_my_tasks,
     "generate_report": _exec_generate_report,
+    "create_milestone": _exec_create_milestone,
+    "update_milestone": _exec_update_milestone,
+    "create_iteration": _exec_create_iteration,
+    "update_iteration": _exec_update_iteration,
+    "batch_update_tasks": _exec_batch_update_tasks,
 }
 
 # PM-extension tools live in a separate module to keep this file focused.
@@ -539,6 +770,30 @@ def get_gateway_url() -> str:
         except (json.JSONDecodeError, OSError):
             pass
     return settings.llm_gateway_url
+
+
+# 默认视觉模型标签白名单；可在 settings.json 的 vision_model_tags 覆盖
+_DEFAULT_VISION_TAGS = ["-4o", "vision", "-vl", "vl-", "claude-3", "claude-4",
+                        "gemini-1.5", "gemini-2", "qwen-vl", "gpt-4-turbo"]
+
+
+def supports_vision(model: str) -> bool:
+    """启发式判断模型是否支持图片输入（视觉）。标签白名单可经 settings.json 配置。"""
+    if not model:
+        return False
+    from pathlib import Path
+    import json
+    tags = _DEFAULT_VISION_TAGS
+    settings_file = Path(__file__).parent.parent.parent / "settings.json"
+    if settings_file.exists():
+        try:
+            data = json.loads(settings_file.read_text())
+            if isinstance(data.get("vision_model_tags"), list) and data["vision_model_tags"]:
+                tags = data["vision_model_tags"]
+        except (json.JSONDecodeError, OSError):
+            pass
+    m = model.lower()
+    return any(tag.lower() in m for tag in tags)
 
 
 # ── Main Chat Function ──────────────────────────────────────────────

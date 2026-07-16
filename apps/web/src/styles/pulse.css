@@ -129,14 +129,29 @@
 
 .focus-strip .fs-btn.primary:hover { background: var(--blue-700); }
 
-/* Main 2-col + chat layout */
+/* Main 2-col + chat layout.
+   KPI cards span the sidebar+main columns (top row); the AI chat panel
+   spans both rows on the right so it starts at the KPI cards' top edge
+   and fills the full body height. */
 .pulse-layout {
   display: grid;
   grid-template-columns: 360px 1fr auto;
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    "kpi     kpi     chat"
+    "sidebar main    chat";
   gap: 14px;
   min-height: 0;
   align-items: start;
 }
+
+.pulse-kpi-area { grid-area: kpi; }
+.pulse-layout > .pulse-sidebar { grid-area: sidebar; }
+.pulse-layout > .pulse-main { grid-area: main; }
+.pulse-layout > .ai-panel { grid-area: chat; }
+
+/* KPI cards already carry a bottom margin; remove it inside the grid cell */
+.pulse-kpi-area .ws-kpi-row { margin-bottom: 0; }
 
 /* ═══ SIDEBAR ═══ */
 .pulse-sidebar {
@@ -197,13 +212,23 @@
   align-items: center;
 }
 
-.sidebar-ms .sms-name { font-size: 0.78rem; font-weight: 500; }
+.sidebar-ms .sms-name {
+  font-size: 0.78rem;
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .sidebar-ms .sms-badge {
   font-size: 0.6rem;
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 5px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .sms-badge.done { background: var(--green-50); color: var(--green-600); }
@@ -851,7 +876,6 @@
   background: var(--blue-500);
 }
 /* ═══ INLINE CHAT PANEL ═══ (removed — use global AiDrawer) */
-  width: 36px;
 
 /* AI Drawer — tool trace cards */
 .tool-traces { margin: 6px 0; display: flex; flex-direction: column; gap: 4px; }
@@ -902,10 +926,23 @@
   border-radius: 3px; font-size: 0.92em;
 }
 .msg-md pre {
-  background: rgba(0,0,0,0.35); padding: 8px 10px; border-radius: 6px;
-  overflow-x: auto; margin: 0.5em 0; font-size: 0.88em; line-height: 1.5;
+  background: #f6f8fa; padding: 10px 12px; border-radius: 6px;
+  border: 1px solid var(--border-light, #eaeef2);
+  overflow-x: auto; margin: 0; font-size: 0.86em; line-height: 1.5;
 }
 .msg-md pre code { background: transparent; padding: 0; }
+
+/* 代码块容器 + 悬浮复制按钮 */
+.code-block-wrapper { position: relative; margin: 0.5em 0; }
+.code-block-wrapper .code-copy-btn {
+  position: absolute; top: 6px; right: 6px;
+  padding: 2px 8px; font-size: 0.68em; border-radius: 4px;
+  background: rgba(255,255,255,0.85); color: #57606a;
+  border: 1px solid var(--border-light, #eaeef2);
+  opacity: 0; transition: opacity var(--fast);
+}
+.code-block-wrapper:hover .code-copy-btn { opacity: 1; }
+.code-block-wrapper .code-copy-btn:hover { background: #fff; color: #24292f; }
 .msg-md blockquote {
   border-left: 3px solid var(--border, #2a2f3a); margin: 0.5em 0;
   padding: 0.1em 0.8em; color: #b8bcc4;

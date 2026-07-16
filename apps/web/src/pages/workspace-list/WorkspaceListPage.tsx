@@ -231,7 +231,7 @@ export default function WorkspaceListPage() {
           </Form.Item>
           <Row gutter={16}>
             <Col span={12}>
-              <Form.Item name="type" label="类型" initialValue="PROJECT">
+              <Form.Item name="type" label="类型" initialValue="TOPIC">
                 <Select
                   options={[
                     { label: '研发项目', value: 'PROJECT' },

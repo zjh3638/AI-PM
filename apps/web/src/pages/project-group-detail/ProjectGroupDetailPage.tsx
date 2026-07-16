@@ -9,13 +9,14 @@ import TasksTab from './tabs/TasksTab';
 import MilestonesTab from './tabs/MilestonesTab';
 import MembersTab from './tabs/MembersTab';
 import ActivityTab from './tabs/ActivityTab';
+import ReportsTab from './tabs/ReportsTab';
 import SettingsTab from './tabs/SettingsTab';
 
-type TabKey = 'overview' | 'tasks' | 'milestones' | 'members' | 'activity' | 'settings';
+type TabKey = 'overview' | 'tasks' | 'milestones' | 'members' | 'activity' | 'reports' | 'settings';
 
 const TAB_LABELS: Record<TabKey, string> = {
   overview: '概览', tasks: '任务', milestones: '里程碑',
-  members: '成员', activity: '动态', settings: '设置',
+  members: '成员', activity: '动态', reports: '周报', settings: '设置',
 };
 
 export default function ProjectGroupDetailPage() {
@@ -120,6 +121,7 @@ export default function ProjectGroupDetailPage() {
       {tab === 'milestones' && <MilestonesTab milestones={milestones} />}
       {tab === 'members' && <MembersTab members={members} />}
       {tab === 'activity' && <ActivityTab activity={activity} />}
+      {tab === 'reports' && <ReportsTab groupId={current.id} canManage={!!canManage} />}
       {tab === 'settings' && (
         <SettingsTab
           group={current}

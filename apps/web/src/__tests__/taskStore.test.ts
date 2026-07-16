@@ -42,7 +42,7 @@ describe('taskStore', () => {
   describe('fetchList', () => {
     it('sets tasks from API', async () => {
       const mockTasks = [{ id: '1', title: 'Task 1' }];
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockTasks, total: 1 });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockTasks, total: 1 });
 
       await useTaskStore.getState().fetchList('ws1', { status: 'TODO' });
 
@@ -56,7 +56,7 @@ describe('taskStore', () => {
   describe('fetchDetail', () => {
     it('sets current task', async () => {
       const mockTask = { id: '1', title: 'My Task' };
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockTask });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockTask });
 
       await useTaskStore.getState().fetchDetail('ws1', '1');
 
@@ -68,7 +68,7 @@ describe('taskStore', () => {
   describe('fetchChildren', () => {
     it('sets children from API', async () => {
       const mockChildren = [{ id: '2', title: 'Subtask 1' }];
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockChildren });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockChildren });
 
       await useTaskStore.getState().fetchChildren('ws1', '1');
 
@@ -80,7 +80,7 @@ describe('taskStore', () => {
   describe('fetchEpics', () => {
     it('sets epics from API', async () => {
       const mockEpics = [{ id: '1', title: 'Epic 1', total_stories: 3, done_stories: 1 }];
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockEpics });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockEpics });
 
       await useTaskStore.getState().fetchEpics('ws1');
 
@@ -96,7 +96,7 @@ describe('taskStore', () => {
         IN_PROGRESS: [],
         DONE: [],
       };
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockKanban });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockKanban });
 
       await useTaskStore.getState().fetchKanban('ws1');
 
@@ -108,10 +108,10 @@ describe('taskStore', () => {
   describe('create', () => {
     it('calls API and returns created task', async () => {
       const newTask = { id: '2', title: 'New Task' };
-      vi.mocked(api.post).mockResolvedValueOnce({ data: newTask });
+      vi.mocked(api.post).mockResolvedValueOnce({ code: 0, message: 'ok', data: newTask });
       // create() now calls fetchKanban + fetchList after create
-      vi.mocked(api.get).mockResolvedValueOnce({ data: {} }); // kanban
-      vi.mocked(api.get).mockResolvedValueOnce({ data: [], total: 0 }); // list
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: {} }); // kanban
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: [], total: 0 }); // list
 
       const result = await useTaskStore.getState().create('ws1', { title: 'New Task', priority: 'HIGH' });
 
@@ -124,10 +124,10 @@ describe('taskStore', () => {
 
   describe('update', () => {
     it('calls API and refetches data', async () => {
-      vi.mocked(api.patch).mockResolvedValueOnce({});
+      vi.mocked(api.patch).mockResolvedValueOnce({ code: 0, message: 'ok', data: null });
       // update() now calls fetchKanban + fetchList after patch
-      vi.mocked(api.get).mockResolvedValueOnce({ data: {} }); // kanban
-      vi.mocked(api.get).mockResolvedValueOnce({ data: [], total: 0 }); // list
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: {} }); // kanban
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: [], total: 0 }); // list
 
       await useTaskStore.getState().update('ws1', '1', { title: 'Updated Task' });
 
@@ -138,10 +138,10 @@ describe('taskStore', () => {
 
   describe('remove', () => {
     it('calls API and refetches data', async () => {
-      vi.mocked(api.delete).mockResolvedValueOnce({});
+      vi.mocked(api.delete).mockResolvedValueOnce({ code: 0, message: 'ok', data: null });
       // remove() now calls fetchKanban + fetchList after delete
-      vi.mocked(api.get).mockResolvedValueOnce({ data: {} }); // kanban
-      vi.mocked(api.get).mockResolvedValueOnce({ data: [], total: 0 }); // list
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: {} }); // kanban
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: [], total: 0 }); // list
 
       await useTaskStore.getState().remove('ws1', '1');
 
@@ -152,10 +152,10 @@ describe('taskStore', () => {
 
   describe('moveTask', () => {
     it('calls API and refetches kanban', async () => {
-      vi.mocked(api.patch).mockResolvedValueOnce({});
+      vi.mocked(api.patch).mockResolvedValueOnce({ code: 0, message: 'ok', data: null });
       const mockKanban = { TODO: [], IN_PROGRESS: [{ id: '1', title: 'Moved' }], DONE: [] };
       // moveTask() calls fetchKanban after move
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockKanban }); // kanban
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockKanban }); // kanban
 
       await useTaskStore.getState().moveTask('ws1', '1', 'IN_PROGRESS', 3);
 
@@ -169,9 +169,9 @@ describe('taskStore', () => {
   describe('advancePhase', () => {
     it('calls API and refetches kanban with phase grouping', async () => {
       const advancedTask = { id: '1', title: 'Advanced', phase: 'DESIGN', status: 'TODO' };
-      vi.mocked(api.post).mockResolvedValueOnce({ data: advancedTask });
+      vi.mocked(api.post).mockResolvedValueOnce({ code: 0, message: 'ok', data: advancedTask });
       const mockPhaseKanban = { REQUIREMENTS: [], DESIGN: [{ id: '1' }], DEVELOPMENT: [], TESTING: [], RELEASE: [], ACCEPTANCE: [] };
-      vi.mocked(api.get).mockResolvedValueOnce({ data: mockPhaseKanban });
+      vi.mocked(api.get).mockResolvedValueOnce({ code: 0, message: 'ok', data: mockPhaseKanban });
 
       const result = await useTaskStore.getState().advancePhase('ws1', '1', 'PRD审核通过');
 

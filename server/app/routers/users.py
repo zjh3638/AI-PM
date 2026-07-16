@@ -43,6 +43,7 @@ async def list_users(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # 只读参考数据：所有登录用户可访问（工作空间负责人/成员筛选需要）
     users, total = await user_service.list_users(
         db,
         page=page,
@@ -62,8 +63,9 @@ async def list_users(
 @router.get("/departments/list", response_model=APIResponse)
 async def list_departments(
     db: AsyncSession = Depends(get_db),
-    pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
 ):
+    # 只读参考数据：所有登录用户可访问
     from sqlalchemy import select
     from app.models.department import Department
     result = await db.execute(select(Department).order_by(Department.sort_order))
@@ -75,8 +77,9 @@ async def list_departments(
 async def get_user(
     user_id: str,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    pc: PermissionChecker = Depends(get_permission_checker),
 ):
+    await pc.require_system_role("SUPER_ADMIN", "ADMIN")
     user = await user_service.get_user(db, user_id)
     if user is None:
         raise AppException(404, "用户不存在", 404)

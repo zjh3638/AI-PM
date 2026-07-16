@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../../api/client';
+import { meetingApi } from '../../api/meeting';
 
 interface MeetingItem {
   id: string;
@@ -17,30 +18,37 @@ export default function MeetingListPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [workspaces, setWorkspaces] = useState<Array<{ id: string; name: string }>>([]);
+  const [groups, setGroups] = useState<Array<{ id: string; name: string }>>([]);
   const [form, setForm] = useState({ title: '', dimension: 'PROJECT', dimension_id: '', meeting_type: 'WEEKLY' });
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    // Load workspaces for the create form
-    api.get('/workspaces').then((r: any) => {
-      const items = r.data?.items || [];
+    // Load projects (workspaces) for the create form
+    api.get('/workspaces', { params: { page_size: 100 } }).then((r: any) => {
+      const items = r.data || [];
       setWorkspaces(items.map((w: any) => ({ id: w.id, name: w.name })));
-      if (!form.dimension_id && items.length > 0) {
-        setForm(f => ({ ...f, dimension_id: items[0].id }));
-      }
     }).catch(() => {});
 
-    // Load existing meetings — for now show the test meeting
-    setMeetings([{
-      id: '028d647f-4fbb-44b4-907b-c8ae0efac047',
-      title: 'AI-PM 平台周会',
-      dimension: 'PROJECT',
-      meeting_type: 'WEEKLY',
-      status: 'ACTIVE',
-      created_at: '2026-06-26',
-    }]);
-    setLoading(false);
+    // Load project groups for the create form
+    api.get('/project-groups', { params: { page_size: 100 } }).then((r: any) => {
+      const items = r.data || [];
+      setGroups(items.map((g: any) => ({ id: g.id, name: g.name })));
+    }).catch(() => {});
+
+    // Load meetings from API
+    meetingApi.list()
+      .then(setMeetings)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
+
+  // Options for the currently selected dimension
+  const dimensionOptions = form.dimension === 'PROJECT' ? workspaces : groups;
+
+  const handleDimensionChange = (dimension: string) => {
+    // Reset the selected id when switching dimension to avoid a stale value
+    setForm(f => ({ ...f, dimension, dimension_id: '' }));
+  };
 
   const handleCreate = async () => {
     if (!form.title || !form.dimension_id) return;
@@ -83,7 +91,7 @@ export default function MeetingListPage() {
           <div className="field-row">
             <div className="field">
               <label>维度</label>
-              <select value={form.dimension} onChange={e => setForm({ ...form, dimension: e.target.value })}>
+              <select value={form.dimension} onChange={e => handleDimensionChange(e.target.value)}>
                 <option value="PROJECT">项目</option>
                 <option value="PROJECT_GROUP">项目群</option>
               </select>
@@ -92,10 +100,15 @@ export default function MeetingListPage() {
               <label>{form.dimension === 'PROJECT' ? '选择项目' : '选择项目群'}</label>
               <select value={form.dimension_id} onChange={e => setForm({ ...form, dimension_id: e.target.value })}>
                 <option value="">请选择</option>
-                {workspaces.map(w => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
+                {dimensionOptions.map(o => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
                 ))}
               </select>
+              {dimensionOptions.length === 0 && (
+                <span className="field-hint">
+                  {form.dimension === 'PROJECT' ? '暂无可选项目' : '暂无可选项目群'}
+                </span>
+              )}
             </div>
             <div className="field">
               <label>会议类型</label>

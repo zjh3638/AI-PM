@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, delete, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -16,6 +16,7 @@ from app.models.chat_history import ChatHistory
 from app.schemas.common import APIResponse
 from app.services.ai_chat_stream import chat_stream
 from app.services.ai_service import encrypt_api_key, decrypt_api_key, get_gateway_url
+from app.services.permission import PermissionChecker, get_permission_checker
 from app.config import settings
 
 SETTINGS_FILE = Path(__file__).parent.parent.parent / "settings.json"
@@ -24,11 +25,19 @@ router = APIRouter(prefix="/api/ai", tags=["ai"])
 
 
 class ChatStreamRequest(BaseModel):
-    message: str = Field(min_length=1, max_length=4000)
+    message: str = Field(default="", max_length=4000)
     agent: str = "项目经理"
     workspace_id: Optional[str] = None
     conversation_id: Optional[str] = None
     route_context: Optional[dict] = None
+    # 编辑/重试：重新流式前删除该锚点消息之后（created_at 更晚）的所有消息
+    edit: Optional[dict] = None  # {"after_id": str}
+    # 多模态：base64 data URL 图片列表（最多 3 张，前端已降采样）
+    images: Optional[list[str]] = None
+
+
+class ConversationRenameRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=64)
 
 
 class LLMConfigRequest(BaseModel):
@@ -50,6 +59,8 @@ async def ai_chat_stream(
                 workspace_id=req.workspace_id,
                 route_context=req.route_context,
                 conversation_id=req.conversation_id,
+                edit=req.edit,
+                images=req.images,
             ):
                 yield frame
         except asyncio.CancelledError:
@@ -186,6 +197,83 @@ async def get_chat_conversations(
     return {"code": 0, "message": "ok", "data": {"conversations": sorted_convs}}
 
 
+@router.delete("/conversations/{conversation_id}/messages", response_model=APIResponse)
+async def delete_messages_after(
+    conversation_id: str,
+    after_id: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """删除某会话中锚点消息之后（created_at 更晚）的所有消息，用于编辑/重试。"""
+    owner = (await db.execute(
+        select(ChatHistory.user_id)
+        .where(ChatHistory.conversation_id == conversation_id)
+        .limit(1)
+    )).scalar()
+    if owner is None or owner != user.id:
+        raise HTTPException(status_code=404, detail="对话不存在")
+    anchor = (await db.execute(
+        select(ChatHistory.created_at).where(ChatHistory.id == after_id)
+    )).scalar()
+    if anchor is None:
+        raise HTTPException(status_code=404, detail="锚点消息不存在")
+    result = await db.execute(
+        delete(ChatHistory).where(
+            ChatHistory.conversation_id == conversation_id,
+            ChatHistory.created_at > anchor,
+        )
+    )
+    await db.commit()
+    return {"code": 0, "message": "ok", "data": {"deleted": result.rowcount}}
+
+
+@router.patch("/conversations/{conversation_id}", response_model=APIResponse)
+async def rename_conversation(
+    conversation_id: str,
+    req: ConversationRenameRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """重命名会话（更新该会话所有行的 conversation_title）。"""
+    owner = (await db.execute(
+        select(ChatHistory.user_id)
+        .where(ChatHistory.conversation_id == conversation_id,
+               ChatHistory.user_id == user.id)
+        .limit(1)
+    )).scalar()
+    if owner is None:
+        raise HTTPException(status_code=404, detail="对话不存在")
+    await db.execute(
+        update(ChatHistory)
+        .where(ChatHistory.conversation_id == conversation_id,
+               ChatHistory.user_id == user.id)
+        .values(conversation_title=req.title)
+    )
+    await db.commit()
+    return {"code": 0, "message": "ok",
+            "data": {"conversation_id": conversation_id, "title": req.title}}
+
+
+@router.delete("/conversations/{conversation_id}", response_model=APIResponse)
+async def delete_conversation(
+    conversation_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """删除整个会话（该用户名下该会话的所有消息）。"""
+    result = await db.execute(
+        delete(ChatHistory).where(
+            ChatHistory.conversation_id == conversation_id,
+            ChatHistory.user_id == user.id,
+        )
+    )
+    if result.rowcount == 0:
+        raise HTTPException(status_code=404, detail="对话不存在")
+    await db.commit()
+    return {"code": 0, "message": "ok",
+            "data": {"conversation_id": conversation_id, "deleted": result.rowcount}}
+
+
 tool_labels: dict[str, str] = {
     "get_workspace_context": "获取项目信息",
     "create_task": "创建任务",
@@ -196,6 +284,11 @@ tool_labels: dict[str, str] = {
     "scan_risks": "扫描风险",
     "decompose_requirement": "拆解需求",
     "extract_action_items": "提取会议待办",
+    "create_milestone": "创建里程碑",
+    "update_milestone": "更新里程碑",
+    "create_iteration": "创建迭代",
+    "update_iteration": "更新迭代",
+    "batch_update_tasks": "批量更新任务",
 }
 
 
@@ -276,9 +369,10 @@ class SystemSettingsRequest(BaseModel):
 
 
 @router.get("/admin/settings", response_model=APIResponse)
-async def get_system_settings(user: User = Depends(get_current_user)):
-    if user.system_role != "SUPER_ADMIN":
-        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+async def get_system_settings(
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_system_role("SUPER_ADMIN", "ADMIN")
     from app.services.ldap_config import get_ldap_config_for_display
     ldap_cfg = get_ldap_config_for_display()
     return {
@@ -293,10 +387,9 @@ async def get_system_settings(user: User = Depends(get_current_user)):
 @router.patch("/admin/settings", response_model=APIResponse)
 async def update_system_settings(
     req: SystemSettingsRequest,
-    user: User = Depends(get_current_user),
+    pc: PermissionChecker = Depends(get_permission_checker),
 ):
-    if user.system_role != "SUPER_ADMIN":
-        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    await pc.require_system_role("SUPER_ADMIN", "ADMIN")
     s = _load_settings()
 
     if req.llm_gateway_url is not None:
@@ -329,11 +422,10 @@ class LdapTestRequest(BaseModel):
 @router.post("/admin/settings/test-ldap", response_model=APIResponse)
 async def test_ldap_connection(
     req: LdapTestRequest,
-    user: User = Depends(get_current_user),
+    pc: PermissionChecker = Depends(get_permission_checker),
 ):
-    """Test LDAP connection with provided parameters. SUPER_ADMIN only."""
-    if user.system_role != "SUPER_ADMIN":
-        raise HTTPException(status_code=403, detail="仅超级管理员可访问")
+    """Test LDAP connection with provided parameters. SUPER_ADMIN or ADMIN only."""
+    await pc.require_system_role("SUPER_ADMIN", "ADMIN")
 
     import asyncio
     from ldap3 import Server, Connection, ALL, SUBTREE
