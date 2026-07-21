@@ -99,6 +99,16 @@ export default function ProjectGroupDetailPage() {
             <span> · {current.workspace_count} 个子项目</span>
           </div>
         </div>
+        <div>
+          <button
+            className="btn btn-ghost btn-sm"
+            onClick={() => navigate(`/project-groups/${current.id}/cast`)}
+            disabled={current.workspace_count === 0}
+            title={current.workspace_count === 0 ? '请先添加项目到群' : '项目群投屏'}
+          >
+            投屏
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}

@@ -8,6 +8,7 @@ import DashboardPage from './pages/dashboard/DashboardPage';
 import WorkspaceListPage from './pages/workspace-list/WorkspaceListPage';
 import WorkspaceDetailPage from './pages/workspace-detail/WorkspaceDetailPage';
 import WorkspaceCastPage from './pages/workspace-detail/WorkspaceCastPage';
+import ProjectGroupCastPage from './pages/project-group-detail/ProjectGroupCastPage';
 import PersonalCenterPage from './pages/personal/PersonalCenterPage';
 import PlaceholderPage from './pages/placeholder/PlaceholderPage';
 import { useAuthStore } from './stores/authStore';
@@ -41,6 +42,14 @@ function AppShell() {
           element={
             <ProtectedRoute>
               <WorkspaceCastPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/project-groups/:id/cast"
+          element={
+            <ProtectedRoute>
+              <ProjectGroupCastPage />
             </ProtectedRoute>
           }
         />

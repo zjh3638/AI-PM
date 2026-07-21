@@ -234,6 +234,31 @@
   letter-spacing: 0.02em;
 }
 
+/* 项目群投屏顶栏：项目群名 + 项目下拉切换 */
+.cast-group-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.cast-group-title .cast-group-name { font-weight: 700; }
+.cast-group-title .cast-group-sep { opacity: 0.35; }
+.cast-group-title .cast-group-select {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  outline: none;
+  transition: background var(--fast), border-color var(--fast);
+}
+.cast-group-title .cast-group-select:hover { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 255, 255, 0.3); }
+.cast-group-title .cast-group-select:focus { border-color: #60a5fa; }
+.cast-group-title .cast-group-select option { color: #0f172a; background: #fff; }
+
 .cast-exit-btn {
   color: #e2e8f0 !important;
   border: 1px solid rgba(255, 255, 255, 0.2) !important;
