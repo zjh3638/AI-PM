@@ -20,11 +20,14 @@ async def list_meetings(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    # 普通用户只能看到自己创建的会议；超级管理员可见全部
+    host_filter = None if user.system_role == "SUPER_ADMIN" else user.id
     meetings = await meeting_service.list_meetings(
         db,
         dimension=dimension or None,
         dimension_id=dimension_id or None,
         status=status or None,
+        host_id=host_filter,
     )
     return {"code": 0, "message": "ok", "data": [_meeting_to_dict(m) for m in meetings]}
 
@@ -42,8 +45,20 @@ async def create_meeting(
         dimension_id=req.dimension_id,
         meeting_type=req.meeting_type,
         host_id=user.id,
+        workspace_ids=req.workspace_ids,
     )
     return {"code": 0, "message": "ok", "data": _meeting_to_dict(meeting)}
+
+
+@router.get("/org-projects", response_model=APIResponse)
+async def get_org_projects(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Department tree with projects grouped under each project's owner department.
+    Data source for the meeting-creation project TreeSelect."""
+    tree = await meeting_service.get_org_project_tree(db)
+    return {"code": 0, "message": "ok", "data": tree}
 
 
 @router.get("/{meeting_id}", response_model=APIResponse)
@@ -75,6 +90,19 @@ async def get_board(
     return {"code": 0, "message": "ok", "data": data}
 
 
+@router.get("/{meeting_id}/timeline", response_model=APIResponse)
+async def get_timeline(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    meeting = await meeting_service.get_meeting(db, meeting_id)
+    if not meeting:
+        raise AppException(404, "会议不存在", 404)
+    data = await meeting_service.get_timeline_data(db, meeting)
+    return {"code": 0, "message": "ok", "data": data}
+
+
 @router.post("/{meeting_id}/notes", response_model=APIResponse)
 async def add_note(
     meeting_id: str,
@@ -102,6 +130,22 @@ async def close_meeting(
         raise AppException(404, "会议不存在", 404)
     meeting = await meeting_service.close_meeting(db, meeting)
     return {"code": 0, "message": "ok", "data": _meeting_to_dict(meeting)}
+
+
+@router.delete("/{meeting_id}", response_model=APIResponse)
+async def delete_meeting(
+    meeting_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    meeting = await meeting_service.get_meeting(db, meeting_id)
+    if not meeting:
+        raise AppException(404, "会议不存在", 404)
+    # 创建者本人或超级管理员可删除
+    if user.system_role != "SUPER_ADMIN" and meeting.host_id != user.id:
+        raise AppException(403, "无权删除此会议", 403)
+    await meeting_service.delete_meeting(db, meeting)
+    return {"code": 0, "message": "ok", "data": None}
 
 
 def _meeting_to_dict(m):

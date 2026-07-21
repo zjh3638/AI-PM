@@ -105,10 +105,12 @@ async def decompose_requirement(
         if parent is None:
             return {"error": f"父任务 {parent_id} 不存在"}
     else:
-        parent = Task(workspace_id=workspace_id, title=parent_title,
-                      task_type="STORY", description=parent_description)
-        db.add(parent)
-        await db.flush()
+        from app.services import task as task_service
+        from app.config import settings
+        parent = await task_service.create_task(
+            db, workspace_id,
+            title=parent_title, task_type="STORY", description=parent_description,
+        )
 
     children: list[Task] = []
     errors: list[dict] = []
@@ -117,7 +119,7 @@ async def decompose_requirement(
         if not title:
             errors.append({"index": idx, "reason": "missing title"})
             continue
-        child = Task(workspace_id=workspace_id, title=title, parent_id=parent.id)
+        child_kwargs = {"title": title, "parent_id": parent.id}
         for field in ALLOWED_SUBTASK_FIELDS:
             if field in raw and raw[field] is not None:
                 value = raw[field]
@@ -126,14 +128,23 @@ async def decompose_requirement(
                         value = date.fromisoformat(value)
                     except (ValueError, TypeError):
                         continue
-                setattr(child, field, value)
-        db.add(child)
+                child_kwargs[field] = value
+        from app.services import task as task_service
+        child = await task_service.create_task(db, workspace_id, **child_kwargs)
         children.append(child)
 
     await db.commit()
-    for c in children:
-        await db.refresh(c)
     await db.refresh(parent)
+
+    # 发送企业微信通知
+    from app.config import settings
+    if settings.wecom_enabled:
+        try:
+            from app.services import wecom_notification
+            for c in children:
+                await wecom_notification.notify_task_created(db, workspace_id, c, operator_user=None)
+        except Exception:
+            pass
 
     return {
         "parent": {"id": parent.id, "title": parent.title,
@@ -171,6 +182,9 @@ async def extract_action_items(
         footer_parts.append(f"出席：{'、'.join(attendees)}")
     footer = "\n\n---\n" + "\n".join(footer_parts) if footer_parts else ""
 
+    from app.services import task as task_service
+    from app.config import settings
+
     created: list[Task] = []
     errors: list[dict] = []
     for idx, raw in enumerate(items):
@@ -179,8 +193,7 @@ async def extract_action_items(
             errors.append({"index": idx, "reason": "missing title"})
             continue
         desc = (raw.get("description") or "").rstrip() + footer
-        task = Task(workspace_id=workspace_id, title=title,
-                    description=desc or None)
+        task_kwargs = {"title": title, "description": desc or None}
         for field in ("priority", "assignee_id", "due_date", "phase",
                       "iteration_id", "milestone_id"):
             if field in raw and raw[field] is not None:
@@ -190,13 +203,22 @@ async def extract_action_items(
                         value = date.fromisoformat(value)
                     except (ValueError, TypeError):
                         continue
-                setattr(task, field, value)
-        db.add(task)
+                task_kwargs[field] = value
+        task = await task_service.create_task(db, workspace_id, **task_kwargs)
         created.append(task)
 
     await db.commit()
     for t in created:
         await db.refresh(t)
+
+    # 发送企业微信通知
+    if settings.wecom_enabled:
+        try:
+            from app.services import wecom_notification
+            for t in created:
+                await wecom_notification.notify_task_created(db, workspace_id, t, operator_user=None)
+        except Exception:
+            pass
 
     return {
         "created_count": len(created),

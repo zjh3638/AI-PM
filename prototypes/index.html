@@ -1253,6 +1253,102 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .bs-pulse-row .bs-pulse-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .bs-pulse-row .bs-pulse-who { font-size: 0.66rem; opacity: 0.4; margin-left: auto; }
 
+/* ── Bigscreen: Milestone timeline (multi-project swimlanes) ── */
+.bs-timeline { position: relative; padding: 0; overflow-x: auto; }
+.bs-tl-head { display: flex; border-bottom: 1px solid rgba(255,255,255,0.08); position: sticky; top: 0; background: var(--bg-surface); z-index: 4; }
+.bs-tl-labelcol { width: 190px; flex-shrink: 0; padding: 10px 16px; font-size: 0.68rem; font-weight: 600; opacity: 0.4; text-transform: uppercase; letter-spacing: 0.05em; }
+.bs-tl-track { flex: 1; min-width: 720px; display: flex; position: relative; }
+.bs-tl-week { flex: 1; padding: 10px 0; text-align: center; font-size: 0.64rem; opacity: 0.45; border-left: 1px solid rgba(255,255,255,0.05); }
+.bs-tl-week.is-current { background: rgba(96,165,250,0.08); opacity: 0.9; color: #93c5fd; }
+.bs-tl-lane { display: flex; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.04); min-height: 56px; }
+.bs-tl-lane:last-child { border-bottom: none; }
+.bs-tl-lane:hover { background: rgba(255,255,255,0.02); }
+.bs-tl-lane.active { background: rgba(96,165,250,0.06); }
+.bs-tl-labelcol.lane { width: 190px; flex-shrink: 0; padding: 8px 16px; cursor: pointer; }
+.bs-tl-labelcol.lane .pn { font-size: 0.8rem; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.bs-tl-labelcol.lane .pm { font-size: 0.62rem; opacity: 0.45; margin-top: 3px; }
+.bs-tl-lanetrack { flex: 1; min-width: 720px; position: relative; height: 56px; }
+/* dependency connector between milestones */
+.bs-tl-dep { position: absolute; top: 28px; height: 2px; background: rgba(255,255,255,0.15); z-index: 1; }
+.bs-tl-dep.late { background: rgba(239,68,68,0.4); }
+/* milestone node */
+.bs-ms { position: absolute; top: 15px; transform: translateX(-50%); z-index: 2; display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+.bs-ms .dot { width: 15px; height: 15px; border-radius: 50%; border: 2px solid #0a0f1e; box-shadow: 0 0 0 1px rgba(255,255,255,0.15); }
+.bs-ms .lbl { position: absolute; top: 18px; font-size: 0.6rem; white-space: nowrap; opacity: 0.7; }
+.bs-ms.done .dot { background: #34d399; }
+.bs-ms.active-ms .dot { background: #60a5fa; box-shadow: 0 0 0 4px rgba(96,165,250,0.25); }
+.bs-ms.risk .dot { background: #fbbf24; box-shadow: 0 0 0 4px rgba(251,191,36,0.25); }
+.bs-ms.late .dot { background: #ef4444; box-shadow: 0 0 0 4px rgba(239,68,68,0.3); animation: bs-pulse 1.6s infinite; }
+@keyframes bs-pulse { 0%,100% { box-shadow: 0 0 0 4px rgba(239,68,68,0.3);} 50% { box-shadow: 0 0 0 7px rgba(239,68,68,0.12);} }
+/* planned-vs-actual slip shadow */
+.bs-slip { position: absolute; top: 26px; height: 6px; border-radius: 3px; background: repeating-linear-gradient(45deg, rgba(239,68,68,0.35), rgba(239,68,68,0.35) 4px, transparent 4px, transparent 8px); z-index: 1; }
+/* today line spanning all lanes */
+.bs-today { position: absolute; top: 0; bottom: 0; width: 2px; background: #f87171; z-index: 3; }
+.bs-today::before { content: '今天'; position: absolute; top: -2px; left: 50%; transform: translateX(-50%); background: #f87171; color: #fff; font-size: 0.56rem; padding: 1px 5px; border-radius: 3px; white-space: nowrap; }
+.bs-tl-legend { display: flex; gap: 16px; padding: 8px 18px; font-size: 0.66rem; opacity: 0.6; flex-wrap: wrap; border-top: 1px solid rgba(255,255,255,0.05); }
+.bs-tl-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.bs-tl-legend i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+/* granularity switch */
+.bs-gran-switch { display: inline-flex; background: rgba(255,255,255,0.06); border-radius: 7px; padding: 2px; }
+.bs-gran-btn { background: transparent; border: none; color: rgba(255,255,255,0.5); font-size: 0.68rem; padding: 3px 12px; border-radius: 5px; cursor: pointer; }
+.bs-gran-btn:hover { color: rgba(255,255,255,0.85); }
+.bs-gran-btn.active { background: var(--blue-600); color: #fff; }
+/* milestone tooltip */
+.bs-ms-tip { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); background: #1e293b; border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 9px 12px; min-width: 160px; font-size: 0.66rem; line-height: 1.7; box-shadow: 0 8px 24px rgba(0,0,0,0.5); opacity: 0; visibility: hidden; transition: opacity 0.12s; z-index: 20; text-align: left; white-space: nowrap; }
+.bs-ms-tip::after { content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%); border: 5px solid transparent; border-top-color: #1e293b; }
+.bs-ms-tip .tt { font-weight: 700; font-size: 0.72rem; margin-bottom: 3px; }
+.bs-ms-tip .tr { display: flex; justify-content: space-between; gap: 14px; opacity: 0.8; }
+.bs-ms-tip .tr b { font-weight: 500; opacity: 0.55; }
+.bs-ms:hover { z-index: 21; }
+.bs-ms:hover .bs-ms-tip { opacity: 1; visibility: visible; }
+.bs-ms-tip .slip-val { color: #f87171; }
+
+/* ── Bigscreen: dark gantt drilldown ── */
+.bs-gantt-note { padding: 6px 18px 10px; font-size: 0.7rem; opacity: 0.5; }
+.bs-gantt { width: 100%; }
+.bs-gantt-row { display: flex; align-items: center; min-height: 34px; border-bottom: 1px solid rgba(255,255,255,0.04); }
+.bs-gantt-row .g-label { width: 210px; flex-shrink: 0; padding: 6px 16px; font-size: 0.74rem; display: flex; align-items: center; gap: 6px; }
+.bs-gantt-row .g-track { flex: 1; min-width: 480px; position: relative; height: 34px; }
+.bs-gbar { position: absolute; top: 9px; height: 16px; border-radius: 4px; background: rgba(96,165,250,0.25); overflow: hidden; }
+.bs-gbar .fill { position: absolute; left: 0; top: 0; bottom: 0; background: #60a5fa; border-radius: 4px; }
+.bs-gbar.late { background: rgba(239,68,68,0.2); }
+.bs-gbar.late .fill { background: #ef4444; }
+.bs-gbar.done { background: rgba(52,211,153,0.2); }
+.bs-gbar.done .fill { background: #34d399; }
+.bs-gbar .who { position: absolute; right: 4px; top: -1px; font-size: 0.58rem; color: #fff; opacity: 0.85; line-height: 18px; }
+.bs-gbar.critical { box-shadow: 0 0 0 1.5px #fbbf24; }
+
+/* ── Bigscreen: key-person progress lanes ── */
+.bs-person-row { display: flex; align-items: center; gap: 12px; padding: 9px 18px; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.74rem; }
+.bs-person-row:last-child { border-bottom: none; }
+.bs-person-av { width: 30px; height: 30px; border-radius: 50%; background: var(--blue-600); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.72rem; font-weight: 600; flex-shrink: 0; }
+.bs-person-info { width: 128px; flex-shrink: 0; }
+.bs-person-info .nm { font-weight: 600; }
+.bs-person-info .rl { font-size: 0.62rem; opacity: 0.45; }
+.bs-person-bar { flex: 1; height: 8px; border-radius: 4px; background: rgba(255,255,255,0.08); position: relative; overflow: hidden; }
+.bs-person-bar .pf { position: absolute; left: 0; top: 0; bottom: 0; background: #60a5fa; border-radius: 4px; }
+.bs-person-pct { width: 40px; text-align: right; font-size: 0.68rem; opacity: 0.7; flex-shrink: 0; }
+.bs-person-load { width: 78px; text-align: right; font-size: 0.66rem; flex-shrink: 0; }
+.bs-person-flag { font-size: 0.62rem; padding: 1px 7px; border-radius: 10px; flex-shrink: 0; }
+.bs-person-flag.ok { background: rgba(52,211,153,0.15); color: #34d399; }
+.bs-person-flag.warn { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.bs-person-flag.block { background: rgba(239,68,68,0.15); color: #f87171; }
+
+/* ── Bigscreen: risk list enhanced ── */
+.bs-risk-row { display: flex; gap: 12px; padding: 11px 18px; border-bottom: 1px solid rgba(255,255,255,0.04); align-items: flex-start; }
+.bs-risk-row:last-child { border-bottom: none; }
+.bs-risk-sev { width: 4px; align-self: stretch; border-radius: 2px; flex-shrink: 0; }
+.bs-risk-sev.high { background: #ef4444; }
+.bs-risk-sev.mid { background: #fbbf24; }
+.bs-risk-body { flex: 1; }
+.bs-risk-body .rt { font-size: 0.78rem; font-weight: 600; margin-bottom: 3px; }
+.bs-risk-body .rmeta { font-size: 0.64rem; opacity: 0.5; display: flex; gap: 12px; flex-wrap: wrap; }
+.bs-risk-body .ract { font-size: 0.68rem; opacity: 0.75; margin-top: 4px; color: #93c5fd; }
+.bs-risk-tag { font-size: 0.6rem; padding: 2px 8px; border-radius: 10px; flex-shrink: 0; height: fit-content; }
+.bs-risk-tag.high { background: rgba(239,68,68,0.15); color: #f87171; }
+.bs-risk-tag.mid { background: rgba(251,191,36,0.15); color: #fbbf24; }
+.bs-full { grid-column: 1 / -1; }
+
 /* ═══════════════════════════════════════════
    PERSONAL CENTER
    ═══════════════════════════════════════════ */
@@ -2327,53 +2423,102 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
     </div>
   </div>
 
-  <!-- Main content: project table + pulse -->
-  <div class="bs-main-grid" id="bsMainGrid">
-    <!-- Left: Project table (company/dept tier) or pulse items (project tier) -->
-    <div class="bs-section" id="bsLeftSection">
+  <!-- ① Milestone timeline — multi-project swimlanes (data-driven, switchable axis) -->
+  <div class="bs-main-grid" style="grid-template-columns:1fr" id="bsMainGrid">
+    <div class="bs-section bs-full">
       <div class="bs-section-head">
-        <span id="bsLeftTitle">项目总览</span>
-        <span style="font-size:0.68rem;opacity:0.4" id="bsLeftCount">共 6 个项目</span>
+        <span>📍 里程碑时间轴</span>
+        <span style="display:flex;align-items:center;gap:14px">
+          <span class="bs-gran-switch">
+            <button class="bs-gran-btn active" onclick="bsSetGran('week', this)">周</button>
+            <button class="bs-gran-btn" onclick="bsSetGran('month', this)">月</button>
+            <button class="bs-gran-btn" onclick="bsSetGran('quarter', this)">季</button>
+          </span>
+          <span style="font-size:0.68rem;opacity:0.4" id="bsTlCount">6 个项目 · 点击项目行下钻甘特图</span>
+        </span>
       </div>
-      <table class="bs-table" id="bsProjTable">
-        <thead><tr><th>项目</th><th>里程碑</th><th>进度</th><th>健康度</th><th>负责人</th></tr></thead>
-        <tbody>
-          <tr><td><span class="bs-status on-track"></span><strong>Q3 大版本改版</strong></td><td>M3 · UI Review</td><td>67%</td><td style="color:#fbbf24">⚠ 风险</td><td>张明</td></tr>
-          <tr><td><span class="bs-status on-track"></span><strong>数据平台 2.0</strong></td><td>M2 · 核心开发</td><td>82%</td><td style="color:#34d399">✓ 正常</td><td>王五</td></tr>
-          <tr><td><span class="bs-status at-risk"></span><strong>运营中台</strong></td><td>M1 · 需求与设计</td><td>45%</td><td style="color:#fbbf24">⚠ 风险</td><td>张三</td></tr>
-          <tr><td><span class="bs-status on-track"></span><strong>移动端适配</strong></td><td>M2 · 测试</td><td>91%</td><td style="color:#34d399">✓ 正常</td><td>赵六</td></tr>
-          <tr><td><span class="bs-status blocked"></span><strong>年度活动管理平台</strong></td><td>M1 · 设计</td><td>30%</td><td style="color:#ef4444">✗ 阻塞</td><td>孙七</td></tr>
-          <tr><td><span class="bs-status on-track"></span><strong>API 网关升级</strong></td><td>M3 · 上线</td><td>95%</td><td style="color:#34d399">✓ 正常</td><td>张明</td></tr>
-        </tbody>
-      </table>
+      <div class="bs-timeline">
+        <!-- axis header (rendered by JS) -->
+        <div class="bs-tl-head">
+          <div class="bs-tl-labelcol">项目 / 里程碑</div>
+          <div class="bs-tl-track" id="bsTlAxis"></div>
+        </div>
+        <!-- lanes container (rendered by JS; relative for the today line) -->
+        <div style="position:relative" id="bsTlLanes"></div>
 
-      <!-- Pulse items (hidden by default, shown in project tier) -->
-      <div id="bsPulseItems" style="display:none">
-        <div class="bs-pulse-row"><span class="bs-pulse-dot" style="background:#34d399"></span><strong>昨日完成：</strong>用户登录优化 PR 合并、消息推送模块上线<span class="bs-pulse-who">王五</span></div>
-        <div class="bs-pulse-row"><span class="bs-pulse-dot" style="background:#3b82f6"></span><strong>今日计划：</strong>UI Review 推进、数据导出设计评审<span class="bs-pulse-who">张明</span></div>
-        <div class="bs-pulse-row"><span class="bs-pulse-dot" style="background:#fbbf24"></span><strong>阻塞项：</strong>前端首页重构延期，等待李四协调<span class="bs-pulse-who">李四</span></div>
-        <div class="bs-pulse-row"><span class="bs-pulse-dot" style="background:#ef4444"></span><strong>风险：</strong>M3 里程碑 2 天后到期，2 个任务未开始<span class="bs-pulse-who">系统</span></div>
-        <div class="bs-pulse-row"><span class="bs-pulse-dot" style="background:#8b5cf6"></span><strong>AI Agent：</strong>需求分析师完成 PRD 草案，待 Review<span class="bs-pulse-who">需求分析师</span></div>
+        <div class="bs-tl-legend">
+          <span><i style="background:#34d399"></i>已达成</span>
+          <span><i style="background:#60a5fa"></i>进行中</span>
+          <span><i style="background:#fbbf24"></i>逼近有风险</span>
+          <span><i style="background:#ef4444"></i>已延期/阻塞</span>
+          <span><i style="background:#475569"></i>未开始</span>
+          <span style="opacity:0.9"><i style="width:16px;height:6px;border-radius:3px;background:repeating-linear-gradient(45deg,rgba(239,68,68,0.5),rgba(239,68,68,0.5) 3px,transparent 3px,transparent 6px)"></i>计划vs实际滑期</span>
+        </div>
       </div>
     </div>
 
-    <!-- Right: Risk & Agent panel -->
-    <div>
-      <div class="bs-section" style="margin-bottom:12px">
-        <div class="bs-section-head">⚠ 关注信号</div>
-        <div style="padding:10px 18px;font-size:0.74rem;line-height:1.8">
-          <div style="color:#ef4444;margin-bottom:6px">🔴 Q3 改版：前端重构延期 3 天，阻塞 M3 里程碑</div>
-          <div style="color:#fbbf24;margin-bottom:6px">🟡 李四负载 120%，12 个活跃任务</div>
-          <div style="color:#fbbf24">🟡 运营中台：用户模块重构 5 天无更新</div>
-        </div>
+    <!-- ② Gantt drilldown for selected project -->
+    <div class="bs-section bs-full">
+      <div class="bs-section-head">
+        <span>📊 任务甘特 · <span id="bsGanttProj">Q3 大版本改版</span></span>
+        <span style="font-size:0.68rem;opacity:0.4">当前里程碑 M3 · UI Review · 加粗为关键路径</span>
       </div>
+      <div class="bs-gantt" id="bsGanttBody">
+        <div class="bs-gantt-row"><div class="g-label" style="font-weight:700"><span class="bs-status on-track"></span>M2 核心开发</div><div class="g-track"><div class="bs-gbar done" style="left:2%;width:40%"><div class="fill" style="width:100%"></div><span class="who">✓</span></div></div></div>
+        <div class="bs-gantt-row"><div class="g-label" style="padding-left:28px">用户登录优化</div><div class="g-track"><div class="bs-gbar done" style="left:6%;width:16%"><div class="fill" style="width:100%"></div><span class="who">王五</span></div></div></div>
+        <div class="bs-gantt-row"><div class="g-label" style="padding-left:28px">API 接口开发</div><div class="g-track"><div class="bs-gbar critical" style="left:18%;width:24%"><div class="fill" style="width:80%"></div><span class="who">张三</span></div></div></div>
+        <div class="bs-gantt-row"><div class="g-label" style="font-weight:700"><span class="bs-status at-risk"></span>M3 UI Review ⚠</div><div class="g-track"><div class="bs-gbar late" style="left:42%;width:26%"><div class="fill" style="width:45%"></div><span class="who">张明</span></div></div></div>
+        <div class="bs-gantt-row"><div class="g-label" style="padding-left:28px">前端首页重构</div><div class="g-track"><div class="bs-gbar late critical" style="left:42%;width:22%"><div class="fill" style="width:40%"></div><span class="who">李四</span></div></div></div>
+        <div class="bs-gantt-row"><div class="g-label" style="padding-left:28px">新布局线框图</div><div class="g-track"><div class="bs-gbar done" style="left:46%;width:12%"><div class="fill" style="width:100%"></div><span class="who">设计师</span></div></div></div>
+        <div class="bs-gantt-row"><div class="g-label" style="font-weight:700"><span class="bs-status" style="background:#475569"></span>M4 上线</div><div class="g-track"><div class="bs-gbar" style="left:70%;width:22%;background:rgba(255,255,255,0.08)"><span class="who" style="color:rgba(255,255,255,0.5)">待启动</span></div></div></div>
+      </div>
+    </div>
+
+    <!-- ③ Key-person progress + ④ Risk list -->
+    <div class="bs-main-grid bs-full" style="padding:0;grid-template-columns:1fr 1fr;gap:16px">
       <div class="bs-section">
-        <div class="bs-section-head">🤖 AI Agent 状态</div>
-        <div style="padding:8px 18px">
-          <div class="agent-row"><span class="agent-dot busy"></span><span class="agent-name">需求分析师</span><span class="agent-tsk">PRD 草案生成中</span></div>
-          <div class="agent-row"><span class="agent-dot busy"></span><span class="agent-name">设计师</span><span class="agent-tsk">交互流程草案</span></div>
-          <div class="agent-row"><span class="agent-dot idle"></span><span class="agent-name">开发工程师</span><span class="agent-tsk">空闲</span></div>
-          <div class="agent-row"><span class="agent-dot idle"></span><span class="agent-name">项目经理</span><span class="agent-tsk">空闲</span></div>
+        <div class="bs-section-head">
+          <span>👥 关键人推进</span>
+          <span style="font-size:0.68rem;opacity:0.4">进度 · 负载 · 状态</span>
+        </div>
+        <div class="bs-person-row"><div class="bs-person-av">张明</div><div class="bs-person-info"><div class="nm">张明</div><div class="rl">Q3/API 负责人</div></div><div class="bs-person-bar"><div class="pf" style="width:67%"></div></div><div class="bs-person-pct">67%</div><div class="bs-person-load" style="color:#34d399">负载 85%</div><span class="bs-person-flag ok">正常</span></div>
+        <div class="bs-person-row"><div class="bs-person-av" style="background:#ef4444">李四</div><div class="bs-person-info"><div class="nm">李四</div><div class="rl">前端 · M3 关键路径</div></div><div class="bs-person-bar"><div class="pf" style="width:40%;background:#ef4444"></div></div><div class="bs-person-pct">40%</div><div class="bs-person-load" style="color:#f87171">负载 120%</div><span class="bs-person-flag block">延期3天</span></div>
+        <div class="bs-person-row"><div class="bs-person-av" style="background:#10b981">王五</div><div class="bs-person-info"><div class="nm">王五</div><div class="rl">数据平台负责人</div></div><div class="bs-person-bar"><div class="pf" style="width:82%"></div></div><div class="bs-person-pct">82%</div><div class="bs-person-load" style="color:#34d399">负载 90%</div><span class="bs-person-flag ok">正常</span></div>
+        <div class="bs-person-row"><div class="bs-person-av" style="background:#f59e0b">张三</div><div class="bs-person-info"><div class="nm">张三</div><div class="rl">运营中台负责人</div></div><div class="bs-person-bar"><div class="pf" style="width:45%;background:#fbbf24"></div></div><div class="bs-person-pct">45%</div><div class="bs-person-load" style="color:#fbbf24">负载 95%</div><span class="bs-person-flag warn">1项停滞</span></div>
+        <div class="bs-person-row"><div class="bs-person-av" style="background:#ef4444">孙七</div><div class="bs-person-info"><div class="nm">孙七</div><div class="rl">活动平台负责人</div></div><div class="bs-person-bar"><div class="pf" style="width:30%;background:#ef4444"></div></div><div class="bs-person-pct">30%</div><div class="bs-person-load" style="color:#f87171">负载 60%</div><span class="bs-person-flag block">M1阻塞</span></div>
+      </div>
+
+      <div class="bs-section">
+        <div class="bs-section-head">
+          <span>⚠ 项目风险</span>
+          <span style="font-size:0.68rem;opacity:0.4">1 高 · 2 中 · 按严重度排序</span>
+        </div>
+        <div class="bs-risk-row">
+          <div class="bs-risk-sev high"></div>
+          <div class="bs-risk-body">
+            <div class="rt">前端首页重构延期，阻塞 M3 UI Review</div>
+            <div class="rmeta"><span>项目：Q3 改版</span><span>里程碑：M3（2天后到期）</span><span>责任人：李四</span></div>
+            <div class="ract">→ 建议：协调李四负载 120%，或拆分任务并行推进</div>
+          </div>
+          <span class="bs-risk-tag high">高</span>
+        </div>
+        <div class="bs-risk-row">
+          <div class="bs-risk-sev mid"></div>
+          <div class="bs-risk-body">
+            <div class="rt">运营中台「用户模块重构」5 天无更新</div>
+            <div class="rmeta"><span>项目：运营中台</span><span>里程碑：M2（逼近）</span><span>责任人：张三</span></div>
+            <div class="ract">→ 建议：跟进负责人确认进展，评估是否需要支援</div>
+          </div>
+          <span class="bs-risk-tag mid">中</span>
+        </div>
+        <div class="bs-risk-row">
+          <div class="bs-risk-sev mid"></div>
+          <div class="bs-risk-body">
+            <div class="rt">年度活动平台 M1 设计阻塞，整体滞后</div>
+            <div class="rmeta"><span>项目：活动平台</span><span>里程碑：M1（阻塞）</span><span>责任人：孙七</span></div>
+            <div class="ract">→ 建议：明确设计依赖方，本周内解除阻塞</div>
+          </div>
+          <span class="bs-risk-tag mid">中</span>
         </div>
       </div>
     </div>
@@ -2888,6 +3033,7 @@ function navigateTo(page) {
   document.getElementById('signalBar').style.display = isLogin ? 'none' : 'flex';
   document.getElementById('mainNav').style.display = isLogin ? 'none' : 'flex';
   closeDrawer();
+  if (page === 'bigscreen') bsRenderTimeline();
 }
 
 function login() { navigateTo('focus'); }
@@ -3256,78 +3402,251 @@ function toggleChat() {
 let bsCurrentTier = 'company';
 let bsCurrentMode = 'standup';
 
+/* ── Bigscreen milestone timeline: data-driven, switchable granularity ── */
+const BS_TODAY = new Date('2026-05-07');
+const bsGran = { cur: 'week' };
+const bsWindows = {
+  week:    { start: new Date('2026-04-20'), end: new Date('2026-06-22') },
+  month:   { start: new Date('2026-04-01'), end: new Date('2026-08-01') },
+  quarter: { start: new Date('2026-01-01'), end: new Date('2026-12-31') },
+};
+const bsProjects = [
+  { id:'q3', name:'Q3 大版本改版', owner:'张明', progress:67, dot:'at-risk', ms:[
+    { code:'M1', name:'需求', status:'done',   plan:'2026-04-24', owner:'张明' },
+    { code:'M2', name:'核心开发', status:'done', plan:'2026-05-04', owner:'张三' },
+    { code:'M3', name:'UI Review', status:'late', plan:'2026-05-12', actual:'2026-05-18', owner:'李四' },
+    { code:'M4', name:'上线', status:'todo',   plan:'2026-06-08', owner:'张明' },
+  ]},
+  { id:'data', name:'数据平台 2.0', owner:'王五', progress:82, dot:'on-track', ms:[
+    { code:'M1', name:'数据清洗', status:'done', plan:'2026-04-22', owner:'王五' },
+    { code:'M2', name:'核心开发', status:'active', plan:'2026-05-12', owner:'王五' },
+    { code:'M3', name:'测试', status:'todo', plan:'2026-06-02', owner:'赵六' },
+  ]},
+  { id:'ops', name:'运营中台', owner:'张三', progress:45, dot:'at-risk', ms:[
+    { code:'M1', name:'需求与设计', status:'active', plan:'2026-04-28', owner:'张三' },
+    { code:'M2', name:'开发', status:'risk', plan:'2026-05-20', owner:'张三' },
+    { code:'M3', name:'上线', status:'todo', plan:'2026-06-15', owner:'张三' },
+  ]},
+  { id:'mobile', name:'移动端适配', owner:'赵六', progress:91, dot:'on-track', ms:[
+    { code:'M1', name:'开发', status:'done', plan:'2026-04-21', owner:'赵六' },
+    { code:'M2', name:'测试', status:'active', plan:'2026-05-06', owner:'赵六' },
+    { code:'M3', name:'上线', status:'todo', plan:'2026-05-22', owner:'赵六' },
+  ]},
+  { id:'act', name:'年度活动管理平台', owner:'孙七', progress:30, dot:'blocked', ms:[
+    { code:'M1', name:'设计', status:'late', plan:'2026-04-30', actual:'2026-05-10', owner:'孙七' },
+    { code:'M2', name:'开发', status:'todo', plan:'2026-05-25', owner:'孙七' },
+    { code:'M3', name:'上线', status:'todo', plan:'2026-06-18', owner:'孙七' },
+  ]},
+  { id:'api', name:'API 网关升级', owner:'张明', progress:95, dot:'on-track', ms:[
+    { code:'M1', name:'开发', status:'done', plan:'2026-04-22', owner:'张明' },
+    { code:'M2', name:'测试', status:'done', plan:'2026-05-02', owner:'张明' },
+    { code:'M3', name:'上线中', status:'active', plan:'2026-05-10', owner:'张明' },
+  ]},
+];
+const bsStatusMap = { done:{cls:'done',txt:'已达成'}, active:{cls:'active-ms',txt:'进行中'}, risk:{cls:'risk',txt:'逼近有风险'}, late:{cls:'late',txt:'已延期/阻塞'}, todo:{cls:'',txt:'未开始'} };
+const bsDept = new Set(['q3','data','ops']); // 部门重点项目
+
+function bsPct(dateStr, win) {
+  const d = new Date(dateStr);
+  const p = (d - win.start) / (win.end - win.start) * 100;
+  return Math.max(0, Math.min(100, p));
+}
+function bsFmtDate(dateStr) {
+  const d = new Date(dateStr);
+  return (d.getMonth()+1) + '/' + d.getDate();
+}
+function bsDaysBetween(a, b) { return Math.round((new Date(b) - new Date(a)) / 86400000); }
+function bsWeekNo(d) {
+  const jan1 = new Date(d.getFullYear(), 0, 1);
+  return Math.ceil(((d - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+}
+
+function bsRenderAxis(win) {
+  const g = bsGran.cur;
+  const ticks = [];
+  if (g === 'week') {
+    let d = new Date(win.start);
+    while (d <= win.end) {
+      ticks.push({ pos: bsPct(d.toISOString().slice(0,10), win), top:'W'+bsWeekNo(d), bot:(d.getMonth()+1)+'/'+d.getDate(), cur: (d <= BS_TODAY && bsDaysBetween(d, BS_TODAY) < 7) });
+      d = new Date(d.getTime() + 7*86400000);
+    }
+  } else if (g === 'month') {
+    let y = win.start.getFullYear(), m = win.start.getMonth();
+    while (new Date(y, m, 1) <= win.end) {
+      const d = new Date(y, m, 1);
+      ticks.push({ pos: bsPct(d.toISOString().slice(0,10), win), top:(m+1)+'月', bot:y+'', cur:(y===BS_TODAY.getFullYear() && m===BS_TODAY.getMonth()) });
+      m++; if (m>11){m=0;y++;}
+    }
+  } else {
+    for (let q=0; q<4; q++) {
+      const d = new Date(win.start.getFullYear(), q*3, 1);
+      ticks.push({ pos: bsPct(d.toISOString().slice(0,10), win), top:'Q'+(q+1), bot:d.getFullYear()+'', cur:(Math.floor(BS_TODAY.getMonth()/3)===q) });
+    }
+  }
+  return ticks.map(t =>
+    `<div class="bs-tl-week${t.cur?' is-current':''}" style="position:absolute;left:${t.pos}%;transform:translateX(-1px);border-left:1px solid rgba(255,255,255,0.08);padding-left:6px;min-width:0;flex:none">${t.top}<br>${t.bot}</div>`
+  ).join('');
+}
+
+function bsRenderLanes(win, projects, activeId) {
+  return projects.map(p => {
+    const dots = [], deps = [], slips = [];
+    p.ms.forEach((m, i) => {
+      const pos = bsPct(m.actual || m.plan, win);
+      const sm = bsStatusMap[m.status];
+      const undot = m.status==='todo' ? ' style="background:#475569"' : '';
+      // tooltip
+      const slipDays = m.actual ? bsDaysBetween(m.plan, m.actual) : 0;
+      const tip = `<div class="bs-ms-tip"><div class="tt">${m.code} · ${m.name}</div>`
+        + `<div class="tr"><b>状态</b><span>${sm.txt}</span></div>`
+        + `<div class="tr"><b>计划</b><span>${bsFmtDate(m.plan)}</span></div>`
+        + (m.actual ? `<div class="tr"><b>实际</b><span>${bsFmtDate(m.actual)}</span></div>` : '')
+        + (slipDays>0 ? `<div class="tr"><b>滑期</b><span class="slip-val">+${slipDays} 天</span></div>` : '')
+        + `<div class="tr"><b>负责人</b><span>${m.owner}</span></div></div>`;
+      dots.push(`<div class="bs-ms ${sm.cls}" style="left:${pos}%"><span class="dot"${undot}></span><span class="lbl">${m.code} ${m.name}</span>${tip}</div>`);
+      // dependency connector from previous
+      if (i>0) {
+        const prev = bsPct(p.ms[i-1].actual || p.ms[i-1].plan, win);
+        const lateDep = m.status==='late' ? ' late' : '';
+        deps.push(`<div class="bs-tl-dep${lateDep}" style="left:${prev}%;width:${Math.max(0,pos-prev)}%"></div>`);
+      }
+      // slip shadow (plan -> actual)
+      if (m.actual && slipDays>0) {
+        const pp = bsPct(m.plan, win);
+        slips.push(`<div class="bs-slip" style="left:${pp}%;width:${Math.max(0,pos-pp)}%"></div>`);
+      }
+    });
+    const blockTxt = p.dot==='blocked' ? ' · 阻塞' : '';
+    return `<div class="bs-tl-lane${p.id===activeId?' active':''}" onclick="bsDrill('${p.id}', this)">`
+      + `<div class="bs-tl-labelcol lane"><div class="pn"><span class="bs-status ${p.dot}"></span>${p.name}</div>`
+      + `<div class="pm">负责人 ${p.owner} · ${p.progress}%${blockTxt}</div></div>`
+      + `<div class="bs-tl-lanetrack">${deps.join('')}${slips.join('')}${dots.join('')}</div></div>`;
+  }).join('');
+}
+
+function bsRenderTimeline() {
+  const win = bsWindows[bsGran.cur];
+  const projects = bsCurrentTier === 'dept' ? bsProjects.filter(p => bsDept.has(p.id)) : bsProjects;
+  document.getElementById('bsTlAxis').innerHTML = bsRenderAxis(win);
+  const todayFrac = bsPct(BS_TODAY.toISOString().slice(0,10), win) / 100;
+  const today = `<div class="bs-today" style="left:calc(190px + (100% - 190px) * ${todayFrac.toFixed(4)});"></div>`;
+  document.getElementById('bsTlLanes').innerHTML = today + bsRenderLanes(win, projects, bsCurrentActiveProj);
+}
+
+let bsCurrentActiveProj = 'q3';
+
+function bsSetGran(g, btn) {
+  bsGran.cur = g;
+  document.querySelectorAll('.bs-gran-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  bsRenderTimeline();
+}
+
 function switchBsTier(tier, btn) {
   bsCurrentTier = tier;
   document.querySelectorAll('.bs-tier-item').forEach(t => t.classList.remove('active'));
   btn.classList.add('active');
+  const tlCount = document.getElementById('bsTlCount');
+  const n = tier === 'dept' ? 3 : 6;
+  tlCount.textContent = (tier==='dept' ? '产品研发部 · 3 个项目' : '6 个项目') + ' · 点击项目行下钻甘特图';
+  bsRenderTimeline();
+}
 
-  const projTable = document.getElementById('bsProjTable');
-  const pulseItems = document.getElementById('bsPulseItems');
-  const leftTitle = document.getElementById('bsLeftTitle');
-  const leftCount = document.getElementById('bsLeftCount');
+// Gantt data per project for drilldown
+const bsGanttData = {
+  q3: { name: 'Q3 大版本改版', rows: [
+    ['ms done','M2 核心开发','on-track','done',2,40,100,'✓'],
+    ['task','用户登录优化','','done',6,16,100,'王五'],
+    ['task crit','API 接口开发','','critical',18,24,80,'张三'],
+    ['ms warn','M3 UI Review ⚠','at-risk','late',42,26,45,'张明'],
+    ['task crit','前端首页重构','','late critical',42,22,40,'李四'],
+    ['task','新布局线框图','','done',46,12,100,'设计师'],
+    ['ms todo','M4 上线','todo','todo',70,22,0,'待启动'],
+  ]},
+  data: { name: '数据平台 2.0', rows: [
+    ['ms done','M1 数据清洗','on-track','done',2,20,100,'✓'],
+    ['task','清洗管道开发','','done',4,16,100,'王五'],
+    ['ms active','M2 核心开发','on-track','active',24,30,70,'王五'],
+    ['task crit','特征工程服务','','critical',26,20,65,'王五'],
+    ['task','离线调度','','active',30,18,50,'赵六'],
+    ['ms todo','M3 测试','todo','todo',58,20,0,'待启动'],
+  ]},
+  ops: { name: '运营中台', rows: [
+    ['ms active','M1 需求与设计','on-track','active',6,24,60,'张三'],
+    ['task crit','用户模块重构','','late critical',10,22,30,'张三'],
+    ['ms warn','M2 开发 逼近','at-risk','late',34,26,10,'张三'],
+    ['ms todo','M3 上线','todo','todo',62,20,0,'待启动'],
+  ]},
+  mobile: { name: '移动端适配', rows: [
+    ['ms done','M1 开发','on-track','done',2,18,100,'✓'],
+    ['ms active','M2 测试','on-track','active',22,16,85,'赵六'],
+    ['task','兼容性回归','','active',24,14,80,'赵六'],
+    ['ms todo','M3 上线','todo','todo',40,18,0,'待启动'],
+  ]},
+  act: { name: '年度活动管理平台', rows: [
+    ['ms late','M1 设计 阻塞','blocked','late',10,26,30,'孙七'],
+    ['task crit','活动配置设计','','late critical',12,20,25,'孙七'],
+    ['ms todo','M2 开发','todo','todo',40,24,0,'待启动'],
+    ['ms todo','M3 上线','todo','todo',66,20,0,'待启动'],
+  ]},
+  api: { name: 'API 网关升级', rows: [
+    ['ms done','M1 开发','on-track','done',2,14,100,'✓'],
+    ['ms done','M2 测试','on-track','done',18,12,100,'✓'],
+    ['ms active','M3 上线中','on-track','active',30,20,95,'张明'],
+    ['task','灰度发布','','active',32,16,90,'张明'],
+  ]},
+};
 
-  if (tier === 'project') {
-    // Single project view — show pulse items
-    projTable.style.display = 'none';
-    pulseItems.style.display = 'block';
-    leftTitle.textContent = '站会脉搏 · Q3 大版本改版';
-    leftCount.textContent = 'Sprint 5 · 剩余 14 天';
-  } else {
-    // Company or dept tier — show project table
-    projTable.style.display = '';
-    pulseItems.style.display = 'none';
-    if (tier === 'company') {
-      leftTitle.textContent = '项目总览';
-      leftCount.textContent = '共 6 个项目';
-    } else {
-      leftTitle.textContent = '部门项目总览';
-      leftCount.textContent = '产品研发部 · 3 个项目';
-    }
-  }
+function bsDrill(projectId, laneEl) {
+  bsCurrentActiveProj = projectId;
+  document.querySelectorAll('.bs-tl-lane').forEach(l => l.classList.remove('active'));
+  if (laneEl) laneEl.classList.add('active');
+  const data = bsGanttData[projectId];
+  if (!data) return;
+  document.getElementById('bsGanttProj').textContent = data.name;
+  const body = document.getElementById('bsGanttBody');
+  body.innerHTML = data.rows.map(r => {
+    const [kind, label, statusDot, barCls, left, width, fill, who] = r;
+    const isMs = kind.startsWith('ms');
+    const labelHtml = isMs
+      ? `<div class="g-label" style="font-weight:700">${statusDot?`<span class="bs-status ${statusDot==='todo'?'':statusDot}" ${statusDot==='todo'?'style="background:#475569"':''}></span>`:''}${label}</div>`
+      : `<div class="g-label" style="padding-left:28px">${label}</div>`;
+    const todo = barCls === 'todo';
+    const barHtml = todo
+      ? `<div class="bs-gbar" style="left:${left}%;width:${width}%;background:rgba(255,255,255,0.08)"><span class="who" style="color:rgba(255,255,255,0.5)">${who}</span></div>`
+      : `<div class="bs-gbar ${barCls}" style="left:${left}%;width:${width}%"><div class="fill" style="width:${fill}%"></div><span class="who">${who}</span></div>`;
+    return `<div class="bs-gantt-row">${labelHtml}<div class="g-track">${barHtml}</div></div>`;
+  }).join('');
 }
 
 function switchBsMode(mode) {
   bsCurrentMode = mode;
   const btnStandup = document.getElementById('bsBtnStandup');
   const btnWeekly = document.getElementById('bsBtnWeekly');
-
   if (mode === 'standup') {
     btnStandup.style.background = 'var(--blue-600)';
     btnStandup.style.color = '#fff';
     btnWeekly.style.background = 'transparent';
     btnWeekly.style.color = 'rgba(255,255,255,0.5)';
-    document.getElementById('bsLeftTitle').textContent = bsCurrentTier === 'project' ? '站会脉搏 · Q3 大版本改版' : '项目总览';
   } else {
     btnWeekly.style.background = 'var(--blue-600)';
     btnWeekly.style.color = '#fff';
     btnStandup.style.background = 'transparent';
     btnStandup.style.color = 'rgba(255,255,255,0.5)';
-    document.getElementById('bsLeftTitle').textContent = bsCurrentTier === 'project' ? '周会回顾 · Q3 大版本改版' : '本周项目进度汇总';
-    // Update KPI for weekly mode
     document.querySelector('#bsKpiGrid .bs-card:nth-child(1) .bs-card-sub').textContent = '↑ 较上周 +3% · 本周趋势向好';
   }
 }
 
 function switchBsProject(projectId) {
-  if (projectId !== 'all') {
-    // Switch to project tier
-    const projectBtn = document.querySelector('.bs-tier-item:nth-child(3)');
-    if (!projectBtn) {
-      // Simulate project-level view
-      document.querySelectorAll('.bs-tier-item').forEach(t => t.classList.remove('active'));
-      document.getElementById('bsLeftTitle').textContent = '站会脉搏 · ' + (projectId === 'q3' ? 'Q3 大版本改版' : projectId === 'data' ? '数据平台 2.0' : '运营中台');
-      document.getElementById('bsLeftCount').textContent = 'Sprint 5 · 详情视图';
-      document.getElementById('bsProjTable').style.display = 'none';
-      document.getElementById('bsPulseItems').style.display = 'block';
-    }
-  } else {
-    document.querySelectorAll('.bs-tier-item').forEach(t => t.classList.remove('active'));
-    document.querySelector('.bs-tier-item').classList.add('active');
-    document.getElementById('bsProjTable').style.display = '';
-    document.getElementById('bsPulseItems').style.display = 'none';
-    document.getElementById('bsLeftTitle').textContent = '项目总览';
-    document.getElementById('bsLeftCount').textContent = '共 6 个项目';
+  if (projectId === 'all') {
+    bsCurrentActiveProj = 'q3';
+    bsRenderTimeline();
+    bsDrill('q3');
+    return;
   }
+  bsCurrentActiveProj = projectId;
+  bsRenderTimeline();
+  bsDrill(projectId);
 }
 
 /* ═══════════════════════════════════════════

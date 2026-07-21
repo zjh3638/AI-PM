@@ -214,6 +214,17 @@
   padding: 14px 16px;
 }
 
+.kpi-card.kpi-clickable {
+  cursor: pointer;
+  transition: border-color var(--fast), box-shadow var(--fast), transform var(--fast);
+}
+
+.kpi-card.kpi-clickable:hover {
+  border-color: var(--border-hover);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  transform: translateY(-1px);
+}
+
 .kpi-card .kpi-label {
   font-size: var(--text-xs);
   color: var(--text-muted);

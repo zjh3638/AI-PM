@@ -208,10 +208,20 @@ async def init_wecom_group(
     workspace_id: str,
     db: AsyncSession = Depends(get_db),
     pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
 ):
     """为存量项目补建联盟E动（企业微信）群聊并拉入全部成员。"""
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER")
     chat_id = await ws_service.init_wecom_group(db, workspace_id)
+
+    # 发送群创建通知
+    if settings.wecom_enabled:
+        try:
+            from app.services import wecom_notification
+            await wecom_notification.notify_group_created(db, workspace_id, current_user, chat_id)
+        except Exception:
+            pass  # 通知失败不影响建群
+
     return {"code": 0, "message": "联盟E动群创建成功", "data": {"wecom_chat_id": chat_id}}
 
 

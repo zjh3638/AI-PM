@@ -61,7 +61,7 @@ async def notify_task_assigned(
 
     # 构建消息内容
     task_title = task.title or "未命名任务"
-    task_link = f"{settings.api_base_url}/workspace/{workspace_id}/task/{task.id}"
+    task_link = f"{settings.api_base_url}/workspaces/{workspace_id}?task={task.id}"
 
     content = f"""📋 任务分配通知
 
@@ -73,12 +73,9 @@ async def notify_task_assigned(
 [查看详情]({task_link})"""
 
     try:
-        # 发送 Markdown 消息并 @提醒被分配人
-        # 企业微信的 Markdown 不支持直接 @，需要用文本消息
-        mention_text = f"<@{assignee_user.id}>"
-        full_content = f"{mention_text}\n\n" + content.replace("**", "")
-
-        await wecom_service.send_text_message(chat_id, full_content)
+        # 用 Markdown 发送以使 [查看详情](url) 超链接可点击。
+        # 企业微信群机器人的 Markdown 不支持 @，故仅以文字提示被分配人。
+        await wecom_service.send_markdown_message(chat_id, content)
     except Exception as e:
         logger.warning(f"发送任务分配通知失败: {e}")
 
@@ -120,7 +117,7 @@ async def notify_task_status_changed(
     task_title = task.title or "未命名任务"
     old_status_label = status_map.get(old_status, old_status)
     new_status_label = status_map.get(new_status, new_status)
-    task_link = f"{settings.api_base_url}/workspace/{workspace_id}/task/{task.id}"
+    task_link = f"{settings.api_base_url}/workspaces/{workspace_id}?task={task.id}"
 
     content = f"""🔄 任务状态变更
 
@@ -129,10 +126,10 @@ async def notify_task_status_changed(
 操作人: {operator_user.display_name}
 时间: {_format_datetime(datetime.now())}
 
-查看详情: {task_link}"""
+[查看详情]({task_link})"""
 
     try:
-        await wecom_service.send_text_message(chat_id, content)
+        await wecom_service.send_markdown_message(chat_id, content)
     except Exception as e:
         logger.warning(f"发送任务状态变更通知失败: {e}")
 
@@ -243,6 +240,82 @@ async def notify_milestone_changed(
         await wecom_service.send_text_message(chat_id, content)
     except Exception as e:
         logger.warning(f"发送里程碑变更通知失败: {e}")
+
+
+async def notify_task_created(
+    db: AsyncSession,
+    workspace_id: str,
+    task,
+    operator_user: Optional[User],
+) -> None:
+    """任务创建通知。
+
+    Args:
+        db: 数据库会话
+        workspace_id: 工作空间ID
+        task: 任务对象
+        operator_user: 创建人（AI 创建时为 None）
+    """
+    if not settings.wecom_enabled:
+        return
+
+    chat_id = await _get_workspace_chat_id(db, workspace_id)
+    if not chat_id:
+        logger.debug(f"工作空间 {workspace_id} 未关联企业微信群聊，跳过通知")
+        return
+
+    task_title = task.title or "未命名任务"
+    task_link = f"{settings.api_base_url}/workspaces/{workspace_id}?task={task.id}"
+    assignee_name = ""
+    if task.assignee_id:
+        result = await db.execute(select(User).where(User.id == task.assignee_id))
+        assignee = result.scalar_one_or_none()
+        if assignee:
+            assignee_name = f"\n负责人: {assignee.display_name}"
+
+    creator_name = operator_user.display_name if operator_user else "AI"
+
+    content = f"""📋 新任务已创建
+
+任务: {task_title}{assignee_name}
+创建人: {creator_name}
+时间: {_format_datetime(datetime.now())}
+
+[查看详情]({task_link})"""
+
+    try:
+        await wecom_service.send_markdown_message(chat_id, content)
+    except Exception as e:
+        logger.warning(f"发送任务创建通知失败: {e}")
+
+
+async def notify_group_created(
+    db: AsyncSession,
+    workspace_id: str,
+    operator_user: User,
+    chat_id: str,
+) -> None:
+    """联盟E动群创建通知。
+
+    Args:
+        db: 数据库会话
+        workspace_id: 工作空间ID
+        operator_user: 创建人
+        chat_id: 企业微信群聊ID
+    """
+    if not settings.wecom_enabled:
+        return
+
+    content = f"""🎉 联盟E动群已创建
+
+欢迎使用 AI-PM！项目协作群已建立。
+创建人: {operator_user.display_name}
+时间: {_format_datetime(datetime.now())}"""
+
+    try:
+        await wecom_service.send_text_message(chat_id, content)
+    except Exception as e:
+        logger.warning(f"发送联盟E动群创建通知失败: {e}")
 
 
 async def notify_iteration_changed(

@@ -123,16 +123,16 @@ export default function DashboardPage() {
   // KPI cards — role-aware
   const kpiCards = isAdmin
     ? [
-        { label: '我待办', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '我的任务' },
-        { label: '待审核', value: (inReviewTasks ?? stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
-        { label: '项目数', value: workspaces.length, color: '#3b82f6', sub: `${stats?.active_projects ?? 0} 活跃` },
-        { label: '已逾期', value: (overdueTasks ?? stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
+        { label: '我待办', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '我的任务', to: '/personal?tab=todos' },
+        { label: '待审核', value: (inReviewTasks ?? stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review', to: '/personal?tab=reviews' },
+        { label: '项目数', value: workspaces.length, color: '#3b82f6', sub: `${stats?.active_projects ?? 0} 活跃`, to: '/workspaces' },
+        { label: '已逾期', value: (overdueTasks ?? stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期', to: '/personal?tab=todos' },
       ]
     : [
-        { label: '我的任务', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '待处理' },
-        { label: '待审核', value: (inReviewTasks ?? stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review' },
-        { label: '已逾期', value: (overdueTasks ?? stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期' },
-        { label: '进行中项目', value: stats?.active_projects ?? workspaces.length, color: '#3b82f6', sub: '个' },
+        { label: '我的任务', value: stats?.my_tasks ?? '...', color: '#6366f1', sub: '待处理', to: '/personal?tab=todos' },
+        { label: '待审核', value: (inReviewTasks ?? stats?.review_tasks) ?? 0, color: '#f59e0b', sub: '需要 Review', to: '/personal?tab=reviews' },
+        { label: '已逾期', value: (overdueTasks ?? stats?.overdue_tasks) ?? 0, color: overdueTasks > 0 ? '#ef4444' : '#34d399', sub: overdueTasks > 0 ? '需要处理' : '无逾期', to: '/personal?tab=todos' },
+        { label: '进行中项目', value: stats?.active_projects ?? workspaces.length, color: '#3b82f6', sub: '个', to: '/workspaces' },
       ];
 
   return (
@@ -164,7 +164,7 @@ export default function DashboardPage() {
       {/* KPI Cards — role-aware */}
       <div className="kpi-grid">
         {kpiCards.map((kpi) => (
-          <div key={kpi.label} className="kpi-card">
+          <div key={kpi.label} className="kpi-card kpi-clickable" onClick={() => navigate(kpi.to)}>
             <div className="kpi-label">{kpi.label}</div>
             <div className="kpi-value" style={{ color: kpi.color }}>{kpi.value}</div>
             <div className="kpi-sub">{kpi.sub}</div>

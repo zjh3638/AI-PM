@@ -31,6 +31,7 @@ async def create_task(
     req: TaskCreate,
     db: AsyncSession = Depends(get_db),
     pc: PermissionChecker = Depends(get_permission_checker),
+    current_user: User = Depends(get_current_user),
 ):
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
     # Validate phase is valid for task type
@@ -54,6 +55,16 @@ async def create_task(
         sort_order=req.sort_order, due_date=req.due_date,
     )
     task = await task_service.get_task(db, task.id)
+
+    # 发送企业微信通知
+    from app.config import settings
+    if settings.wecom_enabled:
+        try:
+            from app.services import wecom_notification
+            await wecom_notification.notify_task_created(db, workspace_id, task, current_user)
+        except Exception:
+            pass  # 通知失败不影响任务创建
+
     return {"code": 0, "message": "ok", "data": _task_to_dict(task)}
 
 

@@ -19,7 +19,7 @@ from app.models.risk import Risk
 from app.models.task_progress import TaskProgress
 from app.models.project_group import ProjectGroup, ProjectGroupItem
 from app.models.chat_history import ChatHistory
-from app.models.meeting import Meeting
+from app.models.meeting import Meeting, MeetingWorkspace
 from app.models.project_report import ProjectReport
 
 __all__ = [
@@ -49,5 +49,6 @@ __all__ = [
     "ProjectGroupItem",
     "ChatHistory",
     "Meeting",
+    "MeetingWorkspace",
     "ProjectReport",
 ]

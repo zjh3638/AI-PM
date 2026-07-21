@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 
 
 class Settings(BaseSettings):
@@ -48,6 +49,22 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000"
 
     model_config = {"env_prefix": "AI_PM_", "env_file": ".env"}
+
+    @model_validator(mode="after")
+    def _override_api_base_url(self) -> "Settings":
+        """从 settings.json 覆盖 api_base_url（如果配置了）。"""
+        try:
+            from pathlib import Path
+            import json
+            settings_file = Path(__file__).parent.parent / "settings.json"
+            if settings_file.exists():
+                data = json.loads(settings_file.read_text())
+                api_url = data.get("api_base_url")
+                if api_url:
+                    self.api_base_url = api_url
+        except Exception:
+            pass
+        return self
 
 
 settings = Settings()

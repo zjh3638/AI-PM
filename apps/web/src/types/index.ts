@@ -268,6 +268,15 @@ export const STATUS_LABELS: Record<string, string> = {
   DONE: '已完成',
 };
 
+export const TASK_TYPE_LABELS: Record<string, string> = {
+  EPIC: '史诗',
+  STORY: '需求',
+  TASK: '任务',
+  SUB_TASK: '子任务',
+  BUG: '缺陷',
+  SPIKE: '调研',
+};
+
 export const PRIORITY_LABELS: Record<string, string> = {
   CRITICAL: '紧急',
   HIGH: '高',

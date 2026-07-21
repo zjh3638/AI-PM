@@ -52,6 +52,32 @@ async def get_department(db: AsyncSession, dept_id: str) -> Optional[Department]
     return result.scalar_one_or_none()
 
 
+async def get_descendant_ids(db: AsyncSession, dept_id: str) -> list[str]:
+    """Return the department id plus all descendant department ids (any depth).
+
+    Loads the full department table once and walks the parent_id adjacency in
+    memory — avoids recursive per-node queries.
+    """
+    result = await db.execute(select(Department.id, Department.parent_id))
+    rows = result.all()
+    children_map: dict[str, list[str]] = {}
+    for did, pid in rows:
+        if pid:
+            children_map.setdefault(pid, []).append(did)
+
+    collected: list[str] = []
+    stack = [dept_id]
+    seen: set[str] = set()
+    while stack:
+        cur = stack.pop()
+        if cur in seen:
+            continue
+        seen.add(cur)
+        collected.append(cur)
+        stack.extend(children_map.get(cur, []))
+    return collected
+
+
 async def create_department(
     db: AsyncSession,
     name: str,

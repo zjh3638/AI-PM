@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.deps import get_current_user
@@ -101,7 +102,7 @@ async def review_queue(
         return {"code": 0, "message": "ok", "data": []}
 
     result = await db.execute(
-        select(Task).where(
+        select(Task).options(selectinload(Task.assignee)).where(
             Task.workspace_id.in_(ws_ids),
             Task.status == "IN_REVIEW",
         ).order_by(Task.created_at.desc()).limit(20)
@@ -128,7 +129,7 @@ async def recent_activity(
 
     from app.models.activity_log import ActivityLog
     result = await db.execute(
-        select(ActivityLog).where(
+        select(ActivityLog).options(selectinload(ActivityLog.user)).where(
             ActivityLog.task_id.in_(
                 select(Task.id).where(Task.workspace_id.in_(ws_ids))
             )
@@ -174,7 +175,7 @@ async def upcoming_deadlines(
     today = date.today()
     next_week = today + timedelta(days=7)
     result = await db.execute(
-        select(Task).where(
+        select(Task).options(selectinload(Task.assignee)).where(
             Task.workspace_id.in_(ws_ids),
             Task.status != "DONE",
             Task.due_date >= today,

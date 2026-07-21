@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
 import api from '../../api/client';
 
@@ -30,7 +30,8 @@ export default function PersonalCenterPage() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState('todos');
+  const [searchParams] = useSearchParams();
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'todos');
   const [myTasks, setMyTasks] = useState<any[]>([]);
   const [reviewQueue, setReviewQueue] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);

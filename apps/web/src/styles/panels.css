@@ -1467,3 +1467,40 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ═══ 居中模态框 Modal ═══ */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 300; opacity: 0; pointer-events: none;
+  transition: opacity var(--normal);
+  backdrop-filter: blur(2px);
+}
+.modal-overlay.open { opacity: 1; pointer-events: auto; }
+.modal-box {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -48%);
+  width: calc(100% - 48px); max-width: 640px;
+  max-height: 86vh;
+  background: var(--bg-surface);
+  z-index: 310;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  opacity: 0; pointer-events: none;
+  transition: opacity var(--normal), transform var(--normal);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.modal-box.open { opacity: 1; pointer-events: auto; transform: translate(-50%, -50%); }
+.modal-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 22px; border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.modal-head h3 { margin: 0; font-size: 1rem; font-weight: 600; color: var(--text-primary); }
+.modal-close {
+  border: none; background: none; cursor: pointer; font-size: 1rem;
+  color: var(--text-muted); padding: 4px 8px; border-radius: var(--radius-sm);
+}
+.modal-close:hover { background: var(--bg-raised); color: var(--text-primary); }
+.modal-body { padding: 20px 22px; overflow-y: auto; flex: 1; }

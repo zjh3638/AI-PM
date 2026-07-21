@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useTaskStore } from '../../stores/taskStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -37,6 +37,7 @@ import { getFileIcon } from './helpers';
 export default function WorkspaceDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { current, loading, fetchDetail } = useWorkspaceStore();
   const { create, update, remove, reviewDesign, reviewRequirement, advancePhase, returnPhase } = useTaskStore();
   const { user } = useAuthStore();
@@ -354,6 +355,30 @@ export default function WorkspaceDetailPage() {
 
   useEffect(() => { if (id) fetchDetail(id); }, [id]);
 
+  // 支持通过 ?task=<id> 深链直接打开任务详情面板（企业微信通知链接）
+  useEffect(() => {
+    const taskId = searchParams.get('task');
+    if (!id || !taskId || taskPanelOpen) return;
+    (async () => {
+      try {
+        await useTaskStore.getState().fetchDetail(id, taskId);
+        const t = useTaskStore.getState().current;
+        if (t && t.id === taskId) {
+          setEditingTask(t);
+          setTaskForm({ title: t.title, description: t.description || '', task_type: t.task_type, priority: t.priority, status: t.status, phase: t.phase || 'PLAN', iteration_id: t.iteration_id || undefined, milestone_id: t.milestone_id || '', assignee_id: t.assignee_id || undefined, reviewer_id: t.reviewer_id || undefined, proposer_id: t.proposer_id || undefined, analyst_id: t.analyst_id || undefined, qa_owner_id: (t as any).qa_owner_id || undefined, acceptance_owner_id: (t as any).acceptance_owner_id || undefined, verifier_id: t.verifier_id || undefined, parent_id: t.parent_id || undefined, design_doc: (t as any).design_doc || '', prd_doc: (t as any).prd_doc || '', self_test_report: (t as any).self_test_report || '', test_report: (t as any).test_report || '', rating: (t as any).rating || undefined, evaluation: (t as any).evaluation || '', due_date: t.due_date || '' });
+          fetchComments(t.id);
+          fetchActivity(t.id);
+          fetchRelations(t);
+          fetchAttachments(t.id);
+          setDetailTab('info');
+          setTaskPanelOpen(true);
+        }
+      } catch { /* skip */ }
+      // 清掉 query 参数，避免刷新或返回时重复打开
+      setSearchParams((prev) => { prev.delete('task'); return prev; }, { replace: true });
+    })();
+  }, [id, searchParams, taskPanelOpen]);
+
   if (loading) {
     return <div style={{ textAlign: 'center', padding: 100, color: 'var(--text-muted)' }}>加载中...</div>;
   }
@@ -397,7 +422,7 @@ export default function WorkspaceDetailPage() {
         </div>
         <div className="ph-actions">
           <button className="btn btn-ghost btn-sm" onClick={openWsEdit}>编辑信息</button>
-          <button className="btn btn-ghost btn-sm">投屏</button>
+          <button className="btn btn-ghost btn-sm" onClick={() => navigate(`/workspaces/${id}/cast`)}>投屏</button>
         </div>
       </div>
 

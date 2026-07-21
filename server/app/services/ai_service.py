@@ -443,19 +443,19 @@ async def _exec_get_workspace_context(db: AsyncSession, workspace_id: str) -> di
 
 async def _exec_create_task(db: AsyncSession, workspace_id: str, title: str,
                             **kwargs) -> dict:
-    task = Task(workspace_id=workspace_id, title=title)
-    for field in ("description", "priority", "status", "task_type", "assignee_id",
-                  "iteration_id", "milestone_id", "due_date", "phase"):
-        if field in kwargs and kwargs[field] is not None:
-            setattr(task, field, kwargs[field])
-    if kwargs.get("due_date"):
+    from app.services import task as task_service
+    from app.config import settings
+    kwargs["title"] = title
+    task = await task_service.create_task(db, workspace_id, **kwargs)
+
+    # 发送企业微信通知
+    if settings.wecom_enabled:
         try:
-            task.due_date = date.fromisoformat(kwargs["due_date"])
-        except (ValueError, TypeError):
+            from app.services import wecom_notification
+            await wecom_notification.notify_task_created(db, workspace_id, task, operator_user=None)
+        except Exception:
             pass
-    db.add(task)
-    await db.commit()
-    await db.refresh(task)
+
     return {"id": task.id, "title": task.title, "status": task.status,
             "priority": task.priority, "assignee_id": task.assignee_id,
             "due_date": str(task.due_date) if task.due_date else None}

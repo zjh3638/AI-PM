@@ -1,4 +1,5 @@
 {
   "llm_gateway_url": "http://7.24.28.9:8080/v1",
-  "ldap_enabled": true
+  "ldap_enabled": true,
+  "api_base_url": "http://7.24.14.14"
 }

@@ -4,7 +4,7 @@ import os
 import sys
 sys.path.insert(0, ".")
 
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 
 from app.database import engine, async_session
 from sqlalchemy import select as sa_select, update as sa_update
@@ -28,6 +28,7 @@ from app.models.role import Role
 from app.models.workflow import WorkflowTemplate, WorkflowState, WorkflowTransition
 from app.models.iteration import Iteration
 from app.models.task import Task
+from app.models.project_group import ProjectGroup, ProjectGroupItem
 from app.security import hash_password
 
 SKIP_DDL = os.environ.get("SKIP_DDL", "").lower() in ("1", "true", "yes")
@@ -117,13 +118,19 @@ async def seed():
         await db.execute(Milestone.__table__.delete())
         await db.execute(Iteration.__table__.delete())
         await db.execute(Task.__table__.delete())
+        await db.execute(ProjectGroupItem.__table__.delete())
+        await db.execute(ProjectGroup.__table__.delete())
         await db.execute(WorkflowTransition.__table__.delete())
         await db.execute(WorkflowState.__table__.delete())
         await db.execute(WorkflowTemplate.__table__.delete())
         await db.execute(WorkspaceMember.__table__.delete())
         await db.execute(Workspace.__table__.delete())
         await db.execute(Role.__table__.delete())
+        # demo members live in sub-departments; remove them + the whole seed org subtree
+        await db.execute(User.__table__.delete().where(User.username.in_(["lisi", "wangwu", "zhangsan", "zhaoliu"])))
         await db.execute(User.__table__.delete().where(User.department_id == "dept-001"))
+        # delete child departments (parent_id set) before the root to satisfy FK
+        await db.execute(Department.__table__.delete().where(Department.parent_id.isnot(None)))
         await db.execute(Department.__table__.delete().where(Department.id == "dept-001"))
         await db.flush()
 
@@ -344,10 +351,151 @@ async def seed():
             )
             db.add(task)
 
+        # ═══ Meeting big-screen demo: project group with multi-project timeline ═══
+        # Org tree (multi-level) so "按组织架构全选项目" and 看板分组 are demonstrable:
+        #   技术中心 → { 后端组, 前端组 } ; 产品中心
+        tech_center = Department(name="技术中心", parent_id="dept-001", path="/默认部门/技术中心", sort_order=1)
+        prod_center = Department(name="产品中心", parent_id="dept-001", path="/默认部门/产品中心", sort_order=2)
+        db.add_all([tech_center, prod_center])
+        await db.flush()
+        be_group = Department(name="后端组", parent_id=tech_center.id, path="/默认部门/技术中心/后端组", sort_order=1)
+        fe_group = Department(name="前端组", parent_id=tech_center.id, path="/默认部门/技术中心/前端组", sort_order=2)
+        db.add_all([be_group, fe_group])
+        await db.flush()
+
+        # Extra members so key-person lanes show multiple people with varied load.
+        # Each demo lead sits in a different (sub)department.
+        demo_user_defs = [
+            ("lisi", "李四", fe_group.id),      # 前端组
+            ("wangwu", "王五", be_group.id),    # 后端组
+            ("zhangsan", "张三", tech_center.id),  # 技术中心（直属）
+            ("zhaoliu", "赵六", prod_center.id),   # 产品中心
+        ]
+        demo_users = []
+        for uname, dname, dept_id in demo_user_defs:
+            u = User(
+                username=uname, email=f"{uname}@ai-pm.local",
+                hashed_password=hash_password("AiPm@2026#Secure"),
+                display_name=dname, department_id=dept_id,
+                system_role="MEMBER", status="ACTIVE", source="LOCAL",
+            )
+            db.add(u)
+            demo_users.append(u)
+        await db.flush()
+        li, wang, zhang, zhao = demo_users
+
+        # 3 demo workspaces, each owned by a different lead (→ different departments)
+        demo_ws_defs = [
+            ("Q3大版本改版", "Q3-REVAMP", zhang),
+            ("数据平台2.0", "DATA-PLAT", wang),
+            ("运营中台", "OPS-MID", zhang),
+        ]
+        demo_workspaces = []
+        for name, key, lead in demo_ws_defs:
+            ws = Workspace(
+                name=name, key=key, description=f"{name} 演示项目",
+                type="PROJECT", status="ACTIVE", visibility="PRIVATE",
+                template_id=tmpl_full.id, owner_id=lead.id,
+            )
+            db.add(ws)
+            demo_workspaces.append(ws)
+        await db.flush()
+        for ws, (_, _, lead) in zip(demo_workspaces, demo_ws_defs):
+            db.add(WorkspaceMember(workspace_id=ws.id, user_id=lead.id, role="OWNER"))
+
+        # Milestone plans per workspace: (name, phase, start_offset, end_offset, owner)
+        # offsets are days relative to today → spread across done/late/risk/upcoming.
+        ws_q3, ws_data, ws_ops = demo_workspaces
+        ms_plans = {
+            ws_q3.id: [
+                ("需求分析", "DONE", -45, -35, zhang),
+                ("核心开发", "ACTIVE", -34, -3, li),       # end in past, not done → late
+                ("UI Review", "ACTIVE", -2, 5, li),        # end within 7d → risk
+                ("上线", "PLANNING", 25, 35, zhang),        # future → upcoming
+            ],
+            ws_data.id: [
+                ("数据清洗", "DONE", -40, -25, wang),
+                ("核心开发", "ACTIVE", -24, 10, wang),      # active
+                ("测试", "PLANNING", 20, 30, zhao),         # upcoming
+            ],
+            ws_ops.id: [
+                ("需求与设计", "ACTIVE", -10, 6, zhang),     # risk (end within 7d)
+                ("开发", "PLANNING", 18, 40, zhang),        # upcoming
+                ("上线", "PLANNING", 45, 55, zhang),        # upcoming
+            ],
+        }
+        demo_ms_ids = {}  # ws_id -> [milestone,...]
+        for ws in demo_workspaces:
+            chain = []
+            for i, (name, phase, so, eo, owner) in enumerate(ms_plans[ws.id]):
+                ms = Milestone(
+                    workspace_id=ws.id, name=name, phase=phase, sort_order=i,
+                    start_date=today + timedelta(days=so),
+                    end_date=today + timedelta(days=eo),
+                    owner_id=owner.id,
+                )
+                db.add(ms)
+                chain.append(ms)
+            await db.flush()
+            for i in range(1, len(chain)):
+                chain[i].depends_on_id = chain[i - 1].id
+            demo_ms_ids[ws.id] = chain
+
+        # Tasks per milestone: enough to exercise done / overdue / in-progress + key persons.
+        def _add_task(ws, ms, title, status, assignee, due_off=None, done_off=None):
+            db.add(Task(
+                workspace_id=ws.id, milestone_id=ms.id, task_type="TASK",
+                title=title, status=status, phase="DEVELOPMENT",
+                assignee_id=assignee.id,
+                due_date=(today + timedelta(days=due_off)) if due_off is not None else None,
+                completed_at=(datetime.combine(today + timedelta(days=done_off), datetime.min.time())) if done_off is not None else None,
+            ))
+
+        q3 = demo_ms_ids[ws_q3.id]
+        _add_task(ws_q3, q3[0], "PRD 编写", "DONE", zhang, done_off=-38)
+        _add_task(ws_q3, q3[1], "接口开发", "IN_PROGRESS", li, due_off=-3)   # overdue → li blocked
+        _add_task(ws_q3, q3[1], "数据迁移", "DONE", wang, done_off=-5)
+        _add_task(ws_q3, q3[2], "前端首页重构", "TODO", li, due_off=4)
+        _add_task(ws_q3, q3[2], "线框图评审", "DONE", zhao, done_off=-1)
+
+        dp = demo_ms_ids[ws_data.id]
+        _add_task(ws_data, dp[0], "清洗管道", "DONE", wang, done_off=-28)
+        _add_task(ws_data, dp[1], "特征工程", "IN_PROGRESS", wang, due_off=8)
+        _add_task(ws_data, dp[1], "离线调度", "IN_PROGRESS", zhao, due_off=9)
+
+        op = demo_ms_ids[ws_ops.id]
+        _add_task(ws_ops, op[0], "用户模块重构", "IN_PROGRESS", zhang, due_off=-5)  # overdue
+        _add_task(ws_ops, op[0], "权限设计", "TODO", zhang, due_off=6)
+
+        # Risks (non-closed) linked to milestones, with mitigation.
+        db.add(Risk(
+            workspace_id=ws_q3.id, milestone_id=q3[1].id, title="前端重构延期，阻塞 UI Review",
+            risk_type="SCHEDULE", impact="HIGH", probability="HIGH", status="IDENTIFIED",
+            owner_id=li.id, mitigation="协调李四负载，或拆分任务并行推进",
+        ))
+        db.add(Risk(
+            workspace_id=ws_ops.id, milestone_id=op[0].id, title="用户模块重构 5 天无更新",
+            risk_type="SCHEDULE", impact="MEDIUM", probability="MEDIUM", status="MITIGATING",
+            owner_id=zhang.id, mitigation="跟进负责人确认进展，评估是否需要支援",
+        ))
+
+        # Project group + meeting over the 3 workspaces
+        group = ProjectGroup(name="公司重点项目群", description="季度重点项目汇报", creator_id=admin.id)
+        db.add(group)
+        await db.flush()
+        for ws in demo_workspaces:
+            db.add(ProjectGroupItem(group_id=group.id, workspace_id=ws.id))
+        demo_meeting = Meeting(
+            title="Q3 项目群周会", dimension="PROJECT_GROUP", dimension_id=group.id,
+            meeting_type="WEEKLY", status="ACTIVE", host_id=admin.id,
+        )
+        db.add(demo_meeting)
+
         await db.commit()
         print(f"Seed data created: admin/admin123")
         print(f"  [PROJECT] R&D workspace={ws_rd.id} | Iterations: {len(iterations)} | Backlog: {len(backlog_stories)} Stories | Planned: 1 Story + {len(task_defs_rd)} Tasks + 1 Bug")
         print(f"  [TOPIC]  Topic workspace={ws_topic.id} | Milestones: {len(milestones)} | Tasks: {len(topic_task_defs)} Tasks")
+        print(f"  [GROUP]  项目群={group.id} | 3 workspaces | Meeting(timeline)={demo_meeting.id}")
 
     await engine.dispose()
 

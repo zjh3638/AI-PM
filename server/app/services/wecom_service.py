@@ -99,6 +99,8 @@ async def _call_api(method: str, endpoint: str, json_data: dict = None, retry: b
     url = f"{settings.wecom_api_base}{endpoint}"
     params = {"access_token": token}
 
+    logger.info(f"WeCom API call: method={method} endpoint={endpoint} token_prefix={token[:20]}... url={url} params_access_token={params['access_token'][:20]}... json_data={json_data}")
+
     async with httpx.AsyncClient(timeout=15.0) as client:
         try:
             if method.upper() == "POST":

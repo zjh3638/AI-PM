@@ -1,13 +1,16 @@
 import { create } from 'zustand';
-import { meetingApi, type Meeting, type BoardData } from '../api/meeting';
+import { meetingApi, type Meeting, type BoardData, type TimelineData } from '../api/meeting';
 
 interface MeetingState {
   meeting: Meeting | null;
   boardData: BoardData | null;
+  timelineData: TimelineData | null;
   loading: boolean;
   boardLoading: boolean;
+  timelineLoading: boolean;
   fetchMeeting: (id: string) => Promise<void>;
   fetchBoard: (meetingId: string, workspaceId: string) => Promise<void>;
+  fetchTimeline: (meetingId: string) => Promise<void>;
   addNote: (
     meetingId: string,
     who: string,
@@ -21,8 +24,10 @@ interface MeetingState {
 export const useMeetingStore = create<MeetingState>((set, get) => ({
   meeting: null,
   boardData: null,
+  timelineData: null,
   loading: false,
   boardLoading: false,
+  timelineLoading: false,
 
   fetchMeeting: async (id) => {
     set({ loading: true });
@@ -42,6 +47,15 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     }
   },
 
+  fetchTimeline: async (meetingId) => {
+    set({ timelineLoading: true });
+    try {
+      set({ timelineData: await meetingApi.getTimeline(meetingId) });
+    } finally {
+      set({ timelineLoading: false });
+    }
+  },
+
   addNote: async (meetingId, who, text, noteType = 'speech') => {
     const updated = await meetingApi.addNote(meetingId, {
       who,
@@ -56,5 +70,5 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     set({ meeting: updated });
   },
 
-  reset: () => set({ meeting: null, boardData: null }),
+  reset: () => set({ meeting: null, boardData: null, timelineData: null }),
 }));

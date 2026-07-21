@@ -15,7 +15,7 @@ export default function MembersPanel() {
 
   const [wecomLoading, setWecomLoading] = useState(false);
   // 企业微信（联盟E动）已启用且当前项目尚未建群时，允许补建群
-  const canInitWecom = current?.wecom_enabled && !current?.wecom_chat_id;
+  const canInitWecom = !current?.wecom_chat_id;
 
   const handleInitWecom = async () => {
     if (!id) return;

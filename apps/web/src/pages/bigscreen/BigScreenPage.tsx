@@ -29,6 +29,7 @@ export default function BigScreenPage() {
   const [pulseItems, setPulseItems] = useState<{ dot: string; who: string; what: string }[]>([]);
   const [signals, setSignals] = useState<{ title: string; items: { level: string; text: string }[] }[]>([]);
   const [selectedWs, setSelectedWs] = useState<WsStat | null>(null);
+  const [dark, setDark] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -124,7 +125,7 @@ export default function BigScreenPage() {
   const activeWss = tier === 'company' ? wsStats : tier === 'dept' ? wsStats.filter(w => w.type === 'PROJECT') : wsStats.filter(w => w.id === selectedWs?.id);
 
   return (
-    <div className="bs-page">
+    <div className={`bs-page${dark ? ' bs-dark' : ''}`}>
       {/* Top Bar */}
       <div className="bs-topbar">
         <div className="bs-logo">
@@ -139,13 +140,14 @@ export default function BigScreenPage() {
         <div className="bs-actions">
           <button
             onClick={() => setMode('standup')}
-            style={{ padding: '5px 14px', borderRadius: 16, border: '1px solid rgba(255,255,255,0.12)', fontSize: '0.72rem', cursor: 'pointer', background: mode === 'standup' ? 'var(--blue-600)' : 'transparent', color: mode === 'standup' ? '#fff' : 'rgba(255,255,255,0.5)' }}
+            style={{ padding: '5px 14px', borderRadius: 16, border: '1px solid var(--bs-border)', fontSize: '0.72rem', cursor: 'pointer', background: mode === 'standup' ? 'var(--blue-600)' : 'transparent', color: mode === 'standup' ? '#fff' : 'var(--bs-text-muted)' }}
           >站会</button>
           <button
             onClick={() => setMode('weekly')}
-            style={{ padding: '5px 14px', borderRadius: 16, border: '1px solid rgba(255,255,255,0.12)', fontSize: '0.72rem', cursor: 'pointer', background: mode === 'weekly' ? 'var(--blue-600)' : 'transparent', color: mode === 'weekly' ? '#fff' : 'rgba(255,255,255,0.5)' }}
+            style={{ padding: '5px 14px', borderRadius: 16, border: '1px solid var(--bs-border)', fontSize: '0.72rem', cursor: 'pointer', background: mode === 'weekly' ? 'var(--blue-600)' : 'transparent', color: mode === 'weekly' ? '#fff' : 'var(--bs-text-muted)' }}
           >周会</button>
-          <button className="btn btn-ghost btn-sm" onClick={() => navigate('/dashboard')} style={{ border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.5)' }}>退出投屏</button>
+          <button className="bs-theme-toggle" onClick={() => setDark((v) => !v)}>{dark ? '☀ 浅色' : '🌙 深色'}</button>
+          <button className="bs-theme-toggle" onClick={() => navigate('/dashboard')}>退出投屏</button>
         </div>
       </div>
 
@@ -245,21 +247,21 @@ export default function BigScreenPage() {
                   </div>
                   <div style={{ padding: '8px 18px' }}>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      <div style={{ padding: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 6 }}>
+                      <div style={{ padding: 10, background: 'var(--bs-surface)', borderRadius: 6 }}>
                         <div style={{ fontSize: '0.62rem', opacity: 0.4, marginBottom: 4 }}>总任务</div>
                         <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{selectedWs.total}</div>
                       </div>
-                      <div style={{ padding: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 6 }}>
+                      <div style={{ padding: 10, background: 'var(--bs-surface)', borderRadius: 6 }}>
                         <div style={{ fontSize: '0.62rem', opacity: 0.4, marginBottom: 4 }}>已完成</div>
                         <div style={{ fontSize: '1.2rem', fontWeight: 700, color: '#34d399' }}>{selectedWs.done}</div>
                       </div>
-                      <div style={{ padding: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 6 }}>
+                      <div style={{ padding: 10, background: 'var(--bs-surface)', borderRadius: 6 }}>
                         <div style={{ fontSize: '0.62rem', opacity: 0.4, marginBottom: 4 }}>逾期</div>
                         <div style={{ fontSize: '1.2rem', fontWeight: 700, color: selectedWs.overdue > 0 ? '#ef4444' : '#34d399' }}>{selectedWs.overdue}</div>
                       </div>
-                      <div style={{ padding: 10, background: 'rgba(255,255,255,0.03)', borderRadius: 6 }}>
+                      <div style={{ padding: 10, background: 'var(--bs-surface)', borderRadius: 6 }}>
                         <div style={{ fontSize: '0.62rem', opacity: 0.4, marginBottom: 4 }}>待 Review</div>
-                        <div style={{ fontSize: '1.2rem', fontWeight: 700, color: selectedWs.inReview > 0 ? '#fbbf24' : '#e2e8f0' }}>{selectedWs.inReview}</div>
+                        <div style={{ fontSize: '1.2rem', fontWeight: 700, color: selectedWs.inReview > 0 ? '#fbbf24' : 'var(--bs-text)' }}>{selectedWs.inReview}</div>
                       </div>
                     </div>
                   </div>

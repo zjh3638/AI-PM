@@ -1,57 +1,73 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useMeetingStore } from '../../stores/meetingStore';
-import api from '../../api/client';
 import ProjectSwitcher from './ProjectSwitcher';
 import OverviewTab from './OverviewTab';
 import MilestoneTab from './MilestoneTab';
 import RiskTab from './RiskTab';
+import TimelineTab from './TimelineTab';
 import NotesPanel from './NotesPanel';
 import MinutesView from './MinutesView';
 
 type Step = 'board' | 'minutes';
-type BoardTab = 'overview' | 'milestones' | 'risks';
+type BoardTab = 'timeline' | 'overview' | 'milestones' | 'risks';
 
 export default function MeetingBoardPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { meeting, boardData, boardLoading, fetchMeeting, fetchBoard } = useMeetingStore();
+  const { meeting, boardData, boardLoading, timelineData, timelineLoading, fetchMeeting, fetchBoard, fetchTimeline } = useMeetingStore();
   const [step, setStep] = useState<Step>('board');
-  const [boardTab, setBoardTab] = useState<BoardTab>('milestones');
+  const [boardTab, setBoardTab] = useState<BoardTab>('timeline');
   const [currentWsId, setCurrentWsId] = useState<string>('');
-  const [workspaceList, setWorkspaceList] = useState<Array<{ id: string; name: string; health: string }>>([]);
+  const [workspaceList, setWorkspaceList] = useState<Array<{ id: string; name: string; health: string; department_name?: string | null }>>([]);
   const [presMode, setPresMode] = useState(false);
 
   // Load meeting
   useEffect(() => {
     if (!id) return;
     fetchMeeting(id);
+    fetchTimeline(id);
   }, [id]);
 
-  // Once meeting loaded, resolve workspaces
+  // Once meeting loaded, resolve workspaces.
+  // PROJECT: single workspace. PROJECT_GROUP / CUSTOM: derive from timeline
+  // projects (multi-project aggregation, carries department_name for grouping).
   useEffect(() => {
     if (!meeting) return;
     if (meeting.dimension === 'PROJECT') {
       setWorkspaceList([{ id: meeting.dimension_id, name: '', health: 'on-track' }]);
       setCurrentWsId(meeting.dimension_id);
       fetchBoard(meeting.id, meeting.dimension_id);
-    } else {
-      // PROJECT_GROUP: fetch workspace list via project group API
-      api.get(`/project-groups/${meeting.dimension_id}`).then((res: any) => {
-        const wss = res.data?.workspaces || [];
-        const list = wss.map((w: any) => ({ id: w.id, name: w.name, health: 'on-track' }));
-        setWorkspaceList(list);
-        if (list.length > 0) {
-          setCurrentWsId(list[0].id);
-          fetchBoard(meeting.id!, list[0].id);
-        }
-      }).catch(() => {});
     }
   }, [meeting]);
+
+  // For multi-project dimensions, build the switcher list from timeline data.
+  useEffect(() => {
+    if (!meeting || meeting.dimension === 'PROJECT') return;
+    if (!timelineData) return;
+    const list = timelineData.projects.map(p => ({
+      id: p.workspace_id,
+      name: p.name,
+      health: p.health,
+      department_name: p.department_name,
+    }));
+    setWorkspaceList(list);
+    if (list.length > 0 && !currentWsId) {
+      setCurrentWsId(list[0].id);
+      fetchBoard(meeting.id, list[0].id);
+    }
+  }, [meeting, timelineData]);
 
   const handleSwitchWs = useCallback((wsId: string) => {
     setCurrentWsId(wsId);
     if (id) fetchBoard(id, wsId);
+  }, [id, fetchBoard]);
+
+  // From the timeline: open a project's single-project board (overview tab)
+  const handleOpenProject = useCallback((wsId: string) => {
+    setCurrentWsId(wsId);
+    if (id) fetchBoard(id, wsId);
+    setBoardTab('overview');
   }, [id, fetchBoard]);
 
   if (!meeting) return <div className="empty-state"><div>加载中...</div></div>;
@@ -75,37 +91,46 @@ export default function MeetingBoardPage() {
       {step === 'board' ? (
         <div className="main">
           <div className="board">
-            <ProjectSwitcher workspaces={workspaceList} currentId={currentWsId} onChange={handleSwitchWs} />
+            <div className="board-tabs">
+              <button className={`bt-tab${boardTab === 'timeline' ? ' on' : ''}`} onClick={() => setBoardTab('timeline')}>🗺 时间轴</button>
+              <button className={`bt-tab${boardTab === 'overview' ? ' on' : ''}`} onClick={() => setBoardTab('overview')}>📊 整体进展</button>
+              <button className={`bt-tab${boardTab === 'milestones' ? ' on' : ''}`} onClick={() => setBoardTab('milestones')}>🏔 里程碑</button>
+              <button className={`bt-tab${boardTab === 'risks' ? ' on' : ''}`} onClick={() => setBoardTab('risks')}>⚠️ 风险</button>
+            </div>
 
-            {boardData && (
+            {boardTab === 'timeline' ? (
+              <div className="tab-content">
+                {timelineData ? <TimelineTab data={timelineData} onOpenProject={handleOpenProject} /> : (
+                  <div className="empty-state">{timelineLoading ? '加载时间轴...' : '暂无里程碑数据'}</div>
+                )}
+              </div>
+            ) : (
               <>
-                <div className="summary">
-                  <span className="s-icon">{boardData.health === 'on-track' ? '🟢' : boardData.health === 'at-risk' ? '🟡' : '🔴'}</span>
-                  <div>
-                    <div className="s-name">{boardData.workspace_name}</div>
-                    <div className="s-meta">负责人：{boardData.owner_name || '-'} · {boardData.total_tasks}个任务 · 整体完成 {boardData.pct}%</div>
-                  </div>
-                  <div className="s-stats">
-                    <span className="stat-good">✓ {boardData.done}</span>
-                    <span className="stat-bad">⏰ {boardData.overdue} 逾期</span>
-                    <span className="stat-warn">⚠ {boardData.risks.length} 风险</span>
-                  </div>
-                </div>
-
-                <div className="board-tabs">
-                  <button className={`bt-tab${boardTab === 'overview' ? ' on' : ''}`} onClick={() => setBoardTab('overview')}>📊 整体进展</button>
-                  <button className={`bt-tab${boardTab === 'milestones' ? ' on' : ''}`} onClick={() => setBoardTab('milestones')}>🏔 里程碑</button>
-                  <button className={`bt-tab${boardTab === 'risks' ? ' on' : ''}`} onClick={() => setBoardTab('risks')}>⚠️ 风险</button>
-                </div>
-
-                <div className="tab-content">
-                  {boardTab === 'overview' && <OverviewTab data={boardData} />}
-                  {boardTab === 'milestones' && <MilestoneTab data={boardData} />}
-                  {boardTab === 'risks' && <RiskTab data={boardData} />}
-                </div>
+                <ProjectSwitcher workspaces={workspaceList} currentId={currentWsId} onChange={handleSwitchWs} />
+                {boardData && (
+                  <>
+                    <div className="summary">
+                      <span className="s-icon">{boardData.health === 'on-track' ? '🟢' : boardData.health === 'at-risk' ? '🟡' : '🔴'}</span>
+                      <div>
+                        <div className="s-name">{boardData.workspace_name}</div>
+                        <div className="s-meta">负责人：{boardData.owner_name || '-'} · {boardData.total_tasks}个任务 · 整体完成 {boardData.pct}%</div>
+                      </div>
+                      <div className="s-stats">
+                        <span className="stat-good">✓ {boardData.done}</span>
+                        <span className="stat-bad">⏰ {boardData.overdue} 逾期</span>
+                        <span className="stat-warn">⚠ {boardData.risks.length} 风险</span>
+                      </div>
+                    </div>
+                    <div className="tab-content">
+                      {boardTab === 'overview' && <OverviewTab data={boardData} />}
+                      {boardTab === 'milestones' && <MilestoneTab data={boardData} />}
+                      {boardTab === 'risks' && <RiskTab data={boardData} />}
+                    </div>
+                  </>
+                )}
+                {boardLoading && <div className="empty-state">加载看板数据...</div>}
               </>
             )}
-            {boardLoading && <div className="empty-state">加载看板数据...</div>}
           </div>
           <NotesPanel meetingId={id!} />
         </div>

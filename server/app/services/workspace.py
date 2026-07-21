@@ -56,24 +56,35 @@ async def create_workspace(db: AsyncSession, creator: User, **kwargs) -> Workspa
         owner_member = WorkspaceMember(workspace_id=ws.id, user_id=owner_id, role="OWNER")
         db.add(owner_member)
 
+    chat_id = None
     # 创建企业微信群聊（如果启用）
     if settings.wecom_enabled:
         try:
             from app.services import wecom_service
 
-            # 获取初始成员的 userid 列表
-            member_userids = [creator.id]
+            # 数据库 UUID → 企业微信 userid（username / sAMAccountName）
+            wecom_ids = [creator.username]
             if owner_id != creator.id:
-                member_userids.append(owner_id)
+                result = await db.execute(select(User).where(User.id == owner_id))
+                owner_user = result.scalar_one_or_none()
+                if owner_user:
+                    wecom_ids.append(owner_user.username)
 
             # 创建外部群聊
             chat_id = await wecom_service.create_external_group(
                 name=f"【{ws.name}】项目群",
-                owner_userid=owner_id,
-                member_userids=member_userids,
+                owner_userid=wecom_ids[0],
+                member_userids=wecom_ids,
             )
             ws.wecom_chat_id = chat_id
             logger.info(f"工作空间 {ws.id} 企业微信群聊创建成功: {chat_id}")
+
+            # 发送群创建通知
+            from app.services import wecom_notification
+            try:
+                await wecom_notification.notify_group_created(db, ws.id, creator, chat_id)
+            except Exception:
+                pass  # 通知失败不影响工作空间创建
         except Exception as e:
             logger.warning(f"创建企业微信群聊失败，不阻断工作空间创建: {e}")
             # 群聊创建失败不影响工作空间创建
@@ -115,24 +126,43 @@ async def init_wecom_group(db: AsyncSession, workspace_id: str) -> str:
     if ws.wecom_chat_id:
         raise AppException(400, "该项目已存在联盟E动群")
 
-    # 取全部真实成员的 user_id（排除 AI Agent 与空 user_id）
+    # 取全部真实成员（排除 AI Agent 与空 user_id）
     result = await db.execute(
         select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
     )
     members = result.scalars().all()
-    member_userids = [m.user_id for m in members if m.user_id]
-    if not member_userids:
+    real_members = [m for m in members if m.user_id]
+    if not real_members:
         raise AppException(400, "项目暂无可加入群聊的成员")
 
-    # 群主优先取 owner，且必须在成员列表中，否则退化为第一个成员
-    owner_userid = ws.owner_id if ws.owner_id in member_userids else member_userids[0]
+    # 收集企业微信 userid（username / sAMAccountName）
+    user_ids = [m.user_id for m in real_members]
+    result = await db.execute(select(User).where(User.id.in_(user_ids)))
+    users = {u.id: u for u in result.scalars().all()}
+
+    wecom_userids = []
+    for m in real_members:
+        u = users.get(m.user_id)
+        if u and u.username:
+            wecom_userids.append(u.username)
+
+    if not wecom_userids:
+        raise AppException(400, "项目成员暂无企业微信 userid，无法创建群聊")
+
+    # 群主优先取 owner（必须是真实成员），且必须在成员列表中
+    owner_wecom_id = None
+    if ws.owner_id and ws.owner_id in users:
+        ow = users[ws.owner_id]
+        if ow.username and ow.username in wecom_userids:
+            owner_wecom_id = ow.username
+    owner_wecom_id = owner_wecom_id or wecom_userids[0]
 
     from app.services import wecom_service
     try:
         chat_id = await wecom_service.create_external_group(
             name=f"【{ws.name}】项目群",
-            owner_userid=owner_userid,
-            member_userids=member_userids,
+            owner_userid=owner_wecom_id,
+            member_userids=wecom_userids,
         )
     except wecom_service.WeComAPIError as e:
         logger.warning(f"工作空间 {workspace_id} 初始化联盟E动群失败: {e}")
@@ -141,7 +171,7 @@ async def init_wecom_group(db: AsyncSession, workspace_id: str) -> str:
     ws.wecom_chat_id = chat_id
     await db.commit()
     await db.refresh(ws)
-    logger.info(f"工作空间 {workspace_id} 补建联盟E动群成功: {chat_id}，成员 {len(member_userids)} 人")
+    logger.info(f"工作空间 {workspace_id} 补建联盟E动群成功: {chat_id}，成员 {len(wecom_userids)} 人")
     return chat_id
 
 
@@ -325,10 +355,10 @@ async def add_member(db: AsyncSession, workspace_id: str, user_id: str, role: st
     if settings.wecom_enabled:
         try:
             workspace = await get_workspace(db, workspace_id)
-            if workspace and workspace.wecom_chat_id:
+            if workspace and workspace.wecom_chat_id and user.username:
                 from app.services import wecom_service
-                await wecom_service.add_group_members(workspace.wecom_chat_id, [user_id])
-                logger.info(f"成员 {user_id} 已同步到企业微信群聊 {workspace.wecom_chat_id}")
+                await wecom_service.add_group_members(workspace.wecom_chat_id, [user.username])
+                logger.info(f"成员 {user.username} 已同步到企业微信群聊 {workspace.wecom_chat_id}")
         except Exception as e:
             logger.warning(f"同步企业微信群成员失败: {e}")
 
@@ -366,10 +396,10 @@ async def remove_member(db: AsyncSession, member: WorkspaceMember):
     if settings.wecom_enabled:
         try:
             workspace = await get_workspace(db, workspace_id)
-            if workspace and workspace.wecom_chat_id:
+            if workspace and workspace.wecom_chat_id and member.user and member.user.username:
                 from app.services import wecom_service
-                await wecom_service.remove_group_members(workspace.wecom_chat_id, [user_id])
-                logger.info(f"成员 {user_id} 已从企业微信群聊 {workspace.wecom_chat_id} 移除")
+                await wecom_service.remove_group_members(workspace.wecom_chat_id, [member.user.username])
+                logger.info(f"成员 {member.user.username} 已从企业微信群聊 {workspace.wecom_chat_id} 移除")
         except Exception as e:
             logger.warning(f"移除企业微信群成员失败: {e}")
 

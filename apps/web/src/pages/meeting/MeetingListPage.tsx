@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { TreeSelect } from 'antd';
 import api from '../../api/client';
-import { meetingApi } from '../../api/meeting';
+import { meetingApi, type OrgProjectNode } from '../../api/meeting';
 
 interface MeetingItem {
   id: string;
@@ -12,6 +13,29 @@ interface MeetingItem {
   created_at: string;
 }
 
+// Build antd TreeSelect data from the org-project tree.
+// Department nodes are checkable containers; project leaves carry the workspace id.
+function buildTreeData(nodes: OrgProjectNode[]): any[] {
+  return nodes.map(n => {
+    const children: any[] = [
+      ...buildTreeData(n.children || []),
+      ...(n.projects || []).map(p => ({
+        title: p.owner_name ? `${p.name}（${p.owner_name}）` : p.name,
+        value: p.id,
+        key: p.id,
+        isLeaf: true,
+      })),
+    ];
+    return {
+      title: `${n.name}${n.projects?.length || n.children?.length ? '' : '（空）'}`,
+      value: `dept:${n.id}`,
+      key: `dept:${n.id}`,
+      selectable: false,
+      children,
+    };
+  });
+}
+
 export default function MeetingListPage() {
   const navigate = useNavigate();
   const [meetings, setMeetings] = useState<MeetingItem[]>([]);
@@ -19,6 +43,8 @@ export default function MeetingListPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [workspaces, setWorkspaces] = useState<Array<{ id: string; name: string }>>([]);
   const [groups, setGroups] = useState<Array<{ id: string; name: string }>>([]);
+  const [orgTree, setOrgTree] = useState<OrgProjectNode[]>([]);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [form, setForm] = useState({ title: '', dimension: 'PROJECT', dimension_id: '', meeting_type: 'WEEKLY' });
   const [creating, setCreating] = useState(false);
 
@@ -35,6 +61,9 @@ export default function MeetingListPage() {
       setGroups(items.map((g: any) => ({ id: g.id, name: g.name })));
     }).catch(() => {});
 
+    // Load org-project tree for CUSTOM multi-select
+    meetingApi.getOrgProjects().then(setOrgTree).catch(() => {});
+
     // Load meetings from API
     meetingApi.list()
       .then(setMeetings)
@@ -44,17 +73,30 @@ export default function MeetingListPage() {
 
   // Options for the currently selected dimension
   const dimensionOptions = form.dimension === 'PROJECT' ? workspaces : groups;
+  const treeData = buildTreeData(orgTree);
 
   const handleDimensionChange = (dimension: string) => {
     // Reset the selected id when switching dimension to avoid a stale value
     setForm(f => ({ ...f, dimension, dimension_id: '' }));
+    setSelectedProjects([]);
   };
 
+  // TreeSelect returns both dept keys (dept:xxx) and project ids; keep only project ids.
+  const handleTreeChange = (values: string[]) => {
+    setSelectedProjects(values.filter(v => !v.startsWith('dept:')));
+  };
+
+  const isCustom = form.dimension === 'CUSTOM';
+  const canCreate = !!form.title && (isCustom ? selectedProjects.length > 0 : !!form.dimension_id);
+
   const handleCreate = async () => {
-    if (!form.title || !form.dimension_id) return;
+    if (!canCreate) return;
     setCreating(true);
     try {
-      const res: any = await api.post('/meetings', form);
+      const payload: any = isCustom
+        ? { title: form.title, dimension: 'CUSTOM', meeting_type: form.meeting_type, workspace_ids: selectedProjects }
+        : { title: form.title, dimension: form.dimension, dimension_id: form.dimension_id, meeting_type: form.meeting_type };
+      const res: any = await api.post('/meetings', payload);
       navigate(`/meetings/${res.data.id}`);
     } catch {
       setCreating(false);
@@ -62,7 +104,18 @@ export default function MeetingListPage() {
   };
 
   const typeLabel = (t: string) => t === 'WEEKLY' ? '周会' : t === 'STANDUP' ? '站会' : '临时会议';
-  const dimLabel = (d: string) => d === 'PROJECT' ? '项目' : '项目群';
+  const dimLabel = (d: string) => d === 'PROJECT' ? '项目' : d === 'CUSTOM' ? '自选项目' : '项目群';
+
+  const handleDelete = async (e: React.MouseEvent, m: MeetingItem) => {
+    e.stopPropagation();
+    if (!window.confirm(`确定删除会议「${m.title}」吗？此操作不可恢复。`)) return;
+    try {
+      await meetingApi.remove(m.id);
+      setMeetings(prev => prev.filter(x => x.id !== m.id));
+    } catch {
+      /* 错误已由 api 拦截器统一提示 */
+    }
+  };
 
   return (
     <div className="meeting-list-page">
@@ -94,22 +147,25 @@ export default function MeetingListPage() {
               <select value={form.dimension} onChange={e => handleDimensionChange(e.target.value)}>
                 <option value="PROJECT">项目</option>
                 <option value="PROJECT_GROUP">项目群</option>
+                <option value="CUSTOM">自选项目（按组织架构多选）</option>
               </select>
             </div>
-            <div className="field">
-              <label>{form.dimension === 'PROJECT' ? '选择项目' : '选择项目群'}</label>
-              <select value={form.dimension_id} onChange={e => setForm({ ...form, dimension_id: e.target.value })}>
-                <option value="">请选择</option>
-                {dimensionOptions.map(o => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </select>
-              {dimensionOptions.length === 0 && (
-                <span className="field-hint">
-                  {form.dimension === 'PROJECT' ? '暂无可选项目' : '暂无可选项目群'}
-                </span>
-              )}
-            </div>
+            {!isCustom && (
+              <div className="field">
+                <label>{form.dimension === 'PROJECT' ? '选择项目' : '选择项目群'}</label>
+                <select value={form.dimension_id} onChange={e => setForm({ ...form, dimension_id: e.target.value })}>
+                  <option value="">请选择</option>
+                  {dimensionOptions.map(o => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </select>
+                {dimensionOptions.length === 0 && (
+                  <span className="field-hint">
+                    {form.dimension === 'PROJECT' ? '暂无可选项目' : '暂无可选项目群'}
+                  </span>
+                )}
+              </div>
+            )}
             <div className="field">
               <label>会议类型</label>
               <select value={form.meeting_type} onChange={e => setForm({ ...form, meeting_type: e.target.value })}>
@@ -119,7 +175,28 @@ export default function MeetingListPage() {
               </select>
             </div>
           </div>
-          <button className="btn btn-primary" onClick={handleCreate} disabled={creating || !form.title || !form.dimension_id}>
+          {isCustom && (
+            <div className="field">
+              <label>选择项目（可勾选部门快速全选其下所有项目）</label>
+              <TreeSelect
+                treeData={treeData}
+                value={selectedProjects}
+                onChange={handleTreeChange as any}
+                treeCheckable
+                showCheckedStrategy={TreeSelect.SHOW_CHILD}
+                placeholder="按组织架构勾选项目，勾选部门含其所有子部门项目"
+                showSearch
+                treeNodeFilterProp="title"
+                maxTagCount={8}
+                style={{ width: '100%' }}
+                popupMatchSelectWidth={false}
+              />
+              {selectedProjects.length > 0 && (
+                <span className="field-hint">已选 {selectedProjects.length} 个项目</span>
+              )}
+            </div>
+          )}
+          <button className="btn btn-primary" onClick={handleCreate} disabled={creating || !canCreate}>
             {creating ? '创建中...' : '开始会议'}
           </button>
         </div>
@@ -131,6 +208,11 @@ export default function MeetingListPage() {
         <div className="ml-grid">
           {meetings.map(m => (
             <div key={m.id} className="ml-card" onClick={() => navigate(`/meetings/${m.id}`)}>
+              <button
+                className="ml-card-del"
+                title="删除会议"
+                onClick={(e) => handleDelete(e, m)}
+              >✕</button>
               <div className="ml-card-icon">📊</div>
               <div className="ml-card-title">{m.title}</div>
               <div className="ml-card-meta">

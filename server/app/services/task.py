@@ -11,6 +11,13 @@ from app.exceptions import AppException
 
 
 async def create_task(db: AsyncSession, workspace_id: str, **kwargs) -> Task:
+    # 将 due_date 字符串（AI 传入）转为 date 对象
+    due_date_val = kwargs.get("due_date")
+    if isinstance(due_date_val, str) and due_date_val:
+        try:
+            kwargs["due_date"] = date.fromisoformat(due_date_val)
+        except (ValueError, TypeError):
+            kwargs["due_date"] = None
     task = Task(workspace_id=workspace_id, **kwargs)
     if task.task_type == "STORY":
         # Backlog entries are already reviewed — skip requirement review gate
@@ -262,7 +269,7 @@ async def get_kanban(db: AsyncSession, workspace_id: str, group_by: str = "statu
     query = select(Task).where(Task.workspace_id == workspace_id)
     if task_type:
         query = query.where(Task.task_type == task_type)
-    query = query.order_by(Task.sort_order).options(selectinload(Task.assignee), selectinload(Task.milestone), selectinload(Task.iteration))
+    query = query.order_by(Task.sort_order).options(selectinload(Task.assignee), selectinload(Task.milestone), selectinload(Task.iteration), selectinload(Task.progress_logs))
     result = await db.execute(query)
     all_tasks = result.scalars().all()
 
@@ -355,6 +362,22 @@ async def delete_task(db: AsyncSession, task: Task) -> None:
     await db.execute(Task.__table__.delete().where(Task.id.in_(ids)))
 
 
+def _latest_progress(task: Task) -> dict | None:
+    """取该任务最新一条进展反馈（progress/note/created_at），未加载或无则 None。"""
+    try:
+        logs = task.progress_logs
+    except Exception:
+        return None
+    if not logs:
+        return None
+    latest = max(logs, key=lambda p: p.created_at or datetime.min)
+    return {
+        "progress": latest.progress,
+        "note": latest.note,
+        "created_at": latest.created_at.isoformat() if latest.created_at else "",
+    }
+
+
 def _task_to_dict(task: Task) -> dict:
     # Safely access relationships that may not be eagerly loaded
     try:
@@ -443,6 +466,8 @@ def _task_to_dict(task: Task) -> dict:
         "estimation": task.estimation, "estimation_unit": task.estimation_unit,
         "sort_order": task.sort_order,
         "due_date": task.due_date.isoformat() if task.due_date else None,
+        "started_at": task.started_at.isoformat() if task.started_at else None,
+        "latest_progress": _latest_progress(task),
         "children_count": 0,
         "created_at": task.created_at.isoformat() if task.created_at else "",
         "updated_at": task.updated_at.isoformat() if task.updated_at else "",
