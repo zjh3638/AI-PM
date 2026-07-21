@@ -7,7 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.deps import get_current_user
 from app.models.user import User
-from app.schemas.task import TaskCreate, TaskUpdate, TaskMoveRequest, TaskSplitRequest
+from app.schemas.task import (
+    TaskCreate, TaskUpdate, TaskMoveRequest, TaskSplitRequest,
+    WorkItemCreate, WorkItemUpdate, WorkItemsReorder,
+)
 from app.schemas.common import APIResponse, PaginatedResponse
 from app.services import task as task_service
 from app.services.task import get_phases_for_type
@@ -259,6 +262,83 @@ async def get_task_children(
     await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER", "VIEWER")
     children = await task_service.get_children(db, task_id)
     return {"code": 0, "message": "ok", "data": [_task_to_dict(c) for c in children]}
+
+
+# ── Work Items (子工作清单) ──
+
+async def _load_editable_task(workspace_id: str, task_id: str, db, pc):
+    """加载任务并校验编辑权限，返回 task。"""
+    task = await task_service.get_task(db, task_id)
+    if task is None or task.workspace_id != workspace_id:
+        raise AppException(404, "任务不存在", 404)
+    perms = await pc.get_task_permissions(task)
+    if not perms["can_edit"]:
+        raise AppException(403, "只能编辑自己负责的任务", 403)
+    return task
+
+
+@router.post("/tasks/{task_id}/work-items", response_model=APIResponse)
+async def add_work_item(
+    workspace_id: str,
+    task_id: str,
+    req: WorkItemCreate,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    task = await _load_editable_task(workspace_id, task_id, db, pc)
+    task = await task_service.add_work_item(
+        db, task, title=req.title, description=req.description,
+        assignee_id=req.assignee_id, due_date=req.due_date,
+    )
+    return {"code": 0, "message": "ok", "data": _task_to_dict(task)}
+
+
+@router.patch("/tasks/{task_id}/work-items/{item_id}", response_model=APIResponse)
+async def update_work_item(
+    workspace_id: str,
+    task_id: str,
+    item_id: str,
+    req: WorkItemUpdate,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    task = await _load_editable_task(workspace_id, task_id, db, pc)
+    task = await task_service.update_work_item(
+        db, task, item_id,
+        title=req.title, description=req.description, assignee_id=req.assignee_id,
+        due_date=req.due_date, completed=req.completed, sort_order=req.sort_order,
+    )
+    return {"code": 0, "message": "ok", "data": _task_to_dict(task)}
+
+
+@router.delete("/tasks/{task_id}/work-items/{item_id}", response_model=APIResponse)
+async def delete_work_item(
+    workspace_id: str,
+    task_id: str,
+    item_id: str,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    task = await _load_editable_task(workspace_id, task_id, db, pc)
+    task = await task_service.delete_work_item(db, task, item_id)
+    return {"code": 0, "message": "ok", "data": _task_to_dict(task)}
+
+
+@router.patch("/tasks/{task_id}/work-items", response_model=APIResponse)
+async def reorder_work_items(
+    workspace_id: str,
+    task_id: str,
+    req: WorkItemsReorder,
+    db: AsyncSession = Depends(get_db),
+    pc: PermissionChecker = Depends(get_permission_checker),
+):
+    await pc.require_workspace_role(workspace_id, "OWNER", "MANAGER", "MEMBER")
+    task = await _load_editable_task(workspace_id, task_id, db, pc)
+    task = await task_service.reorder_work_items(db, task, req.item_ids)
+    return {"code": 0, "message": "ok", "data": _task_to_dict(task)}
 
 
 @router.patch("/tasks/{task_id}/move", response_model=APIResponse)

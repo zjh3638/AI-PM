@@ -81,6 +81,7 @@ class TaskCreate(BaseModel):
     estimation_unit: Optional[str] = None
     sort_order: int = 0
     due_date: Optional[date] = None
+    work_items: Optional[list[dict]] = None
 
     @field_validator(*_ID_FIELDS, mode="before")
     @classmethod
@@ -122,6 +123,7 @@ class TaskUpdate(BaseModel):
     estimation_unit: Optional[str] = None
     sort_order: Optional[int] = None
     due_date: Optional[date] = None
+    work_items: Optional[list[dict]] = None
 
     @field_validator(*_ID_FIELDS, mode="before")
     @classmethod
@@ -182,10 +184,50 @@ class TaskResponse(BaseModel):
     estimation_unit: Optional[str] = None
     sort_order: int = 0
     due_date: Optional[str] = None
+    work_items: Optional[list[dict]] = None
+    work_items_total: int = 0
+    work_items_done: int = 0
+    created_from_template_id: Optional[str] = None
+    created_from_template_name: Optional[str] = None
     children_count: int = 0
     permissions: Optional[dict] = None
     created_at: str
     updated_at: str
+
+
+# ── Work Items (子工作清单) ──
+
+class WorkItemCreate(BaseModel):
+    """新增一个工作项。"""
+    title: str = Field(min_length=1, max_length=200)
+    description: Optional[str] = None
+    assignee_id: Optional[str] = None
+    due_date: Optional[date] = None
+
+    @field_validator("assignee_id", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: Any) -> Any:
+        return _coerce_optional_id(v)
+
+
+class WorkItemUpdate(BaseModel):
+    """更新一个工作项（局部字段）。"""
+    title: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    description: Optional[str] = None
+    assignee_id: Optional[str] = None
+    due_date: Optional[date] = None
+    completed: Optional[bool] = None
+    sort_order: Optional[int] = None
+
+    @field_validator("assignee_id", mode="before")
+    @classmethod
+    def empty_str_to_none(cls, v: Any) -> Any:
+        return _coerce_optional_id(v)
+
+
+class WorkItemsReorder(BaseModel):
+    """按给定的工作项 id 顺序重排。"""
+    item_ids: list[str]
 
 
 class TaskMoveRequest(BaseModel):

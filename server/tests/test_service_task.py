@@ -126,3 +126,117 @@ class TestTaskService:
         assert moved.status == "IN_PROGRESS"
         assert moved.sort_order == 5
         assert moved.started_at is not None
+
+
+class TestWorkItems:
+    """子工作清单 (work_items) 服务测试。"""
+
+    @pytest.fixture
+    async def workspace_id(self, db_session: AsyncSession):
+        creator = await user_service.create_user(
+            db_session, username="wicreator", display_name="WC", password="pw123456",
+            system_role="SUPER_ADMIN",
+        )
+        ws = await ws_service.create_workspace(db_session, creator, name="WIWS", key="WI-WS")
+        return ws.id
+
+    @pytest.fixture
+    async def task(self, db_session: AsyncSession, workspace_id):
+        return await task_service.create_task(
+            db_session, workspace_id, title="复杂任务", task_type="TASK",
+        )
+
+    async def test_add_work_item(self, db_session: AsyncSession, task):
+        t = await task_service.add_work_item(db_session, task, title="指标接入")
+        assert len(t.work_items) == 1
+        assert t.work_items[0]["title"] == "指标接入"
+        assert t.work_items[0]["completed"] is False
+        assert t.work_items[0]["sort_order"] == 0
+
+    async def test_complete_work_item_persists(self, db_session: AsyncSession, task):
+        """标记完成后必须持久化（JSON 就地修改检测）。"""
+        t = await task_service.add_work_item(db_session, task, title="指标定义")
+        item_id = t.work_items[0]["id"]
+        t = await task_service.update_work_item(db_session, t, item_id, completed=True)
+        # 从 DB 重新读取，验证真的落库
+        reloaded = await task_service.get_task(db_session, t.id)
+        assert reloaded.work_items[0]["completed"] is True
+        assert reloaded.work_items[0]["completed_at"] is not None
+
+    async def test_work_items_stats(self, db_session: AsyncSession, task):
+        t = await task_service.add_work_item(db_session, task, title="A")
+        t = await task_service.add_work_item(db_session, t, title="B")
+        t = await task_service.add_work_item(db_session, t, title="C")
+        t = await task_service.update_work_item(db_session, t, t.work_items[0]["id"], completed=True)
+        d = task_service._task_to_dict(t)
+        assert d["work_items_total"] == 3
+        assert d["work_items_done"] == 1
+
+    async def test_delete_work_item_resequences(self, db_session: AsyncSession, task):
+        t = await task_service.add_work_item(db_session, task, title="A")
+        t = await task_service.add_work_item(db_session, t, title="B")
+        t = await task_service.add_work_item(db_session, t, title="C")
+        mid_id = t.work_items[1]["id"]
+        t = await task_service.delete_work_item(db_session, t, mid_id)
+        assert len(t.work_items) == 2
+        assert [w["sort_order"] for w in t.work_items] == [0, 1]
+
+    async def test_reorder_work_items(self, db_session: AsyncSession, task):
+        t = await task_service.add_work_item(db_session, task, title="A")
+        t = await task_service.add_work_item(db_session, t, title="B")
+        ids = [w["id"] for w in t.work_items]
+        t = await task_service.reorder_work_items(db_session, t, [ids[1], ids[0]])
+        assert t.work_items[0]["title"] == "B"
+        assert t.work_items[1]["title"] == "A"
+
+
+class TestTaskTemplate:
+    """任务模板服务测试。"""
+
+    @pytest.fixture
+    async def ctx(self, db_session: AsyncSession):
+        creator = await user_service.create_user(
+            db_session, username="tplcreator", display_name="TplC", password="pw123456",
+            system_role="SUPER_ADMIN",
+        )
+        ws = await ws_service.create_workspace(db_session, creator, name="TplWS", key="TPL-WS")
+        return {"ws_id": ws.id, "user_id": creator.id}
+
+    async def test_create_and_render_template(self, db_session: AsyncSession, ctx):
+        from app.services import task_template as tpl_svc
+        tpl = await tpl_svc.create_template(
+            db_session, ctx["ws_id"], ctx["user_id"],
+            name="Redis监控", task_type="TASK",
+            title_template="{项目} - Redis监控", priority="HIGH", phase="DEVELOPMENT",
+            work_items_template=[
+                {"title": "指标接入", "sort_order": 0},
+                {"title": "告警基线", "sort_order": 1},
+            ],
+        )
+        assert tpl.usage_count == 0
+        tpl = await tpl_svc.get_template(db_session, tpl.id)
+        task = await tpl_svc.create_task_from_template(
+            db_session, tpl, ctx["ws_id"], variables={"项目": "支付"},
+        )
+        assert task.title == "支付 - Redis监控"
+        assert task.created_from_template_name == "Redis监控"
+        assert len(task.work_items) == 2
+        assert task.work_items[0]["title"] == "指标接入"
+        # 使用次数累加
+        tpl = await tpl_svc.get_template(db_session, tpl.id)
+        assert tpl.usage_count == 1
+
+    async def test_template_work_item_override(self, db_session: AsyncSession, ctx):
+        from app.services import task_template as tpl_svc
+        tpl = await tpl_svc.create_template(
+            db_session, ctx["ws_id"], ctx["user_id"],
+            name="部署流程", title_template="部署",
+            work_items_template=[{"title": "预发布", "sort_order": 0}],
+        )
+        tpl = await tpl_svc.get_template(db_session, tpl.id)
+        task = await tpl_svc.create_task_from_template(
+            db_session, tpl, ctx["ws_id"],
+            work_item_overrides={"0": {"assignee_id": ctx["user_id"], "due_date": "2026-07-25"}},
+        )
+        assert task.work_items[0]["assignee_id"] == ctx["user_id"]
+        assert task.work_items[0]["due_date"] == "2026-07-25"

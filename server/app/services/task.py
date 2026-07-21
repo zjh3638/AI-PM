@@ -465,6 +465,11 @@ def _task_to_dict(task: Task) -> dict:
         "reviewer_ids": task.reviewer_ids or [],
         "estimation": task.estimation, "estimation_unit": task.estimation_unit,
         "sort_order": task.sort_order,
+        "work_items": task.work_items or [],
+        "work_items_total": len(task.work_items) if task.work_items else 0,
+        "work_items_done": sum(1 for wi in task.work_items if wi.get("completed")) if task.work_items else 0,
+        "created_from_template_id": task.created_from_template_id,
+        "created_from_template_name": task.created_from_template_name,
         "due_date": task.due_date.isoformat() if task.due_date else None,
         "started_at": task.started_at.isoformat() if task.started_at else None,
         "latest_progress": _latest_progress(task),
@@ -514,6 +519,107 @@ async def list_backlog(db: AsyncSession, workspace_id: str) -> list[dict]:
         d["children_count"] = child_counts.get(story.id, 0)
         data.append(d)
     return data
+
+
+# ── Work Items (子工作清单) ──
+
+import uuid
+import copy
+from sqlalchemy.orm.attributes import flag_modified
+
+
+async def _resolve_assignee_name(db: AsyncSession, assignee_id: Optional[str]) -> Optional[str]:
+    if not assignee_id:
+        return None
+    user = await db.get(User, assignee_id)
+    return user.display_name if user else None
+
+
+def _normalize_work_items(items: list[dict]) -> list[dict]:
+    """按 sort_order 排序并回填连续序号。"""
+    items = sorted(items, key=lambda x: x.get("sort_order", 0))
+    for idx, it in enumerate(items):
+        it["sort_order"] = idx
+    return items
+
+
+async def _commit_work_items(db: AsyncSession, task: Task, items: list[dict]) -> Task:
+    """统一持久化 work_items：JSON 列不追踪就地变更，需重新赋值并显式标脏。"""
+    task.work_items = _normalize_work_items(items)
+    flag_modified(task, "work_items")
+    await db.commit()
+    await db.refresh(task)
+    return task
+
+
+async def add_work_item(
+    db: AsyncSession, task: Task, title: str,
+    description: Optional[str] = None, assignee_id: Optional[str] = None,
+    due_date: Optional[date] = None,
+) -> Task:
+    items = copy.deepcopy(list(task.work_items or []))
+    new_item = {
+        "id": str(uuid.uuid4()),
+        "title": title,
+        "description": description or None,
+        "assignee_id": assignee_id,
+        "assignee_name": await _resolve_assignee_name(db, assignee_id),
+        "due_date": due_date.isoformat() if due_date else None,
+        "completed": False,
+        "completed_at": None,
+        "sort_order": len(items),
+    }
+    items.append(new_item)
+    return await _commit_work_items(db, task, items)
+
+
+async def update_work_item(db: AsyncSession, task: Task, item_id: str, **changes) -> Task:
+    items = copy.deepcopy(list(task.work_items or []))
+    found = False
+    for it in items:
+        if it.get("id") == item_id:
+            found = True
+            if "title" in changes and changes["title"] is not None:
+                it["title"] = changes["title"]
+            if "description" in changes and changes["description"] is not None:
+                it["description"] = changes["description"]
+            if "assignee_id" in changes:
+                it["assignee_id"] = changes["assignee_id"]
+                it["assignee_name"] = await _resolve_assignee_name(db, changes["assignee_id"])
+            if "due_date" in changes and changes["due_date"] is not None:
+                dd = changes["due_date"]
+                it["due_date"] = dd.isoformat() if isinstance(dd, date) else dd
+            if "sort_order" in changes and changes["sort_order"] is not None:
+                it["sort_order"] = changes["sort_order"]
+            if "completed" in changes and changes["completed"] is not None:
+                it["completed"] = bool(changes["completed"])
+                it["completed_at"] = datetime.utcnow().isoformat() if changes["completed"] else None
+            break
+    if not found:
+        raise AppException(404, "工作项不存在", 404)
+    return await _commit_work_items(db, task, items)
+
+
+async def delete_work_item(db: AsyncSession, task: Task, item_id: str) -> Task:
+    items = copy.deepcopy([it for it in (task.work_items or []) if it.get("id") != item_id])
+    return await _commit_work_items(db, task, items)
+
+
+async def reorder_work_items(db: AsyncSession, task: Task, item_ids: list[str]) -> Task:
+    current = copy.deepcopy(list(task.work_items or []))
+    by_id = {it.get("id"): it for it in current}
+    reordered = [by_id[i] for i in item_ids if i in by_id]
+    # 追加任何未在 item_ids 中出现的项，避免丢失
+    for it in current:
+        if it.get("id") not in item_ids:
+            reordered.append(it)
+    for idx, it in enumerate(reordered):
+        it["sort_order"] = idx
+    task.work_items = reordered
+    flag_modified(task, "work_items")
+    await db.commit()
+    await db.refresh(task)
+    return task
 
 
 async def plan_backlog_story(db: AsyncSession, story_id: str, iteration_id: str) -> Task:

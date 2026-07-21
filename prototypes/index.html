@@ -911,6 +911,31 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .fs-overlay .fs-close:hover { color: #fff; border-color: rgba(255,255,255,0.35); }
 
+/* 投屏：任务清单（子工作项内联进度） */
+.fs-tasklist { max-width: 1100px; margin: 34px auto 0; width: 100%; }
+.fs-tl-title { font-size: 1rem; font-weight: 600; color: rgba(255,255,255,0.7); margin-bottom: 14px; display: flex; align-items: center; gap: 10px; }
+.fs-tl-title .hint { font-size: 0.72rem; font-weight: 400; opacity: 0.4; }
+.fs-task {
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-lg); padding: 16px 20px; margin-bottom: 12px;
+}
+.fs-task-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.fs-task-name { font-size: 1.05rem; font-weight: 600; }
+.fs-task-tpl { font-size: 0.66rem; color: #93c5fd; background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3); padding: 1px 8px; border-radius: 10px; }
+.fs-task-owner { font-size: 0.78rem; color: rgba(255,255,255,0.5); }
+.fs-task-frac { margin-left: auto; font-size: 0.85rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.fs-task-frac.done { color: #34d399; }
+/* 子工作项：横向分段进度条 */
+.fs-wi-track { display: flex; gap: 6px; }
+.fs-wi-seg { flex: 1; display: flex; flex-direction: column; gap: 5px; }
+.fs-wi-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.12); }
+.fs-wi-seg.done .fs-wi-bar { background: #34d399; }
+.fs-wi-seg.doing .fs-wi-bar { background: #60a5fa; }
+.fs-wi-seg.overdue .fs-wi-bar { background: #ef4444; }
+.fs-wi-label { font-size: 0.7rem; color: rgba(255,255,255,0.55); display: flex; align-items: center; gap: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-wi-label .who { opacity: 0.55; font-size: 0.64rem; }
+.fs-wi-seg.overdue .fs-wi-label { color: #fca5a5; }
+
 /* ═══════════════════════════════════════════
    WORKSPACE SECTION TABS
    ═══════════════════════════════════════════ */
@@ -952,6 +977,71 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 .list-row .cb { width: 16px; height: 16px; border: 2px solid var(--border); border-radius: 3px; cursor: pointer; flex-shrink: 0; }
 .list-row.selected .cb { background: var(--blue-600); border-color: var(--blue-600); position: relative; }
 .list-row.selected .cb::after { content: '✓'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.6rem; }
+
+/* ── Work Items (子工作清单) — 列表内联展示 ── */
+/* 列表新增「子任务」列：任务名 | 里程碑 | 子任务 | 状态 | 负责人 | 勾选 */
+.task-list .list-head.has-wi,
+.list-row.has-wi { grid-template-columns: 1fr 80px 150px 90px 80px 40px; }
+
+/* 任务标题旁的展开箭头 */
+.list-row .wi-caret {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; height: 16px; margin-right: 4px; border-radius: 3px;
+  color: var(--text-muted); font-size: 0.6rem; transition: transform var(--fast), background var(--fast);
+}
+.list-row .wi-caret:hover { background: var(--bg-raised); color: var(--text-secondary); }
+.list-row.wi-open .wi-caret { transform: rotate(90deg); }
+.list-row .task-title.no-wi { padding-left: 20px; }
+
+/* 模板来源标记 */
+.tpl-tag {
+  display: inline-flex; align-items: center; gap: 2px; font-size: 0.62rem;
+  color: var(--blue-600); background: var(--blue-50); border: 1px solid var(--blue-100);
+  padding: 0 5px; border-radius: 8px; margin-left: 6px; vertical-align: middle;
+}
+
+/* 子任务进度：圆点 + 分数 */
+.wi-progress { display: flex; align-items: center; gap: 6px; }
+.wi-dots { display: inline-flex; gap: 3px; }
+.wi-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+.wi-dot.done { background: var(--green-500); }
+.wi-dot.overdue { background: var(--red-500); }
+.wi-frac { font-size: 0.68rem; color: var(--text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wi-progress.all-done .wi-frac { color: var(--green-600); font-weight: 600; }
+.wi-none { font-size: 0.72rem; color: var(--text-placeholder); }
+
+/* 展开后的工作项详情区（作为额外一行插入） */
+.wi-detail-row { border-bottom: 1px solid var(--border-light); background: var(--bg-raised); padding: 4px 16px 10px 36px; }
+.wi-detail-row .wi-item {
+  display: grid; grid-template-columns: 20px 1fr 90px 90px auto;
+  align-items: center; gap: 10px; padding: 6px 8px; border-radius: var(--radius-sm);
+  font-size: 0.76rem; transition: background var(--fast);
+}
+.wi-detail-row .wi-item:hover { background: var(--bg-surface); }
+.wi-item .wi-check {
+  width: 16px; height: 16px; border: 2px solid var(--border-hover); border-radius: 50%;
+  cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; color: transparent; transition: all var(--fast);
+}
+.wi-item .wi-check:hover { border-color: var(--green-500); }
+.wi-item.done .wi-check { background: var(--green-500); border-color: var(--green-500); color: #fff; }
+.wi-item.done .wi-name { color: var(--text-muted); text-decoration: line-through; }
+.wi-item .wi-name { font-weight: 500; }
+.wi-item .wi-assignee { color: var(--text-secondary); font-size: 0.72rem; }
+.wi-item .wi-assignee.unassigned { color: var(--text-placeholder); }
+.wi-item .wi-due { font-size: 0.72rem; color: var(--text-muted); }
+.wi-item .wi-due.overdue { color: var(--red-600); font-weight: 500; }
+.wi-item .wi-op {
+  font-size: 0.68rem; color: var(--blue-600); padding: 2px 8px; border-radius: var(--radius-sm);
+  border: 1px solid var(--blue-100); background: var(--blue-50);
+}
+.wi-item .wi-op:hover { background: var(--blue-100); }
+.wi-detail-add {
+  display: inline-flex; align-items: center; gap: 4px; margin-top: 6px; margin-left: 8px;
+  font-size: 0.72rem; color: var(--text-muted); padding: 4px 10px; border-radius: var(--radius-sm);
+  border: 1px dashed var(--border); background: var(--bg-surface);
+}
+.wi-detail-add:hover { border-color: var(--blue-400); color: var(--blue-600); }
 
 /* Simplified Gantt */
 .gantt-wrap { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; overflow-x: auto; }
@@ -1023,6 +1113,13 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
   font-size: 0.6rem; padding: 1px 5px; border-radius: 4px;
   background: var(--bg-raised); color: var(--text-muted);
 }
+
+/* Kanban card — 子工作项进度 */
+.kanban-card .kc-wi { margin: 6px 0; }
+.kanban-card .kc-wi-bar { height: 4px; border-radius: 2px; background: var(--border); overflow: hidden; margin-bottom: 4px; }
+.kanban-card .kc-wi-fill { height: 100%; background: var(--green-500); border-radius: 2px; }
+.kanban-card .kc-wi-meta { font-size: 0.64rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px; }
+.kanban-card .kc-wi-meta .tpl-dot { color: var(--blue-600); }
 
 /* AI chat — command suggestions */
 .chat-cmds { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -1957,7 +2054,15 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
           </div>
           <!-- DEVELOPMENT -->
           <div class="kanban-col" data-col="DEVELOPMENT">
-            <div class="col-head"><span>💻 开发实现</span><span class="badge" style="background:var(--bg-hover)">4</span></div>
+            <div class="col-head"><span>💻 开发实现</span><span class="badge" style="background:var(--bg-hover)">5</span></div>
+            <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--blue-400)">
+              <div class="card-title">Redis 监控接入</div>
+              <div class="kc-wi">
+                <div class="kc-wi-bar"><div class="kc-wi-fill" style="width:60%"></div></div>
+                <div class="kc-wi-meta"><span class="tpl-dot">📋</span><span>子工作项 3/5 · 1 项超期</span></div>
+              </div>
+              <div class="card-meta"><span>进行中</span><span>张明</span></div>
+            </div>
             <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--amber-400)"><div class="card-title">注册页面 UI</div><div class="card-meta"><span>进行中</span><span>3 pts</span></div></div>
             <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--blue-400)"><div class="card-title">登录 API 接口</div><div class="card-meta"><span class="badge badge-blue">AI</span><span>2 pts</span></div></div>
             <div class="kanban-card" onclick="handleCardClick(this, event)" style="border-left:3px solid var(--green-400)"><div class="card-title">密码加密存储</div><div class="card-meta"><span>✓ 已完成</span><span>2 pts</span></div></div>
@@ -1979,16 +2084,30 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 
       <!-- List -->
       <div class="task-view" id="view-list" style="display:none">
-        <div class="task-list">
-          <div class="list-head"><span>任务名称</span><span>里程碑</span><span>状态</span><span>负责人</span><span></span></div>
-          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">用户登录优化 <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M2</span></span><span><span class="badge" style="background:var(--bg-raised)">待办</span></span><span>—</span><span class="cb"></span></div>
-          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">数据库迁移脚本</span><span><span class="ms-tag">M2</span></span><span><span class="badge" style="background:var(--bg-raised)">待办</span></span><span>— <span class="dep-badge blocking">阻塞2</span></span><span class="cb"></span></div>
-          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">前端首页重构</span><span><span class="ms-tag">M3</span></span><span><span class="badge badge-red">延期</span></span><span>李四 <span class="dep-badge blocked">被阻塞</span></span><span class="cb"></span></div>
-          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">API 接口开发 <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M2</span></span><span><span class="badge" style="background:var(--blue-50);color:var(--blue-600)">进行中</span></span><span>开发工程师 Agent</span><span class="cb"></span></div>
-          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">首页新布局线框图 <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M3</span></span><span><span class="badge badge-amber">待Review</span></span><span>设计师 Agent</span><span class="cb"></span></div>
-          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">后端 3 个 PR <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M2</span></span><span><span class="badge badge-amber">待Review</span></span><span>开发工程师 Agent</span><span class="cb"></span></div>
-          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">性能优化</span><span><span class="ms-tag">M2</span></span><span><span class="badge" style="background:var(--blue-50);color:var(--blue-600)">进行中</span></span><span>王五</span><span class="cb"></span></div>
-          <div class="list-row" onclick="toggleListSelect(this)"><span class="task-title">PRD v2 终稿</span><span><span class="ms-tag">M1</span></span><span><span class="badge badge-green">已完成</span></span><span>王芳</span><span class="cb"></span></div>
+        <div class="task-list" id="taskList">
+          <div class="list-head has-wi"><span>任务名称</span><span>里程碑</span><span>子任务</span><span>状态</span><span>负责人</span><span></span></div>
+          <!-- 复杂任务：含子工作清单，可展开 -->
+          <div class="list-row has-wi" onclick="toggleWiRow(this, event)" data-wi="redis">
+            <span class="task-title"><span class="wi-caret">▶</span>Redis 监控接入<span class="tpl-tag">📋 模板</span></span>
+            <span><span class="ms-tag">M2</span></span>
+            <span class="wi-progress"><span class="wi-dots"><i class="wi-dot done"></i><i class="wi-dot done"></i><i class="wi-dot done"></i><i class="wi-dot overdue"></i><i class="wi-dot"></i></span><span class="wi-frac">3/5</span></span>
+            <span><span class="badge" style="background:var(--blue-50);color:var(--blue-600)">进行中</span></span>
+            <span>张明</span><span class="cb" onclick="event.stopPropagation();toggleListSelect(this.parentElement)"></span>
+          </div>
+          <div class="list-row has-wi" onclick="toggleWiRow(this, event)" data-wi="deploy">
+            <span class="task-title"><span class="wi-caret">▶</span>生产环境发布流程<span class="tpl-tag">📋 模板</span></span>
+            <span><span class="ms-tag">M4</span></span>
+            <span class="wi-progress all-done"><span class="wi-dots"><i class="wi-dot done"></i><i class="wi-dot done"></i><i class="wi-dot done"></i><i class="wi-dot done"></i></span><span class="wi-frac">4/4 ✓</span></span>
+            <span><span class="badge badge-green">已完成</span></span>
+            <span>王五</span><span class="cb" onclick="event.stopPropagation();toggleListSelect(this.parentElement)"></span>
+          </div>
+          <!-- 普通任务：无子工作清单 -->
+          <div class="list-row has-wi" onclick="toggleListSelect(this)"><span class="task-title no-wi">用户登录优化 <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M2</span></span><span class="wi-none">—</span><span><span class="badge" style="background:var(--bg-raised)">待办</span></span><span>—</span><span class="cb"></span></div>
+          <div class="list-row has-wi" onclick="toggleListSelect(this)"><span class="task-title no-wi">数据库迁移脚本</span><span><span class="ms-tag">M2</span></span><span class="wi-none">—</span><span><span class="badge" style="background:var(--bg-raised)">待办</span></span><span>— <span class="dep-badge blocking">阻塞2</span></span><span class="cb"></span></div>
+          <div class="list-row has-wi" onclick="toggleListSelect(this)"><span class="task-title no-wi">前端首页重构</span><span><span class="ms-tag">M3</span></span><span class="wi-none">—</span><span><span class="badge badge-red">延期</span></span><span>李四 <span class="dep-badge blocked">被阻塞</span></span><span class="cb"></span></div>
+          <div class="list-row has-wi" onclick="toggleListSelect(this)"><span class="task-title no-wi">API 接口开发 <span class="badge badge-blue">AI</span></span><span><span class="ms-tag">M2</span></span><span class="wi-none">—</span><span><span class="badge" style="background:var(--blue-50);color:var(--blue-600)">进行中</span></span><span>开发工程师 Agent</span><span class="cb"></span></div>
+          <div class="list-row has-wi" onclick="toggleListSelect(this)"><span class="task-title no-wi">性能优化</span><span><span class="ms-tag">M2</span></span><span class="wi-none">—</span><span><span class="badge" style="background:var(--blue-50);color:var(--blue-600)">进行中</span></span><span>王五</span><span class="cb"></span></div>
+          <div class="list-row has-wi" onclick="toggleListSelect(this)"><span class="task-title no-wi">PRD v2 终稿</span><span><span class="ms-tag">M1</span></span><span class="wi-none">—</span><span><span class="badge badge-green">已完成</span></span><span>王芳</span><span class="cb"></span></div>
         </div>
       </div>
 
@@ -3010,10 +3129,56 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
       <div style="background:rgba(255,255,255,0.06);border-radius:var(--radius-lg);padding:24px"><div style="font-size:0.78rem;opacity:0.5">风险信号</div><div style="font-size:2.2rem;font-weight:700;margin:8px 0;color:#fbbf24">1</div><div style="font-size:0.76rem;opacity:0.4">前端延期</div></div>
       <div style="background:rgba(255,255,255,0.06);border-radius:var(--radius-lg);padding:24px"><div style="font-size:0.78rem;opacity:0.5">AI 活跃</div><div style="font-size:2.2rem;font-weight:700;margin:8px 0;color:#60a5fa">3</div><div style="font-size:0.76rem;opacity:0.4">Agent 执行中</div></div>
     </div>
+
+    <!-- 复杂任务清单：一条任务一行，内联展示各子工作项进展 -->
+    <div class="fs-tasklist" id="fsTaskList">
+      <div class="fs-tl-title">📋 重点任务进展 <span class="hint">复杂任务的子工作项一目了然</span></div>
+    </div>
   </div>
 </div>
 
 <script>
+/* 投屏任务清单数据（复用列表视图的 WI_DATA 结构，附带任务级元信息） */
+const FS_TASKS = [
+  { name: 'Redis 监控接入', owner: '张明', tpl: true, key: 'redis' },
+  { name: '数据导出功能', owner: '张三', tpl: false, items: [
+    { title: '需求分析', assignee: '王芳', done: true },
+    { title: '接口设计', assignee: '张三', done: true },
+    { title: '后端开发', assignee: '张三', done: false, doing: true },
+    { title: '前端联调', assignee: '李四', done: false },
+    { title: '测试验收', assignee: '王五', done: false },
+    { title: '文档', assignee: null, done: false },
+  ]},
+  { name: '生产环境发布流程', owner: '王五', tpl: true, key: 'deploy' },
+];
+
+function renderFsTasks() {
+  const box = document.getElementById('fsTaskList');
+  if (!box) return;
+  // 保留标题，重建任务卡
+  box.querySelectorAll('.fs-task').forEach(e => e.remove());
+  FS_TASKS.forEach(t => {
+    const items = t.items || WI_DATA[t.key] || [];
+    const doneCount = items.filter(i => i.done).length;
+    const allDone = doneCount === items.length && items.length > 0;
+    const segs = items.map(it => {
+      const cls = it.done ? 'done' : it.overdue ? 'overdue' : it.doing ? 'doing' : '';
+      const who = it.assignee || '待指派';
+      return `<div class="fs-wi-seg ${cls}"><div class="fs-wi-bar"></div><div class="fs-wi-label">${it.title}<span class="who">· ${who}</span></div></div>`;
+    }).join('');
+    const card = document.createElement('div');
+    card.className = 'fs-task';
+    card.innerHTML = `
+      <div class="fs-task-head">
+        <span class="fs-task-name">${t.name}</span>
+        ${t.tpl ? '<span class="fs-task-tpl">📋 模板</span>' : ''}
+        <span class="fs-task-owner">负责人 ${t.owner}</span>
+        <span class="fs-task-frac ${allDone ? 'done' : ''}">${doneCount}/${items.length}${allDone ? ' ✓' : ' 子工作项'}</span>
+      </div>
+      <div class="fs-wi-track">${segs}</div>`;
+    box.appendChild(card);
+  });
+}
 /* ═══════════════════════════════════════════
    NAVIGATION
    ═══════════════════════════════════════════ */
@@ -3226,6 +3391,58 @@ function toggleListSelect(row) {
 }
 
 /* ═══════════════════════════════════════════
+   WORK ITEMS (子工作清单) — 列表内联展开
+   ═══════════════════════════════════════════ */
+const WI_DATA = {
+  redis: [
+    { title: '指标接入', assignee: '张三', due: '07-20', done: true },
+    { title: '指标定义', assignee: '李四', due: '07-21', done: true },
+    { title: '采集器部署', assignee: '张三', due: '07-22', done: true },
+    { title: '告警基线配置', assignee: '王五', due: '07-18', done: false, overdue: true },
+    { title: '监控大盘上线', assignee: null, due: '07-28', done: false },
+  ],
+  deploy: [
+    { title: '预发布验证', assignee: '王五', due: '07-15', done: true },
+    { title: '灰度发布', assignee: '王五', due: '07-16', done: true },
+    { title: '全量发布', assignee: '张明', due: '07-17', done: true },
+    { title: '发布复盘', assignee: '王芳', due: '07-18', done: true },
+  ],
+};
+
+function toggleWiRow(row, event) {
+  // 点击勾选框时不展开（已在勾选框上 stopPropagation，此处兜底）
+  if (event && event.target.classList.contains('cb')) return;
+  const key = row.dataset.wi;
+  const isOpen = row.classList.toggle('wi-open');
+  const existing = row.nextElementSibling;
+  if (existing && existing.classList.contains('wi-detail-row')) {
+    existing.remove();
+  }
+  if (!isOpen) return;
+
+  const items = WI_DATA[key] || [];
+  const detail = document.createElement('div');
+  detail.className = 'wi-detail-row';
+  detail.innerHTML = items.map((it, i) => `
+    <div class="wi-item ${it.done ? 'done' : ''}" onclick="toggleWiItem(this, event)">
+      <span class="wi-check">✓</span>
+      <span class="wi-name">${it.title}</span>
+      <span class="wi-assignee ${it.assignee ? '' : 'unassigned'}">${it.assignee || '待指派'}</span>
+      <span class="wi-due ${it.overdue ? 'overdue' : ''}">${it.due}${it.overdue ? ' ⚠' : ''}</span>
+      <span class="wi-op">${it.done ? '取消' : '完成'}</span>
+    </div>`).join('') +
+    `<div class="wi-detail-add" onclick="event.stopPropagation();showToast('+ 添加工作项（原型演示）')">+ 添加工作项</div>`;
+  row.after(detail);
+}
+
+function toggleWiItem(el, event) {
+  event.stopPropagation();
+  const done = el.classList.toggle('done');
+  el.querySelector('.wi-op').textContent = done ? '取消' : '完成';
+  showToast(done ? '✅ 工作项已完成' : '↩ 已重置为未完成');
+}
+
+/* ═══════════════════════════════════════════
    DEMAND FLOW
    ═══════════════════════════════════════════ */
 let assistMode = 'draft';
@@ -3268,7 +3485,8 @@ function switchSettings(name, btn) {
    FULLSCREEN
    ═══════════════════════════════════════════ */
 function toggleFullscreen() {
-  document.getElementById('fsOverlay').classList.toggle('open');
+  const open = document.getElementById('fsOverlay').classList.toggle('open');
+  if (open) renderFsTasks();
 }
 
 /* ═══════════════════════════════════════════

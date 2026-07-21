@@ -57,6 +57,15 @@ class Task(Base, UUIDMixin, TimestampMixin):
     estimation_unit: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0)
 
+    # Work items (子工作清单)
+    work_items: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
+    # Example: [{"id": "uuid", "title": "指标接入", "assignee_id": "uuid", "assignee_name": "张三",
+    #            "due_date": "2026-07-25", "completed": false, "completed_at": null, "sort_order": 0}]
+
+    # Template metadata
+    created_from_template_id: Mapped[Optional[str]] = mapped_column(String(36), nullable=True)
+    created_from_template_name: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+
     due_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     completed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)

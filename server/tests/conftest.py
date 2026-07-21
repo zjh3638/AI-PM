@@ -50,8 +50,16 @@ async def cleanup_tables():
     yield
     from sqlalchemy import text
     table_names = [t.name for t in reversed(Base.metadata.sorted_tables)]
-    if table_names:
-        async with test_engine.begin() as conn:
+    if not table_names:
+        return
+    async with test_engine.begin() as conn:
+        if conn.dialect.name == "sqlite":
+            # SQLite 无 TRUNCATE，逐表 DELETE（外键在测试库通常未强制）
+            await conn.execute(text("PRAGMA foreign_keys=OFF"))
+            for name in table_names:
+                await conn.execute(text(f'DELETE FROM "{name}"'))
+            await conn.execute(text("PRAGMA foreign_keys=ON"))
+        else:
             await conn.execute(
                 text(f"TRUNCATE TABLE {', '.join(table_names)} RESTART IDENTITY CASCADE")
             )
