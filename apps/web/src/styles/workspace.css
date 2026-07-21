@@ -243,3 +243,100 @@
 @media (max-width: 768px) {
   .ws-kpi-row { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ═══════════════════════════════════════════
+   子工作清单 (Work Items)
+   ═══════════════════════════════════════════ */
+.wi-section { margin: 4px 0 8px; }
+.wi-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.wi-head-title { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+.wi-frac { font-size: 0.72rem; color: var(--text-muted); font-variant-numeric: tabular-nums; margin-left: 4px; }
+.wi-frac.done { color: var(--green-600); font-weight: 600; }
+.wi-bar-bg { height: 5px; background: var(--border-light); border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
+.wi-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; }
+
+.wi-list { display: flex; flex-direction: column; gap: 2px; }
+.wi-row {
+  display: grid; grid-template-columns: 22px 1fr 110px 130px 22px;
+  align-items: center; gap: 8px; padding: 5px 6px; border-radius: var(--radius-sm);
+  font-size: 0.78rem; transition: background 0.12s;
+}
+.wi-row:hover { background: var(--bg-raised); }
+.wi-check {
+  width: 17px; height: 17px; border: 2px solid var(--border-hover); border-radius: 50%;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; color: transparent; background: var(--bg-surface); transition: all 0.12s;
+}
+.wi-check:hover:not(:disabled) { border-color: var(--green-500); }
+.wi-check:disabled { cursor: not-allowed; opacity: 0.5; }
+.wi-row.done .wi-check { background: var(--green-500); border-color: var(--green-500); color: #fff; }
+.wi-title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wi-row.done .wi-title { color: var(--text-muted); text-decoration: line-through; }
+.wi-assignee-select, .wi-due-input {
+  font: inherit; font-size: 0.72rem; padding: 3px 6px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--bg-surface); color: var(--text-secondary); width: 100%;
+}
+.wi-assignee-select:focus, .wi-due-input:focus { outline: none; border-color: var(--blue-400); }
+.wi-due-input.overdue { color: var(--red-600); border-color: var(--red-200); }
+.wi-assignee-text, .wi-due-text { font-size: 0.72rem; color: var(--text-secondary); }
+.wi-due-text.overdue { color: var(--red-600); font-weight: 500; }
+.wi-del {
+  width: 20px; height: 20px; border-radius: var(--radius-sm); border: none; background: none;
+  color: var(--text-placeholder); cursor: pointer; font-size: 0.72rem;
+}
+.wi-del:hover { background: var(--red-50); color: var(--red-500); }
+.wi-empty { font-size: 0.74rem; color: var(--text-muted); padding: 12px; text-align: center; line-height: 1.6; }
+.wi-add-row {
+  display: grid; grid-template-columns: 1fr 110px 130px auto; gap: 8px; align-items: center;
+  margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border);
+}
+.wi-add-title {
+  font: inherit; font-size: 0.78rem; padding: 6px 9px; border: 1px solid var(--border);
+  border-radius: var(--radius-sm); background: var(--bg-surface);
+}
+.wi-add-title:focus { outline: none; border-color: var(--blue-400); }
+
+/* 列表 / 看板中的工作项进度指示 */
+.wi-inline { display: inline-flex; align-items: center; gap: 6px; }
+.wi-dots { display: inline-flex; gap: 3px; }
+.wi-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--border); flex-shrink: 0; }
+.wi-dot.done { background: var(--green-500); }
+.wi-dot.overdue { background: var(--red-500); }
+.wi-inline-frac { font-size: 0.68rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.wi-inline.all-done .wi-inline-frac { color: var(--green-600); font-weight: 600; }
+
+/* ═══════════════════════════════════════════
+   任务模板
+   ═══════════════════════════════════════════ */
+.tpl-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 10px; }
+.tpl-cats { display: flex; gap: 8px; flex-wrap: wrap; }
+.tpl-cat {
+  font-size: 0.74rem; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-secondary); transition: all 0.12s;
+}
+.tpl-cat.active { background: var(--blue-50); border-color: var(--blue-200); color: var(--blue-700); }
+.tpl-cat:hover { border-color: var(--blue-300); }
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.tpl-card {
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 16px 18px; display: flex; flex-direction: column; transition: all 0.12s;
+}
+.tpl-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
+.tc-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.tc-cat { font-size: 0.62rem; padding: 2px 7px; border-radius: 6px; white-space: nowrap; background: var(--blue-50); color: var(--blue-700); border: 1px solid var(--blue-100); }
+.tc-name { font-weight: 600; font-size: 0.92rem; flex: 1; }
+.tc-uses { font-size: 0.66rem; color: var(--text-muted); white-space: nowrap; }
+.tc-desc { font-size: 0.76rem; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.5; }
+.tc-items { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 10px; }
+.tc-items .ti { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.tc-items .ti::before { content: '○'; color: var(--text-placeholder); font-size: 0.7rem; }
+.tc-meta { display: flex; gap: 12px; font-size: 0.68rem; color: var(--text-muted); margin-bottom: 12px; flex-wrap: wrap; }
+.tc-foot { display: flex; gap: 8px; margin-top: auto; }
+.tc-btn { flex: 1; font-size: 0.76rem; padding: 7px 0; border-radius: var(--radius-sm); text-align: center; border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); cursor: pointer; transition: all 0.12s; }
+.tc-btn.primary { background: var(--blue-600); color: #fff; border-color: var(--blue-600); }
+.tc-btn.primary:hover { background: var(--blue-700); }
+.tc-btn:hover { border-color: var(--blue-400); color: var(--blue-600); }
+.tc-btn.primary:hover { color: #fff; }
+.tpl-card.tpl-new { border: 2px dashed var(--border); align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); min-height: 170px; gap: 6px; }
+.tpl-card.tpl-new:hover { border-color: var(--blue-400); color: var(--blue-600); background: var(--blue-50); }
+.tpl-card.tpl-new .tn-icon { font-size: 1.8rem; }

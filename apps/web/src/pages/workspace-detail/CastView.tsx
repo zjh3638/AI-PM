@@ -200,6 +200,7 @@ export function CastView({
         </div>
 
         <div className="cast-right-col">
+          <ComplexTasksCard tasks={allTasks} />
           <WeeklyReportCard report={reports[0] || null} />
         </div>
       </div>
@@ -214,6 +215,54 @@ export function CastView({
           />
         )}
       </Modal>
+    </div>
+  );
+}
+
+/** 投屏：重点任务（含子工作清单的复杂任务）进展 —— 一任务一行，内联展示各子工作项状态 */
+function ComplexTasksCard({ tasks }: { tasks: any[] }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const complex = tasks
+    .filter((t) => (t.work_items_total ?? 0) > 0)
+    .sort((a, b) => (b.work_items_total ?? 0) - (a.work_items_total ?? 0));
+
+  if (complex.length === 0) return null;
+
+  return (
+    <div className="bs-section cast-complex-section">
+      <div className="bs-section-head">
+        <span>重点任务进展</span>
+        <span className="bs-section-sub">{complex.length} 个复杂任务 · 子工作项一目了然</span>
+      </div>
+      <div className="cast-complex-list">
+        {complex.map((t) => {
+          const items = [...(t.work_items || [])].sort((a: any, b: any) => a.sort_order - b.sort_order);
+          const total = t.work_items_total ?? items.length;
+          const done = t.work_items_done ?? items.filter((i: any) => i.completed).length;
+          const allDone = total > 0 && done === total;
+          return (
+            <div key={t.id} className="cast-complex-item">
+              <div className="cast-complex-head">
+                <span className="cast-complex-name">{t.created_from_template_id ? '📋 ' : ''}{t.title}</span>
+                <span className="cast-complex-owner">{t.assignee_name || '未指派'}</span>
+                <span className="cast-complex-frac" style={allDone ? { color: '#34d399' } : undefined}>{done}/{total}{allDone ? ' ✓' : ''}</span>
+              </div>
+              <div className="cast-complex-track">
+                {items.map((it: any) => {
+                  const overdue = !it.completed && it.due_date && it.due_date < today;
+                  const cls = it.completed ? 'done' : overdue ? 'overdue' : it.assignee_id ? 'doing' : '';
+                  return (
+                    <div key={it.id} className={`cast-wi-seg ${cls}`} title={`${it.title}${it.assignee_name ? ' · ' + it.assignee_name : ''}`}>
+                      <div className="cast-wi-bar" />
+                      <div className="cast-wi-label">{it.title}{it.assignee_name ? <span className="who"> · {it.assignee_name}</span> : ''}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }

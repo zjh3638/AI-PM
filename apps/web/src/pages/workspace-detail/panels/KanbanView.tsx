@@ -351,7 +351,7 @@ export default function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFu
                   style={{ cursor: 'pointer', borderLeft: `3px solid ${({CRITICAL:'var(--red-400)',HIGH:'var(--amber-400)',MEDIUM:'var(--blue-400)',LOW:'var(--text-muted)'})[story.priority] || 'var(--border)'}` }}
                 >
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
-                    <div className="card-title" style={{ flex: 1 }}>{story.title}</div>
+                    <div className="card-title" style={{ flex: 1 }}>{story.created_from_template_id && <span title="由模板创建" style={{ marginRight: 3 }}>📋</span>}{story.title}</div>
                     {children.length > 0 || (story.children_count ?? 0) > 0 ? (
                       <span onClick={(e) => { e.stopPropagation(); toggleExpand(story.id); }}
                         style={{ fontSize: '0.65rem', cursor: 'pointer', padding: '0 4px', transform: isExpanded ? 'rotate(90deg)' : '', transition: '0.15s', flexShrink: 0 }} title="展开子任务">▶</span>
@@ -423,6 +423,23 @@ export default function KanbanView({ onCreateTask, onEditTask, scopeFilter, isFu
                       })}
                     </div>
                   )}
+                  {(story.work_items_total ?? 0) > 0 && (() => {
+                    const wiTotal = story.work_items_total ?? 0;
+                    const wiDone = story.work_items_done ?? 0;
+                    const wiAllDone = wiDone === wiTotal;
+                    const overdueCount = (story.work_items || []).filter((w: any) => !w.completed && w.due_date && w.due_date < new Date().toISOString().slice(0, 10)).length;
+                    return (
+                      <div style={{ marginTop: 6 }}>
+                        <div style={{ height: 3, background: 'var(--border-light)', borderRadius: 2, marginBottom: 2 }}>
+                          <div style={{ height: '100%', width: `${Math.round((wiDone / wiTotal) * 100)}%`, background: wiAllDone ? 'var(--green-400)' : 'var(--blue-400)', borderRadius: 2 }} />
+                        </div>
+                        <div style={{ fontSize: '0.55rem', color: 'var(--text-muted)', display: 'flex', gap: 4 }}>
+                          <span>📋 子工作项 {wiDone}/{wiTotal}</span>
+                          {overdueCount > 0 && <span style={{ color: 'var(--red-500)' }}>· {overdueCount} 项超期</span>}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {children.length > 0 && (
                     <div style={{ marginTop: 6 }}>
                       <div style={{ height: 3, background: 'var(--border-light)', borderRadius: 2, marginBottom: 2 }}>

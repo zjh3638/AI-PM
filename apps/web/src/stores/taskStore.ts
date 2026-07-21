@@ -36,6 +36,12 @@ interface TaskState {
   reviewRequirement: (wsId: string, taskId: string, action: string, note?: string) => Promise<void>;
   reviewDesign: (wsId: string, taskId: string, action: string, note?: string) => Promise<void>;
   splitStory: (wsId: string, taskId: string, children: Partial<Task>[]) => Promise<Task[]>;
+  // Work items (子工作清单)
+  addWorkItem: (wsId: string, taskId: string, data: { title: string; description?: string; assignee_id?: string | null; due_date?: string | null }) => Promise<Task>;
+  updateWorkItem: (wsId: string, taskId: string, itemId: string, data: Partial<{ title: string; description: string; assignee_id: string | null; due_date: string | null; completed: boolean; sort_order: number }>) => Promise<Task>;
+  deleteWorkItem: (wsId: string, taskId: string, itemId: string) => Promise<Task>;
+  reorderWorkItems: (wsId: string, taskId: string, itemIds: string[]) => Promise<Task>;
+  _syncTask: (task: Task) => void;
 }
 
 export const useTaskStore = create<TaskState>((set, get) => ({
@@ -187,5 +193,46 @@ export const useTaskStore = create<TaskState>((set, get) => ({
     await get().fetchKanban(wsId, get().kanbanGroupBy);
     await get().fetchChildren(wsId, taskId);
     return result.data;
+  },
+
+  // ── Work items (子工作清单) ──
+  // 后端在每次变更后返回完整 Task，直接用它刷新 current / tasks 列表，避免整表重拉。
+  addWorkItem: async (wsId, taskId, data) => {
+    const result = await api.post(`/workspaces/${wsId}/tasks/${taskId}/work-items`, data);
+    get()._syncTask(result.data);
+    return result.data;
+  },
+
+  updateWorkItem: async (wsId, taskId, itemId, data) => {
+    const result = await api.patch(`/workspaces/${wsId}/tasks/${taskId}/work-items/${itemId}`, data);
+    get()._syncTask(result.data);
+    return result.data;
+  },
+
+  deleteWorkItem: async (wsId, taskId, itemId) => {
+    const result = await api.delete(`/workspaces/${wsId}/tasks/${taskId}/work-items/${itemId}`);
+    get()._syncTask(result.data);
+    return result.data;
+  },
+
+  reorderWorkItems: async (wsId, taskId, itemIds) => {
+    const result = await api.patch(`/workspaces/${wsId}/tasks/${taskId}/work-items`, { item_ids: itemIds });
+    get()._syncTask(result.data);
+    return result.data;
+  },
+
+  // 用返回的最新 Task 就地更新 current 与列表/看板中的同一条记录
+  _syncTask: (task: Task) => {
+    const state = get();
+    set({
+      current: state.current?.id === task.id ? { ...state.current, ...task } : state.current,
+      tasks: state.tasks.map((t) => (t.id === task.id ? { ...t, ...task } : t)),
+      kanban: Object.fromEntries(
+        Object.entries(state.kanban).map(([col, list]) => [
+          col,
+          (list as Task[]).map((t: any) => (t && t.id === task.id ? { ...t, ...task } : t)),
+        ])
+      ),
+    });
   },
 }));

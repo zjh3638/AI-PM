@@ -29,6 +29,7 @@ export interface WorkspaceMode {
 const PROJECT_TABS: TabConfig[] = [
   { key: 'backlog', label: '需求池' },
   { key: 'tasks', label: '任务看板' },
+  { key: 'templates', label: '任务模板' },
   { key: 'kb', label: '知识库' },
   { key: 'iterations', label: '迭代' },
   { key: 'members', label: '成员' },
@@ -39,6 +40,7 @@ const PROJECT_TABS: TabConfig[] = [
 
 const TOPIC_TABS: TabConfig[] = [
   { key: 'tasks', label: '任务看板' },
+  { key: 'templates', label: '任务模板' },
   { key: 'kb', label: '知识库' },
   { key: 'members', label: '成员' },
   { key: 'risks', label: '风险管理' },

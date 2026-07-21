@@ -128,6 +128,18 @@ export interface TaskPermissions {
   role: 'manager' | 'assignee' | 'reviewer' | 'member';
 }
 
+export interface WorkItem {
+  id: string;
+  title: string;
+  description: string | null;
+  assignee_id: string | null;
+  assignee_name: string | null;
+  due_date: string | null;
+  completed: boolean;
+  completed_at: string | null;
+  sort_order: number;
+}
+
 export interface Task {
   id: string;
   workspace_id: string;
@@ -177,8 +189,43 @@ export interface Task {
   estimation_unit: string | null;
   sort_order: number;
   due_date: string | null;
+  work_items: WorkItem[];
+  work_items_total: number;
+  work_items_done: number;
+  created_from_template_id: string | null;
+  created_from_template_name: string | null;
   children_count: number;
   permissions: TaskPermissions | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// 任务模板
+export interface WorkItemTemplate {
+  title: string;
+  description?: string | null;
+  sort_order: number;
+}
+
+export interface TaskTemplate {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string | null;
+  task_type: TaskType;
+  title_template: string;
+  description_template: string | null;
+  priority: TaskPriority;
+  phase: string;
+  estimation: number | null;
+  estimation_unit: string | null;
+  work_items_template: WorkItemTemplate[];
+  work_items_count: number;
+  category: string | null;
+  tags: string[];
+  usage_count: number;
+  creator_id: string;
+  creator_name: string | null;
   created_at: string;
   updated_at: string;
 }

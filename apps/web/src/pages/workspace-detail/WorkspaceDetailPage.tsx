@@ -17,6 +17,7 @@ import FocusStrip from './components/FocusStrip';
 import KpiRow from './components/KpiRow';
 
 import TaskProgressSection from './components/TaskProgressSection';
+import WorkItemsSection from './components/WorkItemsSection';
 import KanbanView from './panels/KanbanView';
 import ListView from './panels/ListView';
 import KnowledgePanel from './panels/KnowledgePanel';
@@ -26,6 +27,7 @@ import MembersPanel from './panels/MembersPanel';
 import EpicsPanel from './panels/EpicsPanel';
 import IterationsPanel from './panels/IterationsPanel';
 import ReportsPanel from './panels/ReportsPanel';
+import TemplatesPanel from './panels/TemplatesPanel';
 import WeeklyReportPanel from './panels/WeeklyReportPanel';
 import RiskPanel from './RiskPanel';
 import AiChatPanel from './panels/AiChatPanel';
@@ -40,6 +42,7 @@ export default function WorkspaceDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { current, loading, fetchDetail } = useWorkspaceStore();
   const { create, update, remove, reviewDesign, reviewRequirement, advancePhase, returnPhase } = useTaskStore();
+  const currentTask = useTaskStore((s) => s.current);
   const { user } = useAuthStore();
   const [activeTab, setActiveTab] = useState('tasks');
   const [activeView, setActiveView] = useState('kanban');
@@ -71,7 +74,7 @@ export default function WorkspaceDetailPage() {
   const [replyTo, setReplyTo] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
   const [activityLogs, setActivityLogs] = useState<any[]>([]);
-  const [detailTab, setDetailTab] = useState<'info' | 'progress' | 'related' | 'attachments'>('info');
+  const [detailTab, setDetailTab] = useState<'info' | 'progress' | 'related' | 'attachments' | 'workitems'>('info');
   const [relatedTasks, setRelatedTasks] = useState<Task[]>([]);
   const [parentStory, setParentStory] = useState<Task | null>(null);
   const [attachments, setAttachments] = useState<any[]>([]);
@@ -227,6 +230,8 @@ export default function WorkspaceDetailPage() {
       fetchActivity(task.id);
       fetchRelations(task);
       fetchAttachments(task.id);
+      // 载入任务详情到 taskStore.current，供子工作项面板使用最新 work_items
+      if (id) useTaskStore.getState().fetchDetail(id, task.id);
       setDetailTab('info');
     } else {
       setEditingTask(null);
@@ -490,6 +495,15 @@ export default function WorkspaceDetailPage() {
               </div>
             )}
 
+            {activeTab === 'templates' && (
+              <TemplatesPanel onTaskCreated={() => {
+                if (id) {
+                  useTaskStore.getState().fetchKanban(id, useTaskStore.getState().kanbanGroupBy);
+                  useTaskStore.getState().fetchList(id);
+                }
+              }} />
+            )}
+
             {activeTab === 'kb' && (
               <div className="ws-panel active">
                 <KnowledgePanel />
@@ -604,6 +618,17 @@ export default function WorkspaceDetailPage() {
                 }}
               >📈 进展反馈</button>
             )}
+            {editingTask.task_type !== 'STORY' && editingTask.task_type !== 'EPIC' && (
+              <button
+                onClick={() => setDetailTab('workitems')}
+                style={{
+                  padding: '6px 16px', fontSize: '0.76rem', fontWeight: detailTab === 'workitems' ? 600 : 400,
+                  border: 'none', background: 'none', borderBottom: detailTab === 'workitems' ? '2px solid var(--blue-500)' : '2px solid transparent',
+                  color: detailTab === 'workitems' ? 'var(--blue-600)' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                }}
+              >📋 子工作项{(editingTask.work_items_total ?? 0) > 0 ? ` (${editingTask.work_items_done}/${editingTask.work_items_total})` : ''}</button>
+            )}
             <button
               onClick={() => setDetailTab('attachments')}
               style={{
@@ -619,6 +644,16 @@ export default function WorkspaceDetailPage() {
         {/* Progress Tab Content */}
         {editingTask && detailTab === 'progress' && (
           <TaskProgressSection taskId={editingTask.id} workspaceId={id!} />
+        )}
+
+        {/* Work Items Tab Content */}
+        {editingTask && detailTab === 'workitems' && (
+          <WorkItemsSection
+            taskId={editingTask.id}
+            workspaceId={id!}
+            workItems={(currentTask?.id === editingTask.id ? currentTask.work_items : editingTask.work_items) || []}
+            canEdit={editingTask.permissions?.can_edit ?? true}
+          />
         )}
 
         {/* Attachments Tab Content */}

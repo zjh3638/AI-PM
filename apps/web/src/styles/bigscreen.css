@@ -273,6 +273,25 @@
 .cast-report-section { flex: 3; min-height: 0; display: flex; flex-direction: column; }
 .cast-report-section > .bs-section-head { flex-shrink: 0; }
 
+/* 投屏：重点任务（复杂任务子工作清单）进展 */
+.cast-complex-section { flex: 2; min-height: 0; display: flex; flex-direction: column; }
+.cast-complex-section > .bs-section-head { flex-shrink: 0; }
+.cast-complex-list { padding: 6px 2px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+.cast-complex-item { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 12px 14px; }
+.cast-complex-head { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.cast-complex-name { font-size: 0.92rem; font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cast-complex-owner { font-size: 0.72rem; opacity: 0.55; white-space: nowrap; }
+.cast-complex-frac { font-size: 0.82rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cast-complex-track { display: flex; gap: 6px; }
+.cast-wi-seg { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.cast-wi-bar { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.13); }
+.cast-wi-seg.done .cast-wi-bar { background: #34d399; }
+.cast-wi-seg.doing .cast-wi-bar { background: #60a5fa; }
+.cast-wi-seg.overdue .cast-wi-bar { background: #ef4444; }
+.cast-wi-label { font-size: 0.66rem; opacity: 0.6; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cast-wi-label .who { opacity: 0.7; font-size: 0.6rem; }
+.cast-wi-seg.overdue .cast-wi-label { color: #fca5a5; opacity: 0.85; }
+
 .bs-section-sub { font-size: 0.66rem; opacity: 0.5; font-weight: 400; }
 
 /* 迭代/里程碑列表 */
