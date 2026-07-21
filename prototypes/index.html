@@ -1043,6 +1043,82 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 }
 .wi-detail-add:hover { border-color: var(--blue-400); color: var(--blue-600); }
 
+/* ── 任务模板管理 ── */
+.tpl-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.tpl-toolbar .tpl-cats { display: flex; gap: 8px; }
+.tpl-cat {
+  font-size: 0.74rem; padding: 5px 12px; border-radius: 999px; cursor: pointer;
+  background: var(--bg-raised); border: 1px solid var(--border); color: var(--text-secondary);
+  transition: all var(--fast);
+}
+.tpl-cat.active { background: var(--blue-50); border-color: var(--blue-200); color: var(--blue-700); }
+.tpl-cat:hover { border-color: var(--blue-300); }
+.tpl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.tpl-card {
+  background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 16px 18px; transition: all var(--fast); display: flex; flex-direction: column;
+}
+.tpl-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-sm); }
+.tpl-card .tc-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 8px; }
+.tpl-card .tc-cat {
+  font-size: 0.62rem; padding: 2px 7px; border-radius: 6px; white-space: nowrap;
+  background: var(--blue-50); color: var(--blue-700); border: 1px solid var(--blue-100);
+}
+.tpl-card .tc-name { font-weight: 600; font-size: 0.92rem; flex: 1; }
+.tpl-card .tc-uses { font-size: 0.66rem; color: var(--text-muted); white-space: nowrap; }
+.tpl-card .tc-desc { font-size: 0.76rem; color: var(--text-secondary); margin-bottom: 10px; line-height: 1.5; }
+.tpl-card .tc-items { font-size: 0.72rem; color: var(--text-muted); margin-bottom: 10px; }
+.tpl-card .tc-items .ti { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.tpl-card .tc-items .ti::before { content: '○'; color: var(--text-placeholder); font-size: 0.7rem; }
+.tpl-card .tc-meta { display: flex; gap: 12px; font-size: 0.68rem; color: var(--text-muted); margin-bottom: 12px; }
+.tpl-card .tc-foot { display: flex; gap: 8px; margin-top: auto; }
+.tpl-card .tc-btn {
+  flex: 1; font-size: 0.76rem; padding: 7px 0; border-radius: var(--radius-sm); text-align: center;
+  border: 1px solid var(--border); background: var(--bg-surface); color: var(--text-secondary); transition: all var(--fast);
+}
+.tpl-card .tc-btn.primary { background: var(--blue-600); color: #fff; border-color: var(--blue-600); }
+.tpl-card .tc-btn.primary:hover { background: var(--blue-700); }
+.tpl-card .tc-btn:hover { border-color: var(--blue-400); color: var(--blue-600); }
+.tpl-card .tc-btn.primary:hover { color: #fff; }
+.tpl-card.tpl-new {
+  border: 2px dashed var(--border); align-items: center; justify-content: center; cursor: pointer;
+  color: var(--text-muted); min-height: 180px; gap: 6px;
+}
+.tpl-card.tpl-new:hover { border-color: var(--blue-400); color: var(--blue-600); background: var(--blue-50); }
+.tpl-card.tpl-new .tn-icon { font-size: 1.8rem; }
+
+/* 从模板创建任务 — 弹窗 */
+.tpl-modal-mask {
+  display: none; position: fixed; inset: 0; background: rgba(15,23,42,0.4); z-index: 320;
+  align-items: center; justify-content: center;
+}
+.tpl-modal-mask.open { display: flex; }
+.tpl-modal {
+  background: var(--bg-surface); border-radius: var(--radius-xl); width: 460px; max-width: 92vw;
+  max-height: 86vh; overflow-y: auto; box-shadow: var(--shadow-lg); padding: 22px 24px;
+}
+.tpl-modal h3 { font-size: 1.02rem; margin-bottom: 4px; }
+.tpl-modal .tm-sub { font-size: 0.74rem; color: var(--text-muted); margin-bottom: 16px; }
+.tpl-modal .tm-field { margin-bottom: 14px; }
+.tpl-modal .tm-label { font-size: 0.74rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 5px; display: block; }
+.tpl-modal .tm-input {
+  width: 100%; padding: 8px 11px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font: inherit; font-size: 0.82rem; background: var(--bg-surface); color: var(--text-primary);
+}
+.tpl-modal .tm-input:focus { outline: none; border-color: var(--blue-400); }
+.tpl-modal .tm-preview {
+  background: var(--bg-raised); border-radius: var(--radius-sm); padding: 10px 12px; font-size: 0.78rem;
+  color: var(--text-secondary); margin-bottom: 14px;
+}
+.tpl-modal .tm-preview b { color: var(--text-primary); }
+.tpl-modal .tm-items { list-style: none; margin: 6px 0 0; padding: 0; }
+.tpl-modal .tm-items li { font-size: 0.76rem; color: var(--text-secondary); padding: 3px 0 3px 16px; position: relative; }
+.tpl-modal .tm-items li::before { content: '·'; position: absolute; left: 4px; color: var(--blue-500); font-weight: 700; }
+.tpl-modal .tm-foot { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; }
+.tpl-modal .tm-cancel { font-size: 0.8rem; padding: 8px 18px; border-radius: var(--radius-sm); border: 1px solid var(--border); color: var(--text-secondary); }
+.tpl-modal .tm-ok { font-size: 0.8rem; padding: 8px 18px; border-radius: var(--radius-sm); background: var(--blue-600); color: #fff; }
+.tpl-modal .tm-ok:hover { background: var(--blue-700); }
+
 /* Simplified Gantt */
 .gantt-wrap { background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; overflow-x: auto; }
 .gantt-head { display: flex; background: var(--bg-raised); border-bottom: 1px solid var(--border); }
@@ -2006,6 +2082,7 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
     <!-- Workspace Tabs -->
     <div class="ws-tabs" id="wsTabs">
       <button class="ws-tab active" onclick="switchWsTab('tasks', this)">任务看板</button>
+      <button class="ws-tab" onclick="switchWsTab('templates', this)">任务模板</button>
       <button class="ws-tab" onclick="switchWsTab('kb', this)">知识库</button>
       <button class="ws-tab" onclick="switchWsTab('members', this)">成员</button>
       <button class="ws-tab" onclick="switchWsTab('reports', this)">报表</button>
@@ -2128,6 +2205,20 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
           <div class="gantt-row"><div class="gantt-label" style="padding-left:28px">└ 首页新布局线框图</div><div class="gantt-timeline"><div class="gantt-bar blue" style="left:40px;width:80px"></div></div></div>
         </div>
       </div>
+    </div>
+
+    <!-- ═══ PANEL: 任务模板 ═══ -->
+    <div class="ws-panel" id="ws-panel-templates">
+      <div class="tpl-toolbar">
+        <div class="tpl-cats">
+          <span class="tpl-cat active" onclick="filterTpl(this,'all')">全部</span>
+          <span class="tpl-cat" onclick="filterTpl(this,'运维监控')">运维监控</span>
+          <span class="tpl-cat" onclick="filterTpl(this,'研发流程')">研发流程</span>
+          <span class="tpl-cat" onclick="filterTpl(this,'事务处理')">事务处理</span>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="showToast('+ 新建模板（原型演示）')">+ 新建模板</button>
+      </div>
+      <div class="tpl-grid" id="tplGrid"></div>
     </div>
 
     <!-- ═══ PANEL: 知识库 ═══ -->
@@ -3118,6 +3209,30 @@ button { font: inherit; cursor: pointer; border: none; background: none; color: 
 <!-- ═══════════════════════════════════════════
    FULLSCREEN — Presentation Mode
    ═══════════════════════════════════════════ -->
+<!-- ═══ 从模板创建任务弹窗 ═══ -->
+<div class="tpl-modal-mask" id="tplModalMask" onclick="if(event.target===this)closeTplModal()">
+  <div class="tpl-modal">
+    <h3 id="tmTitle">从模板创建任务</h3>
+    <div class="tm-sub" id="tmSub">Redis 监控接入</div>
+    <div class="tm-field">
+      <label class="tm-label">项目名称（变量替换）</label>
+      <input class="tm-input" id="tmVar" placeholder="如：支付系统" oninput="updateTmPreview()" value="支付系统">
+    </div>
+    <div class="tm-field">
+      <label class="tm-label">任务负责人</label>
+      <input class="tm-input" id="tmOwner" placeholder="选择负责人" value="张明">
+    </div>
+    <div class="tm-preview">
+      预览标题：<b id="tmPreviewTitle">支付系统 - Redis监控接入</b>
+      <ul class="tm-items" id="tmItems"></ul>
+    </div>
+    <div class="tm-foot">
+      <button class="tm-cancel" onclick="closeTplModal()">取消</button>
+      <button class="tm-ok" onclick="confirmCreateFromTpl()">创建任务</button>
+    </div>
+  </div>
+</div>
+
 <div class="fs-overlay" id="fsOverlay">
   <button class="fs-close" onclick="toggleFullscreen()">✕ 退出投屏</button>
   <div style="text-align:center;padding-top:60px">
@@ -3179,6 +3294,76 @@ function renderFsTasks() {
     box.appendChild(card);
   });
 }
+
+/* ═══════════════════════════════════════════
+   任务模板管理
+   ═══════════════════════════════════════════ */
+const TPL_LIST = [
+  { name: 'Redis 监控接入', cat: '运维监控', uses: 12, est: '3 天', lastUse: '2 天前',
+    desc: '标准化的中间件监控接入流程，覆盖指标采集到告警上线全链路。',
+    items: ['指标接入', '指标定义', '采集器部署', '告警基线配置', '监控大盘上线'] },
+  { name: '生产环境发布', cat: '运维监控', uses: 24, est: '1 天', lastUse: '今天',
+    desc: '灰度到全量的标准发布流程，含发布复盘。',
+    items: ['预发布验证', '灰度发布', '全量发布', '发布复盘'] },
+  { name: '需求开发全流程', cat: '研发流程', uses: 8, est: '5 天', lastUse: '1 周前',
+    desc: '从需求分析到测试验收的完整研发工作项清单。',
+    items: ['需求分析', '接口设计', '后端开发', '前端联调', '测试验收', '文档'] },
+  { name: '线上 Bug 处理', cat: '事务处理', uses: 31, est: '0.5 天', lastUse: '昨天',
+    desc: '生产环境缺陷的标准处置流程，含定位、修复、验证、复盘。',
+    items: ['问题定位', '修复方案', '上线验证', '根因复盘'] },
+];
+let tplFilter = 'all';
+
+function renderTpl() {
+  const grid = document.getElementById('tplGrid');
+  if (!grid) return;
+  const list = TPL_LIST.filter(t => tplFilter === 'all' || t.cat === tplFilter);
+  grid.innerHTML = list.map((t, i) => `
+    <div class="tpl-card">
+      <div class="tc-head">
+        <span class="tc-cat">${t.cat}</span>
+        <span class="tc-name">${t.name}</span>
+        <span class="tc-uses">已用 ${t.uses} 次</span>
+      </div>
+      <div class="tc-desc">${t.desc}</div>
+      <div class="tc-items">${t.items.slice(0,3).map(it => `<div class="ti">${it}</div>`).join('')}${t.items.length>3?`<div class="ti" style="color:var(--text-placeholder)">…等 ${t.items.length} 个工作项</div>`:''}</div>
+      <div class="tc-meta"><span>📋 ${t.items.length} 个工作项</span><span>⏱ 预计 ${t.est}</span><span>🕐 ${t.lastUse}</span></div>
+      <div class="tc-foot">
+        <button class="tc-btn primary" onclick="openTplModal(${TPL_LIST.indexOf(t)})">使用模板</button>
+        <button class="tc-btn" onclick="showToast('编辑模板：${t.name}（原型演示）')">编辑</button>
+      </div>
+    </div>`).join('') +
+    `<div class="tpl-card tpl-new" onclick="showToast('+ 新建模板（原型演示）')"><span class="tn-icon">+</span><span>新建任务模板</span></div>`;
+}
+
+function filterTpl(el, cat) {
+  tplFilter = cat;
+  document.querySelectorAll('#ws-panel-templates .tpl-cat').forEach(c => c.classList.remove('active'));
+  el.classList.add('active');
+  renderTpl();
+}
+
+let currentTpl = null;
+function openTplModal(idx) {
+  currentTpl = TPL_LIST[idx];
+  document.getElementById('tmSub').textContent = currentTpl.name;
+  document.getElementById('tmVar').value = '支付系统';
+  updateTmPreview();
+  document.getElementById('tplModalMask').classList.add('open');
+}
+function updateTmPreview() {
+  if (!currentTpl) return;
+  const v = document.getElementById('tmVar').value.trim() || '{项目名称}';
+  document.getElementById('tmPreviewTitle').textContent = `${v} - ${currentTpl.name}`;
+  document.getElementById('tmItems').innerHTML = currentTpl.items.map(it => `<li>${it}</li>`).join('');
+}
+function closeTplModal() { document.getElementById('tplModalMask').classList.remove('open'); }
+function confirmCreateFromTpl() {
+  const title = document.getElementById('tmPreviewTitle').textContent;
+  closeTplModal();
+  showToast(`✅ 已从模板创建任务「${title}」，含 ${currentTpl.items.length} 个工作项`);
+}
+
 /* ═══════════════════════════════════════════
    NAVIGATION
    ═══════════════════════════════════════════ */
@@ -3368,6 +3553,7 @@ function switchWsTab(panelName, btn) {
   btn.classList.add('active');
   document.querySelectorAll('#page-pulse .ws-panel').forEach(p => p.classList.remove('active'));
   document.getElementById('ws-panel-' + panelName).classList.add('active');
+  if (panelName === 'templates') renderTpl();
 }
 
 function switchTaskView(viewName, btn) {
